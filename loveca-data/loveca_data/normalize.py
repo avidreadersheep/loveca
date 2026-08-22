@@ -27,8 +27,17 @@ from .constants import (
     OFFICIAL_GROUPS, OFFICIAL_UNITS,
 )
 
-# 「緑1青3」「桃3緑3紫3」「緑1青1無3」「ALL1」「ドロー1」を分解する
-_TOKEN_RE = re.compile(r"(ALL|ドロー|スコア|桃|赤|黄|緑|青|紫|無)\s*(\d+)")
+# 「緑1青3」「桃3緑3紫3」「緑1青1無3」「ALL1」「ドロー1」を分解する。
+#
+# ★数字を必須にしてはいけない★
+#   公式は同じ意味を複数の書き方で入れてくる (実測):
+#     'ドロー1' 24 刷り / 'ドロー' 48 刷り / '[ドロー]' 3 刷り
+#     'スコア1' 19 刷り / 'スコア' 27 刷り / '[スコア]' 1 刷り
+#   数字必須にしていたため 59 種でブレードハートが無言で欠落していた。
+#   数字が無い場合は 1 個として扱う。
+#   角括弧は半角 [] のみ実在するが、全角 ［］ も防御的に受ける。
+_TOKEN_RE = re.compile(
+    r"[\[［]?(ALL|ドロー|スコア|全ブレード|桃|赤|黄|緑|青|紫|無)[\]］]?\s*(\d*)")
 # Q&A の card_names: 「[LL-bp1-001-R＋ ： 上原歩夢&…]」
 _FAQ_CARD_RE = re.compile(r"\[([^\s：\]]+)\s*：")
 
@@ -149,16 +158,18 @@ class HeartIcon:
 def parse_heart_string(value: str | None) -> list[HeartIcon]:
     """系統 C: 「緑1青3」形式を分解する.
 
-    ブレードハート欄では ALL / ドロー / スコア も出現する。
+    ブレードハート欄では ALL / ドロー / スコア / [全ブレード] も出現する。
+    数字が省略された表記 (「ドロー」「[スコア]」) は 1 個として扱う。
     """
     if not value or value.strip() in ("", NO_VALUE):
         return []
     out: list[HeartIcon] = []
     for token, num in _TOKEN_RE.findall(value):
+        count = int(num) if num else 1
         if token in BLADE_HEART_SPECIAL:
-            out.append(HeartIcon(BLADE_HEART_SPECIAL[token], int(num)))
+            out.append(HeartIcon(BLADE_HEART_SPECIAL[token], count))
         else:
-            out.append(HeartIcon(HEART_NAME[token], int(num)))
+            out.append(HeartIcon(HEART_NAME[token], count))
     return out
 
 
@@ -284,6 +295,11 @@ class NormalizeResult:
     products: dict[str, Product] = field(default_factory=dict)
     # 検証で使う。printingId -> relationCards のカード番号集合
     relations: dict[str, set[str]] = field(default_factory=dict)
+    # ★V15 専用。dist には出力しない★
+    #  cards は cardNumber 単位の先勝ちなので、刷りごとの差異がここにしか残らない。
+    #  printingId -> (色のブレードハート, 効果アイコン)
+    blade_hearts_by_printing: dict[str, tuple[dict[str, int], dict[str, int]]] = \
+        field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
 
 
@@ -433,6 +449,13 @@ def normalize_all(details: list[dict],
         if printing.printing_id in result.printings:
             result.warnings.append(f"printingId 重複: {printing.printing_id}")
         result.printings[printing.printing_id] = printing
+
+        # ★先勝ちで捨てられる前に刷り単位のブレードハートを控える★
+        #  公式 CMS は同じカードでも刷りごとに書き方が揺れる
+        #  (PL!-bp4-022 は -L が 'スコア'、-SECL が 'スコア1')。
+        #  勝った刷りが壊れていても気づけるよう V15 の材料を残す。
+        result.blade_hearts_by_printing[printing.printing_id] = (
+            card.blade_hearts, card.blade_heart_effects)
 
         # 同一 cardNumber の刷りが複数ある場合、ルール上の性質は同一なので
         # 先勝ちで保持する (差異があれば検証で検出する)

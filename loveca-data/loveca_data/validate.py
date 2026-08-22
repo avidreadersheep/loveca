@@ -210,6 +210,38 @@ def validate(result: NormalizeResult, *,
                         f"{card.card_number}: bladeHeartEffects に未知の '{key}' が入っている。"
                         f"許可されるのは {sorted(BLADE_HEART_EFFECT_KEYS)} のみ")
 
+    # -- V15 ★: 同一 cardNumber の全刷りでブレードハートが一致すること -------
+    # 総合ルール上「同一カードナンバー = 同一のカード」なので、
+    # 刷りが違ってもブレードハートは同じでなければならない。
+    #
+    # ★この検査が守っているもの★
+    #  1. '[全ブレード]' を ALL と解釈する推論の妥当性
+    #     (通常刷りの 'ALL1' と一致することで裏が取れる)
+    #  2. 先勝ち (normalize_all) が壊れた刷りを拾う事故の検出
+    #     PL!-bp4-022 は -L が 'スコア'、-SECL が 'スコア1' と揺れており、
+    #     数字必須だった頃は先勝ちした -L 側が無言で欠落していた
+    #
+    # WARN にとどめる理由: 公式 CMS 側の記載揺れが 1 件残っており
+    # (PL!-bp4-002 は -SEC だけ 紫2、他の 3 刷りは 紫1)、
+    # こちらのコードでは直せない。ERROR にすると build が止まる。
+    blade_by_number: dict[str, dict[str, tuple]] = defaultdict(dict)
+    for printing_id, blades in result.blade_hearts_by_printing.items():
+        printing = result.printings.get(printing_id)
+        if printing is None:
+            continue
+        colors, effects = blades
+        blade_by_number[printing.card_number][printing_id] = (
+            tuple(sorted(colors.items())), tuple(sorted(effects.items())))
+
+    for card_number, per_printing in blade_by_number.items():
+        distinct = set(per_printing.values())
+        if len(distinct) > 1:
+            detail = " / ".join(
+                f"{pid}={dict(colors)}+{dict(effects)}"
+                for pid, (colors, effects) in sorted(per_printing.items()))
+            rep.add("V15", "WARN",
+                    f"{card_number}: 刷りごとにブレードハートが違う。{detail}")
+
     # -- V8: card_kind が既知の 3 値のみ ----------------------------------
     for card in result.cards.values():
         if card.card_type not in KNOWN_KINDS:

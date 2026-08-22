@@ -209,6 +209,72 @@ def test_blade_heart_effects_split_live():
     print("  OK ★ライブのブレードハートを色と効果アイコンに分離")
 
 
+def test_blade_heart_without_count():
+    """★A-3: 数字を省いた表記を取りこぼさない.
+
+    公式は同じ意味を複数の書き方で入れてくる (実測):
+        'ドロー1' 24 刷り / 'ドロー' 48 刷り / '[ドロー]' 3 刷り
+    数字必須の正規表現だったため 59 種でブレードハートが欠落していた。
+    総合ルール 8.3.12.1 / 8.4.2.1 の入力そのものが落ちる。
+    """
+    cases = {
+        "ドロー1": {"DRAW": 1},
+        "ドロー": {"DRAW": 1},
+        "[ドロー]": {"DRAW": 1},
+        "［ドロー］": {"DRAW": 1},   # 全角角括弧は現データに無いが防御的に受ける
+        "スコア1": {"SCORE": 1},
+        "スコア": {"SCORE": 1},
+        "[スコア]": {"SCORE": 1},
+    }
+    for value, expected in cases.items():
+        card, _ = normalize_card({**LIVE, "cost": value, "attack": "-"})
+        assert card.blade_heart_effects == expected, f"{value!r} -> {card.blade_heart_effects}"
+        assert card.blade_hearts == {}, f"{value!r} で色側に混入している"
+    print("  OK ★数字なし・角括弧つきのドロー/スコアを取りこぼさない")
+
+
+def test_blade_heart_all_blade_alias():
+    """★A-3: '[全ブレード]' はパラレル刷りにおける 'ALL1' の別表記.
+
+    実データ 5 刷りすべてで、同一 cardNumber の通常刷りが 'ALL1' かつ
+    スコアも同値。総合ルール上「同一カードナンバー = 同一のカード」なので
+    ALL 1 個として扱う。V15 がこの推論の裏を取り続ける。
+    """
+    normal, _ = normalize_card({**LIVE, "attack": "ALL1"})
+    parallel, _ = normalize_card({**LIVE, "attack": "[全ブレード]"})
+    assert normal.blade_hearts == {"ALL": 1}
+    assert parallel.blade_hearts == normal.blade_hearts, parallel.blade_hearts
+    assert parallel.blade_heart_effects == {}
+    print("  OK ★[全ブレード] を ALL1 と同じに解釈する")
+
+
+def test_color_tokens_unaffected_by_optional_count():
+    """数字を任意にしても色の解釈が変わらないこと (回帰防止).
+
+    実測では色トークンの出現 5,367 刷り分すべてが数字を伴っており、
+    A-3 の修正で色が変化してはならない。
+    """
+    card, _ = normalize_card({**LIVE, "attack": "緑1青3無2"})
+    assert card.blade_hearts == {"GREEN": 1, "BLUE": 3, "GRAY": 2}, card.blade_hearts
+    member, _ = normalize_card(MEMBER_WITH_BLADE_HEART)
+    assert member.blade_hearts == {"BLUE": 1}
+    print("  OK 数字ありの色トークンは従来どおり解釈される")
+
+
+def test_validation_v15_detects_printing_mismatch():
+    """V15: 刷りごとにブレードハートが違えば検出すること."""
+    details = [
+        _detail({**LIVE, "card_number": "PL!N-bp1-025-L", "id": 117, "attack": "ALL1"}),
+        _detail({**LIVE, "card_number": "PL!N-bp1-025-SECL", "id": 900, "attack": "赤1"}),
+    ]
+    result = normalize_all(details)
+    report = validate(result)
+    assert any(i.code == "V15" for i in report.issues), "刷り間の不一致を検出できていない"
+    assert not any(i.code == "V15" and i.level == "ERROR" for i in report.issues), \
+        "V15 は WARN。公式側の記載揺れが実在するため build を止めてはいけない"
+    print("  OK V15 が刷り間のブレードハート不一致を検出する")
+
+
 def test_blade_heart_effects_split_member():
     """メンバーのブレードハートは実データ上すべて色。効果側は常に空になる."""
     card, _ = normalize_card(MEMBER_WITH_BLADE_HEART)
