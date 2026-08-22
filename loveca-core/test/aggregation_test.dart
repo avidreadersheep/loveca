@@ -62,12 +62,22 @@ MemberArea _area(
 GameState _state({
   List<MemberArea> aMemberAreas = const [],
   List<MemberArea> bMemberAreas = const [],
+  List<CardInstance> aLiveStage = const [],
+  List<CardInstance> bLiveStage = const [],
   List<CardInstance> resolution = const [],
 }) =>
     GameState(
       players: [
-        PlayerState(playerId: 'A', memberAreas: aMemberAreas),
-        PlayerState(playerId: 'B', memberAreas: bMemberAreas),
+        PlayerState(
+          playerId: 'A',
+          memberAreas: aMemberAreas,
+          liveStage: aLiveStage,
+        ),
+        PlayerState(
+          playerId: 'B',
+          memberAreas: bMemberAreas,
+          liveStage: bLiveStage,
+        ),
       ],
       firstPlayerId: 'A',
       cursor: const StepCursor(PhaseId.firstPerformance, StepId.s8_3_10),
@@ -450,6 +460,120 @@ void main() {
       expect(result.hearts, isEmpty);
       expect(result.excludedCount, 2);
       expect(result.unknownCardNumbers, ['L-unknown', 'M-unknown']);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  group('8.4.2 スコア合計', () {
+    final aggregator = LiveAggregator(cards: {
+      'L-score3': _live('L-score3', score: 3),
+      'L-score5': _live('L-score5', score: 5),
+      'L-score0': _live('L-score0'), // ★スコア 0 のライブ (Cheer Mode 相当)
+      'L-icon1':
+          _live('L-icon1', bladeHeartEffects: {BladeHeartEffect.score: 1}),
+      'L-draw1': _live('L-draw1', bladeHeartEffects: {BladeHeartEffect.draw: 1}),
+      'M-plain': _member('M-plain', bladeCount: 1),
+    });
+
+    test('ライブカード置き場のスコアを合計する', () {
+      final state = _state(aLiveStage: [_on('L-score3'), _on('L-score5')]);
+      final result = aggregator.scoreTotal(state, 'A');
+      expect(result.total, 8);
+      expect(result.hasLiveCards, isTrue);
+    });
+
+    test('★★ライブカード置き場が空なら null。0 ではない (8.4.2 / 8.4.3.2)★★', () {
+      // 8.4.2 はスコアを合計する対象を「カードがあるプレイヤー」に限る。
+      // 8.4.3.2 は片方だけカードがある場合そちらが大と定めるため、
+      // 空を 0 で代用すると比較が壊れる。
+      final state = _state();
+      final result = aggregator.scoreTotal(state, 'A');
+      expect(result.total, isNull);
+      expect(result.hasLiveCards, isFalse);
+    });
+
+    test('★★スコア 0 のライブがあっても null にはならない★★', () {
+      // スコア 0 のライブは実在する (PL!N-bp7-030 Cheer Mode)。
+      // 「空 = 0」で実装すると、この盤面と空の盤面が区別できなくなり
+      // 8.4.3.2 の比較が誤る。
+      final state = _state(aLiveStage: [_on('L-score0')]);
+      final result = aggregator.scoreTotal(state, 'A');
+
+      expect(result.total, 0);
+      expect(result.hasLiveCards, isTrue, reason: '空とは区別されなければならない');
+
+      // 空のプレイヤーとは別物。
+      expect(aggregator.scoreTotal(state, 'B').total, isNull);
+    });
+
+    test('★8.4.2.1 で自分のスコアアイコン 1 つにつき +1', () {
+      final state = _state(
+        aLiveStage: [_on('L-score3')],
+        resolution: [_on('L-icon1', ownerId: 'A'), _on('L-icon1', ownerId: 'A')],
+      );
+      expect(aggregator.scoreTotal(state, 'A').total, 5);
+    });
+
+    test('★★相手のスコアアイコンは加算しない (8.4.2.1 は自身のエール)★★', () {
+      // 8.3.12.1 が解決領域を絞らないのと対照的。
+      final state = _state(
+        aLiveStage: [_on('L-score3')],
+        bLiveStage: [_on('L-score3')],
+        resolution: [
+          _on('L-icon1', ownerId: 'A'),
+          _on('L-icon1', ownerId: 'B'),
+          _on('L-icon1', ownerId: 'B'),
+        ],
+      );
+
+      expect(aggregator.scoreTotal(state, 'A').total, 4);
+      expect(aggregator.scoreTotal(state, 'B').total, 5);
+    });
+
+    test('★ドローアイコンはスコアに加算しない', () {
+      final state = _state(
+        aLiveStage: [_on('L-score3')],
+        resolution: [_on('L-draw1', ownerId: 'A')],
+      );
+      expect(aggregator.scoreTotal(state, 'A').total, 3);
+      // 同じカードがドロー側では数えられる。
+      expect(aggregator.yellDrawCount(state).count, 1);
+    });
+
+    test('score が null のカードは 0 として扱う', () {
+      // 8.2.2 のブラフで置かれたカードは 8.3.4 で控え室へ送られるため
+      // 8.4.2 の時点では残らないが、型としては混ざりうる。
+      final state = _state(aLiveStage: [_on('L-score3'), _on('M-plain')]);
+      final result = aggregator.scoreTotal(state, 'A');
+      expect(result.total, 3);
+      expect(result.hasExclusions, isFalse, reason: '未知カードではない');
+    });
+
+    test('★未知の cardNumber は例外を投げず除外して記録する', () {
+      final state = _state(
+        aLiveStage: [_on('L-score3'), _on('L-unknown')],
+        resolution: [_on('L-unknown', ownerId: 'A')],
+      );
+
+      final result = aggregator.scoreTotal(state, 'A');
+      expect(result.total, 3, reason: '読めた分だけ合計する');
+      expect(result.hasLiveCards, isTrue, reason: '置き場にカードはある');
+      expect(result.excludedCount, 2);
+      expect(result.unknownCardNumbers, ['L-unknown']);
+    });
+
+    test('★ライブ成功判定は行わない (決定 D18)', () {
+      // 8.4.3 の比較手順・8.4.6 の勝者決定・8.4.7 の移動は集計側で行わない。
+      // 出すのは数値だけ。
+      final state = _state(
+        aLiveStage: [_on('L-score5')],
+        bLiveStage: [_on('L-score3')],
+      );
+
+      expect(aggregator.scoreTotal(state, 'A').total, 5);
+      expect(aggregator.scoreTotal(state, 'B').total, 3);
+      // 勝敗は LiveJudgementRecord に手動で入る。集計は関与しない。
+      expect(state.liveJudgement, isNull);
     });
   });
 }

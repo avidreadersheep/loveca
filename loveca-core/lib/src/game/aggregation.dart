@@ -137,6 +137,45 @@ class OwnedHearts implements AggregationResult {
   bool get hasExclusions => excludedCount > 0;
 }
 
+/// 総合ルール 8.4.2 のスコア合計。
+///
+/// 8.4.2「ライブカード置き場に**カードがあるプレイヤーは**、自身のライブカード
+/// 置き場のカードのスコアを合計します」
+class ScoreTotal implements AggregationResult {
+  const ScoreTotal({
+    required this.total,
+    this.excludedCount = 0,
+    this.unknownCardNumbers = const [],
+  });
+
+  /// 合計スコア。
+  ///
+  /// ★★ null は「ライブカード置き場が空」を表す。0 ではない ★★
+  ///   8.4.2 はスコアを合計する対象を「カードがあるプレイヤー」に限っており、
+  ///   空のプレイヤーには合計スコアがそもそも存在しない。
+  ///
+  ///   8.4.3.2「一方のプレイヤーのライブカード置き場にカードがあり、もう一方の
+  ///   ライブカード置き場にカードが無い場合、カードがあるプレイヤーの合計スコアの
+  ///   方が大きいものとします」
+  ///
+  ///   → 空を 0 で代用すると、スコア 0 のライブを持つプレイヤーと空のプレイヤーが
+  ///     同点になってしまい 8.4.3.2 に反する。スコア 0 のライブは実在する
+  ///     (`PL!N-bp7-030` Cheer Mode)。
+  final int? total;
+
+  /// ライブカード置き場にカードがあったか。8.4.3 の比較手順が分岐する条件。
+  bool get hasLiveCards => total != null;
+
+  @override
+  final int excludedCount;
+
+  @override
+  final List<String> unknownCardNumbers;
+
+  @override
+  bool get hasExclusions => excludedCount > 0;
+}
+
 /// ライブの集計。
 ///
 /// カードマスタを保持する点で `DeckValidator` と同じ形。
@@ -297,6 +336,58 @@ class LiveAggregator {
 
     return OwnedHearts(
       hearts: hearts,
+      excludedCount: excluded.count,
+      unknownCardNumbers: excluded.sorted,
+    );
+  }
+
+  /// 総合ルール 8.4.2: 合計スコア。
+  ///
+  /// 自分のライブカード置き場のカードのスコア
+  /// + 8.4.2.1 の解決領域の**自分の**エールのスコアアイコン数。
+  ///
+  /// ★★ ライブカード置き場が空なら [ScoreTotal.total] は null ★★
+  ///   0 ではない。理由は [ScoreTotal.total] の doc を参照。
+  ///
+  /// ★★ 8.4.2.1 は `ownerId` で絞る ★★
+  ///   「各プレイヤーは**自身の**エールのアイコン 1 つにつきスコアの合計に
+  ///   1 を加算します」。8.3.12.1 ([yellDrawCount]) は絞らないので混同しないこと。
+  ///
+  /// ★このメソッドは勝敗を決めない (決定 D10 / D18)。
+  ///   8.4.3 の比較手順・8.4.6 の勝者決定・8.4.7 の移動は行わない。
+  ScoreTotal scoreTotal(GameState state, String playerId) {
+    final player = state.playerOf(playerId);
+
+    // ★8.4.2 の対象は「ライブカード置き場にカードがあるプレイヤー」だけ。
+    //   空なら合計スコアが存在しない (8.4.3.1 / 8.4.3.2 が別に扱う)。
+    if (player.liveStage.isEmpty) {
+      return const ScoreTotal(total: null);
+    }
+
+    final excluded = _Excluded();
+    var total = 0;
+
+    // ---- ライブカード置き場のカードのスコア (8.4.2) ----
+    for (final instance in player.liveStage) {
+      final card = _lookup(instance, excluded);
+      if (card == null) continue;
+      // ★score が null になるのはライブ以外のカード。
+      //   8.2.2 のブラフで置かれたカードは 8.3.4 で控え室へ送られるため
+      //   8.4.2 の時点では残らないが、型としては混ざりうるので 0 として扱う。
+      total += card.score ?? 0;
+    }
+
+    // ---- 自分のエールのスコアアイコン (8.4.2.1) ----
+    for (final instance in state.resolution) {
+      // ★ownerId で絞る。8.3.12.1 との違いはここ。
+      if (instance.ownerId != playerId) continue;
+      final card = _lookup(instance, excluded);
+      if (card == null) continue;
+      total += card.bladeHeartEffects[BladeHeartEffect.score] ?? 0;
+    }
+
+    return ScoreTotal(
+      total: total,
       excludedCount: excluded.count,
       unknownCardNumbers: excluded.sorted,
     );
