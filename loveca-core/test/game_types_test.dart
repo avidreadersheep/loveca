@@ -351,6 +351,55 @@ void main() {
       expect(PhaseId.secondPerformance.ruleRef, '8.3');
     });
 
+    test('★フェイズの巡回順が条文どおり (7.1.2 / 7.3.3 / 8.1.2)', () {
+      expect(phaseCycle.length, 12);
+      expect(phaseCycle.toSet().length, 12, reason: '重複が無い');
+      expect(phaseCycle.toSet(), PhaseId.values.toSet(), reason: '漏れが無い');
+
+      // 7.1.2: 先攻通常 → 後攻通常 → ライブ
+      expect(phaseCycle.sublist(0, 4).map((p) => p.group).toSet(),
+          {PhaseGroup.firstNormal});
+      expect(phaseCycle.sublist(4, 8).map((p) => p.group).toSet(),
+          {PhaseGroup.secondNormal});
+      expect(phaseCycle.sublist(8, 12).map((p) => p.group).toSet(),
+          {PhaseGroup.live});
+
+      // 7.3.3: アクティブ → エネルギー → ドロー → メイン
+      expect(phaseCycle.sublist(0, 4).map((p) => p.ruleRef).toList(),
+          ['7.4', '7.5', '7.6', '7.7']);
+      expect(phaseCycle.sublist(4, 8).map((p) => p.ruleRef).toList(),
+          ['7.4', '7.5', '7.6', '7.7']);
+
+      // 8.1.2: セット → 先攻パフォ → 後攻パフォ → 勝敗判定
+      expect(phaseCycle.sublist(8, 12).toList(), [
+        PhaseId.liveCardSet,
+        PhaseId.firstPerformance,
+        PhaseId.secondPerformance,
+        PhaseId.liveJudgement,
+      ]);
+    });
+
+    test('★巡回は 12 個で閉じ、最終フェイズの次はターン先頭へ戻る', () {
+      expect(PhaseId.liveJudgement.next, PhaseId.firstActive);
+      expect(PhaseId.liveJudgement.isLastOfTurn, isTrue);
+      expect(PhaseId.firstMain.next, PhaseId.secondActive);
+      expect(PhaseId.secondMain.next, PhaseId.liveCardSet);
+
+      // 12 回たどると元に戻る。
+      var phase = PhaseId.firstActive;
+      final visited = <PhaseId>[];
+      for (var i = 0; i < 12; i++) {
+        visited.add(phase);
+        phase = phase.next;
+      }
+      expect(phase, PhaseId.firstActive);
+      expect(visited.toSet().length, 12);
+
+      // ターンの最終フェイズは 1 つだけ。
+      expect(PhaseId.values.where((p) => p.isLastOfTurn).toList(),
+          [PhaseId.liveJudgement]);
+    });
+
     test('★turnEnd フェイズは存在しない (8.4.13 / 8.4.14 は 8.4 のステップ)', () {
       expect(
         PhaseId.values.map((p) => p.ruleRef).toSet(),

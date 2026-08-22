@@ -133,4 +133,48 @@ enum PhaseId {
 
   /// 手番プレイヤーが存在するか。総合ルール 7.2.1.1 / 7.2.1.2。
   bool get hasTurnPlayer => turnPlayerRole != PhaseRole.none;
+
+  /// ターン内で次に実行するフェイズ。総合ルール 7.1.2 / 7.3.3 / 8.1.2。
+  ///
+  /// ★[PhaseId.liveJudgement] の次は [PhaseId.firstActive]、つまり次のターン。
+  ///   ターン番号を進めるのはステップ 8.4.14、
+  ///   先攻・後攻の入れ替えはステップ 8.4.13 であり、このゲッターは関与しない。
+  PhaseId get next =>
+      phaseCycle[(phaseCycle.indexOf(this) + 1) % phaseCycle.length];
+
+  /// ターンの最終フェイズか。総合ルール 8.1.2。
+  bool get isLastOfTurn => this == PhaseId.liveJudgement;
 }
+
+/// ターン内のフェイズの巡回順。★12 個ちょうど★
+///
+/// 総合ルール 7.1.2「各ターンは、'先攻通常フェイズ'、'後攻通常フェイズ'（7.3）、
+/// 'ライブフェイズ'（7.8）を順に実行することで進行します」
+///
+/// 総合ルール 7.3.3「通常フェイズでは、'アクティブフェイズ'（7.4）、
+/// 'エネルギーフェイズ'（7.5）、'ドローフェイズ'（7.6）、'メインフェイズ'（7.7）を
+/// 順に実行します」
+///
+/// 総合ルール 8.1.2「ライブフェイズでは、'ライブカードセットフェイズ'（8.2）、
+/// '先攻パフォーマンスフェイズ'（8.3）、'後攻パフォーマンスフェイズ'、
+/// 'ライブ勝敗判定フェイズ'（8.4）を順に実行します」
+///
+/// ★[PhaseId] の宣言順とここが一致することをテストで固定している。
+///   宣言順への暗黙依存を避けるため、巡回はこの表だけを見る。
+const List<PhaseId> phaseCycle = [
+  // 先攻通常フェイズ (7.1.2 / 7.3.3)
+  PhaseId.firstActive,
+  PhaseId.firstEnergy,
+  PhaseId.firstDraw,
+  PhaseId.firstMain,
+  // 後攻通常フェイズ (7.1.2 / 7.3.3)
+  PhaseId.secondActive,
+  PhaseId.secondEnergy,
+  PhaseId.secondDraw,
+  PhaseId.secondMain,
+  // ライブフェイズ (7.1.2 / 8.1.2)
+  PhaseId.liveCardSet,
+  PhaseId.firstPerformance,
+  PhaseId.secondPerformance,
+  PhaseId.liveJudgement,
+];
