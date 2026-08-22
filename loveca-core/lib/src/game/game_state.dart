@@ -222,6 +222,17 @@ class GameState {
   /// ★6.1.2 により構築条件を置換する効果が存在しうるため定数にしない。
   final RuleConfig config;
 
+  /// [playerId] に対応するプレイヤー。
+  ///
+  /// ★★ 見つからない場合は例外を投げる ★★
+  ///   これは呼び出し側のバグであって配信データ起因ではない。
+  ///   カードマスタに無い cardNumber (集計側で除外して件数を記録する) とは
+  ///   扱いを分ける。決定 D18 / docs/決定事項一覧.md を参照。
+  PlayerState playerOf(String playerId) => players.firstWhere(
+        (player) => player.playerId == playerId,
+        orElse: () => throw ArgumentError('unknown playerId: $playerId'),
+      );
+
   GameState copyWith({
     List<PlayerState>? players,
     String? firstPlayerId,
