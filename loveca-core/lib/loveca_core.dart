@@ -16,6 +16,7 @@ export 'src/game/card_move.dart';
 export 'src/game/game_state.dart';
 export 'src/game/member_area.dart';
 export 'src/game/phase.dart';
+export 'src/game/refresh.dart';
 export 'src/game/rng.dart';
 export 'src/game/step.dart';
 export 'src/game/turn_order.dart';
