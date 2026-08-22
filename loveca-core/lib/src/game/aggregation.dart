@@ -98,6 +98,45 @@ class YellDrawCount implements AggregationResult {
   bool get hasExclusions => excludedCount > 0;
 }
 
+/// 総合ルール 8.3.14 のライブ所有ハート。
+///
+/// 8.3.14「手番プレイヤーは自身のすべてのメンバーのハートアイコンと、
+/// 解決領域の自分のカードが持つブレードハートのハートアイコンを合計します。
+/// この合計した一連のハートアイコンをライブ所有ハートと呼びます」
+///
+/// ★色ごとの内訳を保つ。スカラーに潰さないこと。
+///   8.3.15 の必要ハート判定 (2.11.3) は色ごとの本数と総数の両方を見る。
+class OwnedHearts implements AggregationResult {
+  const OwnedHearts({
+    required this.hearts,
+    this.excludedCount = 0,
+    this.unknownCardNumbers = const [],
+  });
+
+  /// 色ごとのハートアイコン数。
+  ///
+  /// ★[HeartColor.all] と [HeartColor.gray] はそのまま残す。
+  ///   2.1.1.3 の ALL は「桃赤黄緑青紫のいずれか 1 つの色として任意に扱える」
+  ///   アイコンであり、どの色として扱うかは 8.3.15.1.1 で決まる。
+  ///   その解決は決定 D18 により手動なので、**集計側で色に変換してはいけない**。
+  ///
+  ///   2.1.1.2 の GRAY (色を指定しないハートアイコン) もブレードハートに実在する
+  ///   (配信データで 3 種)。`docs/決定事項一覧.md` §4 を参照。
+  final Map<HeartColor, int> hearts;
+
+  /// ハートアイコンの総数。2.11.3 の 2 つ目の条件が使う数。
+  int get total => hearts.values.fold(0, (sum, value) => sum + value);
+
+  @override
+  final int excludedCount;
+
+  @override
+  final List<String> unknownCardNumbers;
+
+  @override
+  bool get hasExclusions => excludedCount > 0;
+}
+
 /// ライブの集計。
 ///
 /// カードマスタを保持する点で `DeckValidator` と同じ形。
@@ -177,6 +216,87 @@ class LiveAggregator {
 
     return YellDrawCount(
       count: count,
+      excludedCount: excluded.count,
+      unknownCardNumbers: excluded.sorted,
+    );
+  }
+
+  /// 総合ルール 8.3.14: ライブ所有ハート。
+  ///
+  /// 自分のすべてのメンバーのハート + 解決領域の**自分の**カードのブレードハート。
+  ///
+  /// ★★ 8.3.10 と参照範囲が違う ★★
+  ///   8.3.10 は**アクティブ状態のメンバーのみ**だが、
+  ///   8.3.14 は**すべてのメンバー**。ウェイト状態のメンバーのハートも数える。
+  ///
+  /// ★★ 解決領域は `ownerId` で絞る ★★
+  ///   解決領域は両プレイヤー共有で 1 つだけ (4.14.1) であり、
+  ///   後攻パフォーマンスフェイズでは先攻のエールカードが残ったままになる。
+  ///   マスターの定義 (3.1.2「その領域が属しているプレイヤー」) は共有領域では
+  ///   定まらないため、オーナー基準で絞る。
+  ///   4.1.7 と 8.4.8 がオーナー基準であることを裏づける。
+  ///
+  ///   ★8.3.12.1 ([yellDrawCount]) は絞らない。混同しないこと。
+  ///
+  /// ★★ 合算するのは `bladeHearts`（色）だけ ★★
+  ///   `bladeHeartEffects` (DRAW / SCORE) は合算しない。
+  ///   処理する時点も対象も違う (8.3.12.1 / 8.4.2.1)。
+  ///   色のブレードハートを合算してよい根拠は 2.1.3
+  ///   「ブレードハートのハートアイコンはブレードが重なって表記されていますが、
+  ///     これはそれぞれブレードアイコンが無いものと同じハートアイコンを意味します」。
+  OwnedHearts ownedHearts(GameState state, String playerId) {
+    final player = state.playerOf(playerId);
+    final excluded = _Excluded();
+    final hearts = <HeartColor, int>{};
+
+    void addAll(Map<HeartColor, int> source) {
+      for (final entry in source.entries) {
+        hearts[entry.key] = (hearts[entry.key] ?? 0) + entry.value;
+      }
+    }
+
+    // ---- 自分のすべてのメンバーのハート (8.3.14 前半) ----
+    for (final area in player.memberAreas) {
+      for (final stack in area.stacks) {
+        // ★アクティブ / ウェイトを問わない。8.3.10 との違いはここ。
+        final card = _lookup(stack.member, excluded);
+        if (card == null) continue;
+        addAll(card.hearts);
+      }
+
+      // ★★ stack.beneath と area.orphans のハートは数えない ★★
+      //
+      //   主根拠は、条文が「メンバーカード」と「下にあるメンバーカード」を
+      //   書き分けている点にある。
+      //     4.5.4   「メンバーエリアのメンバーカード**は**向きを示す配置状態を**持ちます**」
+      //     4.5.5.2 「メンバーエリアのメンバーカードの下に重ねられているメンバーカードや
+      //              エネルギーカード**は**向きを示す配置状態を**持ちません**」
+      //   どちらも「メンバーエリアにあるメンバーカード」でありながら、条文は
+      //   この 2 つに正反対の規定を与えている。すなわち別のものとして扱っている。
+      //   4.5.6 の「メンバー」に下のカードを含めて読むと、この書き分けが無意味になる。
+      //
+      //   補強として、数えると 8.3.10 と非対称になる。下のカードは 4.5.5.2 により
+      //   アクティブ状態になりえないため、8.3.10 のブレードは構造的に数えようがない。
+      //   ブレードは数えられないがハートだけ数えるのは条文の構造に反する。
+      //
+      //   【要確認】4.5.6 の字面 (メンバーエリアにある、カードタイプがメンバーで
+      //   あるカード) だけを読むと下のカードも該当しうる。上記は条文の構造からの
+      //   解釈であり、公式 Q&A で裏が取れたら再確認する。
+      //   docs/PhaseEngine設計メモ.md §7 / §10 を参照。
+    }
+
+    // ---- 解決領域の自分のカードのブレードハート (8.3.14 後半) ----
+    for (final instance in state.resolution) {
+      // ★ownerId で絞る (4.14.1)。8.3.12.1 との違いはここ。
+      if (instance.ownerId != playerId) continue;
+      final card = _lookup(instance, excluded);
+      if (card == null) continue;
+      // ★色のみ。bladeHeartEffects は合算しない。
+      addAll(card.bladeHearts);
+    }
+
+    return OwnedHearts(
+      hearts: hearts,
       excludedCount: excluded.count,
       unknownCardNumbers: excluded.sorted,
     );
