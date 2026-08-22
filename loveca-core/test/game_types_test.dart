@@ -303,4 +303,220 @@ void main() {
       expect(area.hasNoMember, isTrue);
     });
   });
+
+  group('PhaseId — 総合ルール 7.1.2 / 7.3.3 / 8.1.2', () {
+    test('★リーフフェイズは 12 個。13 ではない', () {
+      // 条文に 13 番目に相当するフェイズは存在しない。
+      // 「フェイズ」と名の付く語を数えるとリーフ 12 + コンテナ 3 = 15。
+      // 12 と 15 はありえるが 13 はありえない。
+      expect(PhaseId.values.length, 12);
+      expect(PhaseGroup.values.length, 3);
+    });
+
+    test('コンテナごとの内訳は 4 / 4 / 4', () {
+      for (final group in PhaseGroup.values) {
+        expect(
+          PhaseId.values.where((p) => p.group == group).length,
+          4,
+          reason: '$group の配下',
+        );
+      }
+    });
+
+    test('★手番プレイヤーが居ないのは 2 つだけ (7.2.1.2)', () {
+      // 8.2.2 / 8.2.4 も 8.4.2 以降も両プレイヤーを動かすため手番が定まらない。
+      // このときアクティブプレイヤーは先攻プレイヤーになる。
+      final noTurnPlayer =
+          PhaseId.values.where((p) => !p.hasTurnPlayer).toSet();
+      expect(noTurnPlayer, {PhaseId.liveCardSet, PhaseId.liveJudgement});
+      expect(PhaseId.values.where((p) => p.hasTurnPlayer).length, 10);
+    });
+
+    test('★フェイズは実プレイヤー ID を持たずロールで定義される (8.4.13)', () {
+      // 8.4.13 で先攻・後攻が入れ替わるため。
+      // 実プレイヤーは GameState.firstPlayerId から実行時に解決する。
+      for (final phase in PhaseId.values) {
+        expect(phase.turnPlayerRole, isA<PhaseRole>());
+      }
+      expect(PhaseId.firstMain.turnPlayerRole, PhaseRole.first);
+      expect(PhaseId.secondMain.turnPlayerRole, PhaseRole.second);
+      expect(PhaseId.liveCardSet.turnPlayerRole, PhaseRole.none);
+      expect(PhaseId.liveJudgement.turnPlayerRole, PhaseRole.none);
+    });
+
+    test('★先攻・後攻の同名フェイズは同じ条番号を共有する', () {
+      // 7.4〜7.7 は 2 インスタンス、8.3 も 8.3.2.1 により 2 インスタンス。
+      expect(PhaseId.firstActive.ruleRef, PhaseId.secondActive.ruleRef);
+      expect(PhaseId.firstPerformance.ruleRef, '8.3');
+      expect(PhaseId.secondPerformance.ruleRef, '8.3');
+    });
+
+    test('★turnEnd フェイズは存在しない (8.4.13 / 8.4.14 は 8.4 のステップ)', () {
+      expect(
+        PhaseId.values.map((p) => p.ruleRef).toSet(),
+        {'7.4', '7.5', '7.6', '7.7', '8.2', '8.3', '8.4'},
+      );
+      expect(PhaseId.liveJudgement.steps, contains(StepId.s8_4_13));
+      expect(PhaseId.liveJudgement.steps, contains(StepId.s8_4_14));
+    });
+  });
+
+  group('StepId — 条番号をそのまま ID にしたステップ', () {
+    test('ステップは 46 個', () {
+      expect(StepId.values.length, 46);
+      for (final step in StepId.values) {
+        // 値名 sX_Y_Z と条番号 X.Y.Z が対応していること。
+        expect(step.name, 's${step.ruleRef.replaceAll('.', '_')}');
+      }
+    });
+
+    test('フェイズごとのステップ数が条文どおり', () {
+      expect(PhaseId.firstActive.steps.length, 3); // 7.4.1〜7.4.3
+      expect(PhaseId.firstEnergy.steps.length, 3); // 7.5.1〜7.5.3
+      expect(PhaseId.firstDraw.steps.length, 3); // 7.6.1〜7.6.3
+      expect(PhaseId.firstMain.steps.length, 3); // 7.7.1〜7.7.3
+      expect(PhaseId.liveCardSet.steps.length, 5); // 8.2.1〜8.2.5
+      expect(PhaseId.firstPerformance.steps.length, 15); // 8.3.3〜8.3.17
+      expect(PhaseId.liveJudgement.steps.length, 14); // 8.4.1〜8.4.14
+
+      // ★8.3.1 / 8.3.2 は定義条なのでステップにしない。
+      expect(PhaseId.firstPerformance.steps.first, StepId.s8_3_3);
+    });
+
+    test('先攻・後攻の同名フェイズは同じステップ列を共有する', () {
+      expect(PhaseId.firstActive.steps, PhaseId.secondActive.steps);
+      expect(PhaseId.firstPerformance.steps, PhaseId.secondPerformance.steps);
+    });
+
+    test('すべてのステップがちょうど 1 つのフェイズ定義に現れる', () {
+      final seen = <StepId>[];
+      for (final phase in PhaseId.values) {
+        seen.addAll(phase.steps);
+      }
+      expect(seen.toSet(), StepId.values.toSet(), reason: 'グラフに漏れがある');
+      // 先攻・後攻で共有されるため、延べ回数は 2 倍になるものがある。
+      expect(seen.length, 46 + 12 + 15, reason: '7.4〜7.7 の 12 と 8.3 の 15 が 2 回ずつ');
+    });
+  });
+
+  group('★ステップの有向グラフ', () {
+    test('すべてのステップがグラフに登録されている', () {
+      expect(stepGraph.keys.toSet(), StepId.values.toSet());
+      for (final entry in stepGraph.entries) {
+        expect(entry.value, isNotEmpty, reason: '${entry.key.ruleRef} の後続候補が空');
+      }
+    });
+
+    test('★分岐 (後続候補 2 つ) は 8.3.6 と 8.4.12 の 2 箇所だけ', () {
+      final branches = stepGraph.entries
+          .where((e) => e.value.length > 1)
+          .map((e) => e.key)
+          .toSet();
+      expect(branches, {StepId.s8_3_6, StepId.s8_4_12});
+
+      // 分岐点だけが判定主体を持つ。
+      final withDecision =
+          StepId.values.where((s) => s.decision != null).toSet();
+      expect(withDecision, branches, reason: '分岐と判定主体の対応がずれている');
+    });
+
+    test('★8.3.6 の早期終了はフェイズ終了へ直接遷移する (8.3.17 へ跳ばない)', () {
+      // 8.3.17 へジャンプさせると 8.3.17 のチェックタイミングが余分に走る。
+      // 11.5.2.1 により「ライブ開始時」(8.3.8) の事象も発生しない。
+      final transitions = stepGraph[StepId.s8_3_6]!;
+      expect(transitions.length, 2);
+      expect(transitions.map((t) => t.target).toSet(), {StepId.s8_3_7, null});
+      expect(transitions.any((t) => t.target == StepId.s8_3_17), isFalse);
+
+      // 盤面の観測だけで決まるのでアプリが自動判定してよい。
+      expect(StepId.s8_3_6.decision, StepDecision.automatic);
+    });
+
+    test('★8.4.12 は 8.4.9 へ戻るループを持ち、判定はプレイヤーが宣言する', () {
+      final transitions = stepGraph[StepId.s8_4_12]!;
+      expect(transitions.length, 2);
+      expect(
+        transitions.map((t) => t.target).toSet(),
+        {StepId.s8_4_9, StepId.s8_4_13},
+      );
+
+      // 自動能力の誘発有無を含むため、アプリが判定してはいけない (CLAUDE.md §1)。
+      expect(StepId.s8_4_12.decision, StepDecision.playerDeclared);
+
+      // 分岐はプレイヤーに提示できるよう選択肢名を持つ。
+      for (final transition in transitions) {
+        expect(transition.label, isNotEmpty);
+      }
+    });
+
+    test('★8.4.9 の前任が 2 つある = 静的グラフの逆辺では 1 つ戻れない', () {
+      // 2 周目の 8.4.9 から 1 つ戻る先は 1 周目の 8.4.12 であって 8.4.8 ではない。
+      // 巻き戻しは通過履歴スタックから行う必要がある (設計メモ §6)。
+      final predecessors = stepGraph.entries
+          .where((e) => e.value.any((t) => t.target == StepId.s8_4_9))
+          .map((e) => e.key)
+          .toSet();
+      expect(predecessors, {StepId.s8_4_8, StepId.s8_4_12});
+    });
+
+    test('フェイズを終了する遷移を持つのは終端 7 ステップと 8.3.6 だけ', () {
+      final ending = stepGraph.entries
+          .where((e) => e.value.any((t) => t.endsPhase))
+          .map((e) => e.key)
+          .toSet();
+      expect(ending, {
+        StepId.s7_4_3,
+        StepId.s7_5_3,
+        StepId.s7_6_3,
+        StepId.s7_7_3,
+        StepId.s8_2_5,
+        StepId.s8_3_17,
+        StepId.s8_4_14,
+        StepId.s8_3_6, // ★早期終了
+      });
+    });
+
+    test('遷移先はすべて実在のステップで、同じフェイズ内に閉じている', () {
+      for (final phase in PhaseId.values) {
+        final inPhase = phase.steps.toSet();
+        for (final step in phase.steps) {
+          for (final transition in stepGraph[step]!) {
+            final target = transition.target;
+            if (target == null) continue;
+            expect(inPhase, contains(target),
+                reason: '${step.ruleRef} → ${target.ruleRef} がフェイズを跨いでいる');
+          }
+        }
+      }
+    });
+
+    test('すべての遷移が根拠の条番号を持つ', () {
+      for (final transitions in stepGraph.values) {
+        for (final transition in transitions) {
+          expect(transition.ruleRef, isNotEmpty);
+        }
+      }
+    });
+  });
+
+  group('StepCursor — (PhaseId, StepId) で一意', () {
+    test('★StepId 単体では一意にならない', () {
+      // 8.3.3〜8.3.17 は先攻・後攻パフォーマンスフェイズの 2 インスタンスある。
+      const first = StepCursor(PhaseId.firstPerformance, StepId.s8_3_10);
+      const second = StepCursor(PhaseId.secondPerformance, StepId.s8_3_10);
+
+      expect(first.step, second.step);
+      expect(first, isNot(second));
+    });
+
+    test('値として等価比較できる (巻き戻しの履歴スタック用)', () {
+      const a = StepCursor(PhaseId.liveJudgement, StepId.s8_4_9);
+      const b = StepCursor(PhaseId.liveJudgement, StepId.s8_4_9);
+
+      expect(a, b);
+      expect(a.hashCode, b.hashCode);
+      expect({a, b}.length, 1);
+      expect(a.toString(), 'liveJudgement@8.4.9');
+    });
+  });
 }
