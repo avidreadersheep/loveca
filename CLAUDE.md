@@ -43,11 +43,40 @@
 
 ★**`docs/` の公式 PDF は git 管理外**（ブシロードの著作物）。クローン直後は各自で配置する。本文の抽出は `python docs/tools/extract_rules.py`。
 
-### ★ `loveca_core` は Flutter に依存させない
+### ★ `loveca_core` に Flutter / 日時 / 乱数 / IO を持ち込まない
 
 純粋 Dart パッケージとして維持する。理由は 2 つ。
 1. デッキ検証が二重実装になると「スマホでは合法、PC では不正」という事故が起きる
 2. Phase 6 の権威サーバが同じ `reduce` / `redact` をコピーゼロで再利用する
+
+**禁止する依存**：
+
+| 禁止 | 理由 |
+|---|---|
+| `package:flutter` / `dart:ui` | 上記のとおり。サーバとスマホで共有できなくなる |
+| `dart:io` | 同上。サーバ・Web・テストで挙動が割れる |
+| **`DateTime.now()`** | 同じ入力から同じ結果が出なくなる。時刻は呼び出し側から渡す |
+| **`Random()`（seed なし）** | 同上。**乱数は `DeterministicRng` 抽象を注入する** |
+
+★禁止するのは**非決定な呼び出し**であって型ではない。
+`DateTime` を値として持つのは可（`Deck` の `createdAt` / `updatedAt` は同期に要る）。
+
+★**乱数はシャッフル（10.2.3）に要るが、実装を埋め込まない。**
+`DeterministicRng` を注入して seed 再現性を確保する。理由は 2 つ。
+(1) 同じ seed で盤面を再現できないと不具合を追えない。
+(2) Phase 6 の権威サーバがシャッフル結果の権威を持つ必要がある。
+
+★**既知の違反が 1 箇所ある。**
+`loveca-core/lib/src/entities/deck.dart` の `Deck.copyWith` が
+`updatedAt` の既定値に `DateTime.now().toUtc()` を使っている。
+Phase 2 で入れたもので、Phase 4（同期）の設計時に呼び出し側から渡す形へ直す。
+**新しいコードでこれを真似しないこと。**
+
+検証：
+
+```bash
+grep -rnE "package:flutter|dart:ui|dart:io|DateTime\.now|Random\(\)" loveca-core/lib
+```
 
 ---
 
