@@ -73,6 +73,31 @@ class BladeTotal implements AggregationResult {
   bool get hasExclusions => excludedCount > 0;
 }
 
+/// 総合ルール 8.3.12.1 のドロー枚数。
+///
+/// 8.3.12「手番プレイヤーは解決領域に置かれている**すべてのカード**の
+/// ブレードハートを確認します」
+/// 8.3.12.1「アイコン 1 つにつき、手番プレイヤーはカードを 1 枚引きます」
+class YellDrawCount implements AggregationResult {
+  const YellDrawCount({
+    required this.count,
+    this.excludedCount = 0,
+    this.unknownCardNumbers = const [],
+  });
+
+  /// 手番プレイヤーが引く枚数。
+  final int count;
+
+  @override
+  final int excludedCount;
+
+  @override
+  final List<String> unknownCardNumbers;
+
+  @override
+  bool get hasExclusions => excludedCount > 0;
+}
+
 /// ライブの集計。
 ///
 /// カードマスタを保持する点で `DeckValidator` と同じ形。
@@ -113,6 +138,45 @@ class LiveAggregator {
 
     return BladeTotal(
       total: total,
+      excludedCount: excluded.count,
+      unknownCardNumbers: excluded.sorted,
+    );
+  }
+
+  /// 総合ルール 8.3.12.1: 解決領域のドローアイコンの数。
+  ///
+  /// ★★ 所有者で絞らない。だから playerId を引数に取らない ★★
+  ///   8.3.12「手番プレイヤーは解決領域に置かれている**すべてのカード**の
+  ///   ブレードハートを確認します」
+  ///
+  ///   3 条以内で書き分けられている点に注意する。
+  ///     8.3.12   … 解決領域に置かれている**すべてのカード**  → 絞らない
+  ///     8.3.14   … 解決領域の**自分の**カード                → `ownerId` で絞る
+  ///     8.4.2.1  … **自身の**エールのアイコン                → `ownerId` で絞る
+  ///
+  ///   解決領域は両プレイヤー共有で 1 つだけ (4.14.1) であり、
+  ///   8.4.8 まで中身は片付かない。したがって後攻パフォーマンスフェイズでは
+  ///   先攻のエールカードが残ったままであり、
+  ///   **後攻は先攻のドローアイコンの分もカードを引く**ことになる。
+  ///
+  ///   ★この関数に絞り込みの引数を足さないこと。
+  ///     8.3.14 と同じ関数に絞り込みフラグを渡す形にすると必ず取り違える。
+  ///
+  /// ★合算するのは [BladeHeartEffect.draw] だけ。
+  ///   [BladeHeartEffect.score] は 8.4.2.1 で別に数える。
+  YellDrawCount yellDrawCount(GameState state) {
+    final excluded = _Excluded();
+    var count = 0;
+
+    // ★state.resolution をそのまま走査する。ownerId で絞らない (8.3.12)。
+    for (final instance in state.resolution) {
+      final card = _lookup(instance, excluded);
+      if (card == null) continue;
+      count += card.bladeHeartEffects[BladeHeartEffect.draw] ?? 0;
+    }
+
+    return YellDrawCount(
+      count: count,
       excludedCount: excluded.count,
       unknownCardNumbers: excluded.sorted,
     );
