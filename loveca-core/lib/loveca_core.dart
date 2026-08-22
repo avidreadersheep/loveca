@@ -18,6 +18,7 @@ export 'src/game/member_area.dart';
 export 'src/game/phase.dart';
 export 'src/game/refresh.dart';
 export 'src/game/rng.dart';
+export 'src/game/rule_process.dart';
 export 'src/game/step.dart';
 export 'src/game/turn_order.dart';
 export 'src/game/zone.dart';
