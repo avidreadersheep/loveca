@@ -26,6 +26,23 @@ String _outOfRuleName(OutOfRuleZone zone) => switch (zone) {
       OutOfRuleZone.freeArea => 'freeArea',
     };
 
+/// テスト用の盤面カードを 1 枚作る。
+///
+/// [orientation] を省略すると向きを持たないカードになる。
+/// メンバーの下に重ねられたカード (4.5.5.2) はこちら。
+CardInstance _card(
+  String id, {
+  CardOrientation? orientation,
+  String ownerId = 'A',
+}) =>
+    CardInstance(
+      instanceId: id,
+      printingId: '$id-R',
+      cardNumber: id,
+      ownerId: ownerId,
+      orientation: orientation,
+    );
+
 void main() {
   group('Zone — 総合ルール 4 章の領域', () {
     test('4 章が定義する領域は 11 種ちょうど (4.4〜4.14)', () {
@@ -201,6 +218,89 @@ void main() {
       expect(card.ownerId, 'B');
       // 向きを変えてもオーナーは変わらない。
       expect(card.copyWith(face: FaceState.faceDown).ownerId, 'B');
+    });
+  });
+
+  group('MemberArea — 総合ルール 4.5.5', () {
+    test('通常はメンバー 1 枚 + その下のカード', () {
+      final area = MemberArea(
+        slot: MemberAreaSlot.center,
+        stacks: [
+          MemberStack(
+            member: _card('m1', orientation: CardOrientation.active),
+            beneath: [_card('e1')],
+          ),
+        ],
+      );
+
+      expect(area.stacks.length, 1);
+      expect(area.hasNoMember, isFalse);
+      expect(area.hasDuplicateMembers, isFalse);
+      expect(area.orphans, isEmpty);
+    });
+
+    test('★メンバーが 0 枚で孤児カードだけが残っている状態を表現できる', () {
+      // 4.5.5.4「メンバーがメンバーエリア以外の領域に移動する場合、
+      //          そのメンバーカードのみが移動します」
+      // 4.5.5.4.2「重ねられていたエネルギーカードはそのままそのメンバーエリアに残り、
+      //            その後にルール処理によりエネルギーデッキに移動します」
+      // 10.1.2「ルール処理は、リフレッシュを除き、チェックタイミングにおいてのみ
+      //         条件を満たしているかを確認し、実行されます」
+      //
+      // → 次のチェックタイミングまで、この状態は正規に存在する。
+      final area = MemberArea(
+        slot: MemberAreaSlot.leftSide,
+        stacks: const [],
+        orphans: [_card('e1')],
+      );
+
+      expect(area.stacks, isEmpty);
+      expect(area.hasNoMember, isTrue);
+      expect(area.orphans.length, 1);
+    });
+
+    test('★メンバーが 2 枚以上ある状態を表現できる (10.4 の重複メンバー処理待ち)', () {
+      final area = MemberArea(
+        slot: MemberAreaSlot.rightSide,
+        stacks: [
+          MemberStack(member: _card('m1', orientation: CardOrientation.active)),
+          MemberStack(member: _card('m2', orientation: CardOrientation.wait)),
+        ],
+      );
+
+      expect(area.stacks.length, 2);
+      expect(area.hasDuplicateMembers, isTrue);
+    });
+
+    test('★下に重ねられたカードは向きを示す配置状態を持たない (4.5.5.2)', () {
+      final stack = MemberStack(
+        member: _card('m1', orientation: CardOrientation.active),
+        beneath: [_card('e1'), _card('m2')],
+      );
+
+      expect(stack.member.orientation, isNotNull, reason: '4.5.4 メンバーは向きを持つ');
+      for (final card in stack.beneath) {
+        expect(card.orientation, isNull, reason: '4.5.5.2 下のカードは向きを持たない');
+      }
+    });
+
+    test('孤児カードとメンバーが同時に存在しうる', () {
+      // 別のメンバーが去った直後に、まだ他のメンバーが残っているケース。
+      final area = MemberArea(
+        slot: MemberAreaSlot.center,
+        stacks: [MemberStack(member: _card('m1', orientation: CardOrientation.active))],
+        orphans: [_card('e1')],
+      );
+
+      expect(area.hasNoMember, isFalse);
+      expect(area.orphans, isNotEmpty);
+    });
+
+    test('空のエリアを作れる', () {
+      const area = MemberArea(slot: MemberAreaSlot.center);
+      expect(area.stacks, isEmpty);
+      expect(area.orphans, isEmpty);
+      expect(area.hasNoMember, isTrue);
     });
   });
 }
