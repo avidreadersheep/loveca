@@ -60,6 +60,32 @@ LIVE = {  # id=117 虹色Passions！
     "blade_heart": "2", "comment": "", "parallel_param": "",
 }
 
+LIVE_DRAW = {  # id=119 Solitude Rain — ★色とドローが同居する実データ
+    "id": 119, "picture": "BP01/PL!N-bp1-027-L.png",
+    "card_number": "PL!N-bp1-027-L", "card_name": "Solitude Rain",
+    "card_kind": "ライブ", "rare": "L", "expansion": "BP01",
+    "color": "橙", "cost": "ドロー1", "heart": "青5無7",
+    "heart0": "7", "heart01": "0", "heart02": "0", "heart03": "0",
+    "heart04": "0", "heart05": "5", "heart06": "0",
+    "power": "青5無7", "attack": "青1",
+    "text": "(エールをすべて行った後、エールで出た[ドロー]1つにつき、カードを1枚引く。)",
+    "text_html": "", "work_title": "虹ヶ咲", "unit_name": "-",
+    "blade_heart": "0", "comment": "", "parallel_param": "",
+}
+
+LIVE_SCORE = {  # id=41 Dream Believers — ★スコアが単独で入る実データ
+    "id": 41, "picture": "BP01/PL!HS-bp1-019-L.png",
+    "card_number": "PL!HS-bp1-019-L", "card_name": "Dream Believers",
+    "card_kind": "ライブ", "rare": "L", "expansion": "BP01",
+    "color": "水", "cost": "スコア1", "heart": "無4",
+    "heart0": "4", "heart01": "0", "heart02": "0", "heart03": "0",
+    "heart04": "0", "heart05": "0", "heart06": "0",
+    "power": "無4", "attack": "-",
+    "text": "(エールで出た[スコア]1つにつき、成功したライブのスコアの合計に1を加算する。)",
+    "text_html": "", "work_title": "蓮ノ空", "unit_name": "-",
+    "blade_heart": "1", "comment": "", "parallel_param": "",
+}
+
 MULTI_GROUP = {  # id=1 上原歩夢&澁谷かのん&日野下花帆
     "id": 1, "picture": "BP01/LL-bp1-001-R2.png",
     "card_number": "LL-bp1-001-R\uff0b", "card_name": "上原歩夢&澁谷かのん&日野下花帆",
@@ -158,6 +184,40 @@ def test_live_fields():
     assert card.required_heart_total == 5
     assert card.blade_hearts == {"ALL": 1}, "attack がブレードハート"
     print("  OK ライブのフィールド分岐 (スコア/必要ハート/ブレードハート)")
+
+
+def test_blade_heart_effects_split_live():
+    """★A-1: ブレードハートの色と効果アイコンを別フィールドに分ける.
+
+    総合ルール 8.3.14 が合算するのは色のみ。
+    ドロー (8.3.12.1) とスコア (8.4.2.1) は処理する時点も対象も違うため、
+    同じ辞書に載せると Phase 3a の集計で取り違える。
+    Dart 側の HeartColor.fromKey も未知キーで throw する。
+    """
+    draw, _ = normalize_card(LIVE_DRAW)
+    assert draw.blade_hearts == {"BLUE": 1}, f"色だけが残る: {draw.blade_hearts}"
+    assert draw.blade_heart_effects == {"DRAW": 1}, draw.blade_heart_effects
+
+    score, _ = normalize_card(LIVE_SCORE)
+    assert score.blade_hearts == {}, f"色は無い: {score.blade_hearts}"
+    assert score.blade_heart_effects == {"SCORE": 1}, score.blade_heart_effects
+
+    # 色しか持たないライブは効果側が空になる
+    plain, _ = normalize_card(LIVE)
+    assert plain.blade_hearts == {"ALL": 1}
+    assert plain.blade_heart_effects == {}
+    print("  OK ★ライブのブレードハートを色と効果アイコンに分離")
+
+
+def test_blade_heart_effects_split_member():
+    """メンバーのブレードハートは実データ上すべて色。効果側は常に空になる."""
+    card, _ = normalize_card(MEMBER_WITH_BLADE_HEART)
+    assert card.blade_hearts == {"BLUE": 1}
+    assert card.blade_heart_effects == {}, "メンバーに DRAW/SCORE は実在しない"
+
+    none, _ = normalize_card(MEMBER_NO_BLADE_HEART)
+    assert none.blade_hearts == {} and none.blade_heart_effects == {}
+    print("  OK メンバーのブレードハートも同じ経路で分離される")
 
 
 def test_color_mapping_matches_official_string():

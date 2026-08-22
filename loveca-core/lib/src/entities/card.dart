@@ -42,6 +42,24 @@ enum HeartColor {
   static const sixColors = [pink, red, yellow, green, blue, purple];
 }
 
+/// ブレードハートの非色アイコン。
+///
+/// ★色ハートと同じ Map に入れてはいけない★
+/// 総合ルール 8.3.14 の「ライブ所有ハートに合算する」対象は色のみ。
+/// - [draw]  … 8.3.12.1 解決領域のドローアイコンの数だけカードを引く。
+///              ハート合計 (8.3.14) より前に処理する
+/// - [score] … 8.4.2.1  スコア合計に +1 する。合計する時点も対象も違う
+enum BladeHeartEffect {
+  draw,
+  score;
+
+  static BladeHeartEffect fromKey(String key) => switch (key) {
+        'DRAW' => BladeHeartEffect.draw,
+        'SCORE' => BladeHeartEffect.score,
+        _ => throw ArgumentError('unknown blade heart effect: $key'),
+      };
+}
+
 /// カード種別。総合ルール 2.2.2。
 enum CardType {
   member,
@@ -73,6 +91,7 @@ class Card {
     this.hearts = const {},
     this.requiredHearts = const {},
     this.bladeHearts = const {},
+    this.bladeHeartEffects = const {},
     this.heartTotal = 0,
     this.requiredHeartTotal = 0,
     this.stats,
@@ -110,8 +129,13 @@ class Card {
   /// ライブの必要ハート (総合ルール 2.11)。
   final Map<HeartColor, int> requiredHearts;
 
-  /// ブレードハート (総合ルール 2.7)。エール時に機能する。
+  /// ブレードハートの色 (総合ルール 2.7)。エール時に機能する。
+  /// ★8.3.14 のライブ所有ハートに合算するのはこちらだけ★
   final Map<HeartColor, int> bladeHearts;
+
+  /// ブレードハートの非色アイコン (8.3.12.1 ドロー / 8.4.2.1 スコア)。
+  /// ハート合計には含めない。処理する時点も対象も色とは違う。
+  final Map<BladeHeartEffect, int> bladeHeartEffects;
 
   final int heartTotal;
   final int requiredHeartTotal;
@@ -137,6 +161,7 @@ class Card {
         hearts: _hearts(json['hearts']),
         requiredHearts: _hearts(json['requiredHearts']),
         bladeHearts: _hearts(json['bladeHearts']),
+        bladeHeartEffects: _bladeHeartEffects(json['bladeHeartEffects']),
         heartTotal: json['heartTotal'] as int? ?? 0,
         requiredHeartTotal: json['requiredHeartTotal'] as int? ?? 0,
         stats: json['stats'] as int?,
@@ -148,6 +173,14 @@ class Card {
     return {
       for (final entry in node.entries)
         HeartColor.fromKey(entry.key as String): entry.value as int,
+    };
+  }
+
+  static Map<BladeHeartEffect, int> _bladeHeartEffects(Object? node) {
+    if (node is! Map) return const {};
+    return {
+      for (final entry in node.entries)
+        BladeHeartEffect.fromKey(entry.key as String): entry.value as int,
     };
   }
 }

@@ -179,6 +179,28 @@ def heart_icons_to_map(icons: list[HeartIcon]) -> dict[str, int]:
     return out
 
 
+# ブレードハートの非色アイコン。BLADE_HEART_SPECIAL を唯一の出処にする。
+BLADE_HEART_EFFECT_KEYS = frozenset(BLADE_HEART_SPECIAL.values())
+
+
+def split_blade_icons(icons: list[HeartIcon]) -> tuple[dict[str, int], dict[str, int]]:
+    """ブレードハートを「色」と「効果アイコン」に分ける.
+
+    ★同じ辞書に同居させてはいけない★
+    総合ルール 8.3.14: 色のブレードハートはライブ所有ハートに合算する。
+    総合ルール 8.3.12.1: ドローアイコンはカードを 1 枚引く (8.3.14 より前)。
+    総合ルール 8.4.2.1:  スコアアイコンはスコア合計に +1 する。
+    参照する領域も処理する時点も違うため、型で分けておかないと
+    Phase 3a の集計で取り違える。
+    """
+    colors: dict[str, int] = {}
+    effects: dict[str, int] = {}
+    for icon in icons:
+        target = effects if icon.kind in BLADE_HEART_EFFECT_KEYS else colors
+        target[icon.kind] = target.get(icon.kind, 0) + icon.count
+    return colors, effects
+
+
 # ---------------------------------------------------------------------------
 # 正規化済みモデル
 # ---------------------------------------------------------------------------
@@ -217,7 +239,10 @@ class Card:
     score: int | None = None
     hearts: dict[str, int] = field(default_factory=dict)          # メンバー: 基本ハート
     required_hearts: dict[str, int] = field(default_factory=dict) # ライブ: 必要ハート
-    blade_hearts: dict[str, int] = field(default_factory=dict)    # 両方: ブレードハート
+    blade_hearts: dict[str, int] = field(default_factory=dict)    # 両方: ブレードハートの色 (8.3.14)
+    # ★色とは別フィールドにする★ ドロー (8.3.12.1) / スコア (8.4.2.1) は
+    #  ハート合計に合算せず、別の時点で別の処理を行う
+    blade_heart_effects: dict[str, int] = field(default_factory=dict)
     heart_total: int = 0
     required_heart_total: int = 0
     stats: int | None = None   # 決定 D14: ブレード数 + ハート数
@@ -304,7 +329,8 @@ def normalize_card(raw: dict) -> tuple[Card, Printing]:
         card.cost = parse_int(raw.get("cost"))
         card.blade_count = parse_int(raw.get("attack"))
         card.hearts = heart_map
-        card.blade_hearts = heart_icons_to_map(parse_heart_string(raw.get("blade_heart")))
+        card.blade_hearts, card.blade_heart_effects = split_blade_icons(
+            parse_heart_string(raw.get("blade_heart")))
         card.heart_total = sum(heart_map.values())
         card.stats = (card.blade_count or 0) + card.heart_total
 
@@ -315,7 +341,7 @@ def normalize_card(raw: dict) -> tuple[Card, Printing]:
         # ライブのブレードハートは attack。cost にも入りうる (U1) ため両方を結合。
         # cost が "-" なら parse 結果が空になるだけなので、正体が何であっても壊れない。
         icons = parse_heart_string(raw.get("attack")) + parse_heart_string(raw.get("cost"))
-        card.blade_hearts = heart_icons_to_map(icons)
+        card.blade_hearts, card.blade_heart_effects = split_blade_icons(icons)
 
     elif kind == KIND_ENERGY:
         pass  # エネルギーカードは数値情報を持たない

@@ -12,7 +12,7 @@ void main() {
   group('version.json', () {
     test('パースできる', () {
       final v = VersionInfo.parse(_fixture('version.json'));
-      expect(v.dataVersion, 1);
+      expect(v.dataVersion, 2, reason: 'bladeHeartEffects 追加で形式が変わった');
       expect(v.minAppVersion, '1.0.0');
       expect(v.manifestHash, startsWith('sha256:'));
     });
@@ -81,6 +81,35 @@ void main() {
         live.requiredHearts.keys,
         everyElement(isIn(HeartColor.values)),
       );
+    });
+
+    test('★ブレードハートの色と効果アイコンが型で分かれている', () {
+      // ★A-1 の回帰防止★
+      // DRAW / SCORE を bladeHearts に入れて配信すると
+      // HeartColor.fromKey が throw し、カードマスタのロードが丸ごと落ちる。
+      for (final card in set.cards) {
+        expect(card.bladeHearts.keys, everyElement(isIn(HeartColor.values)),
+            reason: '${card.cardNumber}: bladeHearts は色のみ (総合ルール 8.3.14)');
+      }
+
+      // 総合ルール 8.3.12.1: ドローアイコン。色と同居する
+      final draw =
+          set.cards.firstWhere((c) => c.cardNumber == 'PL!HS-bp1-022');
+      expect(draw.bladeHearts, {HeartColor.blue: 1});
+      expect(draw.bladeHeartEffects, {BladeHeartEffect.draw: 1});
+
+      // 総合ルール 8.4.2.1: スコアアイコン。色を伴わず単独で入る
+      final score =
+          set.cards.firstWhere((c) => c.cardNumber == 'PL!HS-bp1-019');
+      expect(score.bladeHearts, isEmpty);
+      expect(score.bladeHeartEffects, {BladeHeartEffect.score: 1});
+    });
+
+    test('効果アイコンを持たないカードは bladeHeartEffects が空', () {
+      final live =
+          set.cards.firstWhere((c) => c.cardNumber == 'PL!N-bp1-025');
+      expect(live.bladeHearts, {HeartColor.all: 1});
+      expect(live.bladeHeartEffects, isEmpty);
     });
 
     test('★printingId と cardNumber が 2 階層になっている', () {

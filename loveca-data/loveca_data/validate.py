@@ -17,10 +17,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .constants import (
-    KIND_ENERGY, KIND_LIVE, KIND_MEMBER, KNOWN_KINDS, OFFICIAL_GROUPS, OFFICIAL_UNITS,
+    ALL, GRAY, KIND_ENERGY, KIND_LIVE, KIND_MEMBER, KNOWN_KINDS,
+    OFFICIAL_GROUPS, OFFICIAL_UNITS, SIX_COLORS,
 )
 from .normalize import (
-    NormalizeResult, heart_icons_to_map, nfkc, parse_heart_string, split_card_number,
+    BLADE_HEART_EFFECT_KEYS, NormalizeResult, heart_icons_to_map, nfkc,
+    parse_heart_string, split_card_number,
 )
 
 
@@ -188,6 +190,25 @@ def validate(result: NormalizeResult, *,
                         f"同じ色 {icon.kind} が複数回出現。"
                         f"ハート音符を slotIndex 付きで保持する設計に戻す必要がある")
             seen.add(icon.kind)
+
+    # -- V14 ★: ブレードハートの色と効果アイコンが混ざっていないこと --------
+    # ★この網が無かったために A-1 が生き延びた★
+    #   DRAW / SCORE を色と同じ辞書に入れて配信すると、Dart 側の
+    #   HeartColor.fromKey が未知キーで throw し、カードマスタのロードが
+    #   丸ごとクラッシュする。生成側で止めるのが唯一の防ぎ方。
+    known_colors = set(SIX_COLORS) | {GRAY, ALL}
+    for card in result.cards.values():
+        for key in card.blade_hearts:
+            if key not in known_colors:
+                rep.add("V14", "ERROR",
+                        f"{card.card_number}: bladeHearts に色でない '{key}' が入っている。"
+                        f"総合ルール 8.3.14 の合算対象は色のみ。"
+                        f"ドロー(8.3.12.1)/スコア(8.4.2.1) は bladeHeartEffects へ")
+        for key in card.blade_heart_effects:
+            if key not in BLADE_HEART_EFFECT_KEYS:
+                rep.add("V14", "ERROR",
+                        f"{card.card_number}: bladeHeartEffects に未知の '{key}' が入っている。"
+                        f"許可されるのは {sorted(BLADE_HEART_EFFECT_KEYS)} のみ")
 
     # -- V8: card_kind が既知の 3 値のみ ----------------------------------
     for card in result.cards.values():

@@ -111,7 +111,11 @@ def build(cfg: Config, result: NormalizeResult, *, data_version: int,
                     "score": c.score,
                     "hearts": c.hearts,
                     "requiredHearts": c.required_hearts,
+                    # 総合ルール 8.3.14: ライブ所有ハートに合算する色のみ
                     "bladeHearts": c.blade_hearts,
+                    # 総合ルール 8.3.12.1 (ドロー) / 8.4.2.1 (スコア +1)。
+                    # ★合算対象ではないので色と別フィールドにする★
+                    "bladeHeartEffects": c.blade_heart_effects,
                     "heartTotal": c.heart_total,
                     "requiredHeartTotal": c.required_heart_total,
                     "stats": c.stats,
