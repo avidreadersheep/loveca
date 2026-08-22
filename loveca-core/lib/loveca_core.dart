@@ -11,6 +11,7 @@ export 'src/entities/product.dart';
 export 'src/master/master_data.dart';
 export 'src/rules/deck_validator.dart';
 export 'src/game/card_instance.dart';
+export 'src/game/game_state.dart';
 export 'src/game/member_area.dart';
 export 'src/game/phase.dart';
 export 'src/game/step.dart';

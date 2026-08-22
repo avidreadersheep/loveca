@@ -519,4 +519,115 @@ void main() {
       expect(a.toString(), 'liveJudgement@8.4.9');
     });
   });
+
+  group('LiveJudgementRecord — 総合ルール 8.4', () {
+    test('★勝敗と 8.4.7 の移動実績は一致しない', () {
+      // 設計メモの具体例:
+      //   同点で A はライブ置き場に 1 枚、B は 2 枚。
+      //   8.4.6.2 により両者勝利だが、8.4.7.1 により B は移動しない。
+      //   → 8.4.13 は「一方のプレイヤーのみが移動」に該当し A が先攻になる。
+      const record = LiveJudgementRecord(
+        winnerIds: {'A', 'B'},
+        movedToSuccessIds: {'A'},
+      );
+
+      expect(record.winnerIds.length, 2, reason: '8.4.6.2 同点は両者勝利');
+      expect(record.movedToSuccessIds, {'A'}, reason: '8.4.7.1 で B は移動しない');
+      expect(record.hasSoleMover, isTrue, reason: '8.4.13 の条件を満たす');
+
+      // ★勝敗で判定すると「勝者が 1 人に定まらない」として誤る。
+      expect(record.winnerIds.length == 1, isFalse);
+    });
+
+    test('8.4.6.1 両者カード無しなら勝者なし', () {
+      const record = LiveJudgementRecord();
+      expect(record.winnerIds, isEmpty);
+      expect(record.movedToSuccessIds, isEmpty);
+      expect(record.hasSoleMover, isFalse);
+    });
+
+    test('両者が移動した場合は 8.4.13 の条件を満たさない', () {
+      const record = LiveJudgementRecord(
+        winnerIds: {'A', 'B'},
+        movedToSuccessIds: {'A', 'B'},
+      );
+      expect(record.hasSoleMover, isFalse, reason: '現在の先攻が継続する');
+    });
+  });
+
+  group('GameState', () {
+    GameState build() => GameState(
+          players: const [PlayerState(playerId: 'A'), PlayerState(playerId: 'B')],
+          firstPlayerId: 'A',
+          cursor: const StepCursor(PhaseId.firstActive, StepId.s7_4_1),
+        );
+
+    test('★解決領域は GameState が 1 つだけ持つ (4.14.1)', () {
+      final state = build();
+
+      // 両プレイヤー共有なので PlayerState 側には無い。
+      expect(state.resolution, isEmpty);
+      expect(
+        state.copyWith(resolution: [_card('y1', ownerId: 'A')]).resolution.length,
+        1,
+      );
+    });
+
+    test('★解決領域のカードは ownerId で絞れる (8.3.14)', () {
+      // 先攻パフォーマンス後も先攻のエールカードが残ったまま
+      // 後攻パフォーマンスに入るため、絞り込みが必須になる。
+      final state = build().copyWith(resolution: [
+        _card('y1', ownerId: 'A'),
+        _card('y2', ownerId: 'A'),
+        _card('y3', ownerId: 'B'),
+      ]);
+
+      expect(state.resolution.where((c) => c.ownerId == 'A').length, 2);
+      expect(state.resolution.where((c) => c.ownerId == 'B').length, 1);
+    });
+
+    test('★firstPlayerId を持ち、ロールから実プレイヤーを解決できる', () {
+      final state = build();
+      expect(state.firstPlayerId, 'A');
+
+      // 8.4.13 で入れ替わる。書き換えるのはこの 1 箇所だけ。
+      expect(state.copyWith(firstPlayerId: 'B').firstPlayerId, 'B');
+    });
+
+    test('RuleConfig を再利用している (総合ルール 6.1)', () {
+      final state = build();
+      // 6.2.1.5 の初期手札 6 枚 / 6.2.1.7 の初期エネルギー 3 枚 /
+      // 4.5.2 のメンバーエリア 3 つ / 1.2.1.1 の勝利条件 3 枚。
+      expect(state.config.initialHandSize, 6);
+      expect(state.config.initialEnergyOnField, 3);
+      expect(state.config.stageAreaCount, 3);
+      expect(state.config.winCondition, 3);
+    });
+
+    test('liveJudgement は 8.4 の外では null', () {
+      final state = build();
+      expect(state.liveJudgement, isNull);
+
+      final judging = state.copyWith(
+        cursor: const StepCursor(PhaseId.liveJudgement, StepId.s8_4_7),
+        liveJudgement: const LiveJudgementRecord(movedToSuccessIds: {'A'}),
+      );
+      expect(judging.liveJudgement!.hasSoleMover, isTrue);
+
+      // ターンを跨ぐ際に落とせること。
+      expect(judging.copyWith(clearLiveJudgement: true).liveJudgement, isNull);
+    });
+
+    test('★ルール外の置き場は PlayerState 上で 4 章の領域と分かれている', () {
+      const player = PlayerState(playerId: 'A');
+      expect(player.mulliganAside, isEmpty); // 6.2.1.6
+      expect(player.freeArea, isEmpty); // ルール外
+
+      final withAside = player.copyWith(mulliganAside: [_card('h1')]);
+      expect(withAside.mulliganAside.length, 1);
+      // 4 章の領域は影響を受けない。
+      expect(withAside.hand, isEmpty);
+      expect(withAside.mainDeck, isEmpty);
+    });
+  });
 }
