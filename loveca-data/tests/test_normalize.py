@@ -319,6 +319,41 @@ def test_keywords():
     print("  OK キーワード能力の抽出")
 
 
+def test_keyword_bracket_variants():
+    """★A-2: ターン回数制限の括弧の表記ゆれを吸収する.
+
+    実測 (card.text):
+        '[ターン1回]'  半角     271 刷り
+        '［ターン1回］' 全角角括弧   9 刷り  ← 4 種で TURN_1 を取り逃していた
+        '[ターン2回]'  半角      15 刷り
+        '【ターン2回】' 全角墨括弧   0 刷り  ← 予防的に対応する
+    """
+    for text in ("【自動】[ターン1回]この効果は…",
+                 "【自動】［ターン1回］この効果は…",
+                 "【自動】【ターン1回】この効果は…"):
+        card, _ = normalize_card({**MEMBER_WITH_BLADE_HEART, "text": text})
+        assert "TURN_1" in card.keywords, f"{text!r} で TURN_1 が付かない"
+
+    for text in ("【起動】[ターン2回]…", "【起動】【ターン2回】…"):
+        card, _ = normalize_card({**MEMBER_WITH_BLADE_HEART, "text": text})
+        assert "TURN_2" in card.keywords, f"{text!r} で TURN_2 が付かない"
+    print("  OK ★ターン回数制限の括弧ゆれ (半角/全角角括弧/墨括弧) を吸収")
+
+
+def test_effect_text_not_normalized():
+    """★キーワード照合の NFKC が効果テキスト本体を書き換えないこと.
+
+    効果テキストに NFKC をかけると実データ 1,806 刷り中 897 刷りが変化し
+    ('：'->':' 669 刷り、'＋'->'+' 212 刷りなど)、表示が公式表記から乖離する。
+    正規化してよいのは照合用のコピーだけ。
+    """
+    text = "【起動】[E]、このメンバーを控え室に置く：スコアを＋１する。"
+    card, _ = normalize_card({**MEMBER_WITH_BLADE_HEART, "text": text})
+    assert card.effect_text == text, card.effect_text
+    assert "：" in card.effect_text and "＋" in card.effect_text and "１" in card.effect_text
+    print("  OK 効果テキスト本体は NFKC で書き換えない")
+
+
 def test_image_path_not_constructed():
     """§5: picture は組み立てず実値をそのまま使う."""
     _, printing = normalize_card(IRREGULAR_IMAGE)

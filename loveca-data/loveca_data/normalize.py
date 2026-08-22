@@ -306,10 +306,28 @@ class NormalizeResult:
 # ---------------------------------------------------------------------------
 # 本体
 # ---------------------------------------------------------------------------
+# ★照合用に NFKC 正規化した対応表★
+# 公式テキストは括弧の全角/半角が揺れる。実測では
+# '[ターン1回]' 271 刷り に対して '［ターン1回］' (全角角括弧) が 9 刷りあり、
+# 4 種で TURN_1 を取り逃していた。
+# NFKC は ［］(U+FF3B/U+FF3D) -> [] にするのでこれで吸収できる。
+# 一方 【】(U+3010/U+3011) は NFKC で変化しないため、
+# 全角墨括弧の表記は KEYWORD_TOKENS 側に個別に持つ必要がある。
+_KEYWORD_TOKENS_NFKC = {nfkc(token): key for token, key in KEYWORD_TOKENS.items()}
+
+
 def extract_keywords(text: str) -> list[str]:
+    """効果テキストからキーワード能力を抽出する.
+
+    ★正規化するのは照合用のコピーだけ。effect_text 自体は書き換えない★
+    効果テキスト本体に NFKC をかけると 1,806 刷り中 897 刷りが変化し
+    ('：'->':' が 669 刷り、'＋'->'+' が 212 刷り など)、
+    表示テキストが公式表記から乖離してしまう。
+    """
+    normalized = nfkc(text)
     found: list[str] = []
-    for token, key in KEYWORD_TOKENS.items():
-        if token in text and key not in found:
+    for token, key in _KEYWORD_TOKENS_NFKC.items():
+        if token in normalized and key not in found:
             found.append(key)
     return found
 
