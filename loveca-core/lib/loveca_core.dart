@@ -10,3 +10,5 @@ export 'src/entities/deck.dart';
 export 'src/entities/product.dart';
 export 'src/master/master_data.dart';
 export 'src/rules/deck_validator.dart';
+export 'src/game/card_instance.dart';
+export 'src/game/zone.dart';
