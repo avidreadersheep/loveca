@@ -41,6 +41,8 @@
 
 根拠のない数値・条件をコードに書かない。参照元は `docs/LoveLiveTCG_cr_1.06_260428.pdf`（ver 1.06）。
 
+★**`docs/` の公式 PDF は git 管理外**（ブシロードの著作物）。クローン直後は各自で配置する。本文の抽出は `python docs/tools/extract_rules.py`。
+
 ### ★ `loveca_core` は Flutter に依存させない
 
 純粋 Dart パッケージとして維持する。理由は 2 つ。
