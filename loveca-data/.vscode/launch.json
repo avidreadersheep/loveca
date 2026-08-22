@@ -1,0 +1,104 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "★全テスト実行 (ネットワーク不要)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/tests/run_all.py",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "テスト実行 (ネットワーク不要)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/tests/test_normalize.py",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "★ステップ1: BP01 のみ取得",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "loveca_data",
+      "args": [
+        "fetch",
+        "--expansion",
+        "BP01"
+      ],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "ステップ2: 正規化 (ネットワーク不要)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "loveca_data",
+      "args": [
+        "normalize"
+      ],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "診断: データ統計を表示",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "loveca_data",
+      "args": [
+        "stats"
+      ],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "★ステップ3: 検証 (V2/V3/V7 を確認)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "loveca_data",
+      "args": [
+        "validate",
+        "--skip-images"
+      ],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "診断: 商品コードを確認",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "loveca_data",
+      "args": [
+        "expansions"
+      ],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "ステップ4: 全商品を取得 (検証が通ってから)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "loveca_data",
+      "args": [
+        "fetch",
+        "--all"
+      ],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "ステップ5: 配信物を生成",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "loveca_data",
+      "args": [
+        "build",
+        "--data-version",
+        "1"
+      ],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    }
+  ]
+}

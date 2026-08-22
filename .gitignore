@@ -1,0 +1,15 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# ★取得済みカードデータ（700MB弱。絶対にコミットしない）
+data/
+
+# Dart / Flutter
+.dart_tool/
+build/
+.packages
+
+# Claude Code のワークツリー
+.claude/worktrees/

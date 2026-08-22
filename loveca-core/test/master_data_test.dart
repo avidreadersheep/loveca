@@ -1,0 +1,222 @@
+import 'dart:io';
+
+import 'package:loveca_core/loveca_core.dart';
+import 'package:test/test.dart';
+
+/// ★フィクスチャは Python パイプラインが実際に生成した JSON をそのままコピーしたもの★
+/// 手書きの想定 JSON でテストすると、生成側と読み込み側で形式がずれていても気づけない。
+String _fixture(String name) =>
+    File('test/fixtures/$name').readAsStringSync();
+
+void main() {
+  group('version.json', () {
+    test('パースできる', () {
+      final v = VersionInfo.parse(_fixture('version.json'));
+      expect(v.dataVersion, 1);
+      expect(v.minAppVersion, '1.0.0');
+      expect(v.manifestHash, startsWith('sha256:'));
+    });
+
+    test('アプリのバージョン比較', () {
+      const v = VersionInfo(
+        dataVersion: 1,
+        minAppVersion: '1.2.0',
+        manifestPath: '/data/manifest.json',
+        manifestHash: '',
+      );
+      expect(v.isAppSupported('1.2.0'), isTrue);
+      expect(v.isAppSupported('1.2.1'), isTrue);
+      expect(v.isAppSupported('1.10.0'), isTrue, reason: '10 > 2 の桁比較');
+      expect(v.isAppSupported('1.1.9'), isFalse);
+    });
+
+    test('compareVersions が桁数の違う版を扱える', () {
+      expect(compareVersions('1.0', '1.0.0'), 0);
+      expect(compareVersions('1.0.1', '1.0'), greaterThan(0));
+      expect(compareVersions('2.0', '10.0'), lessThan(0));
+    });
+  });
+
+  group('cards/{EXPANSION}.json', () {
+    late CardSet set;
+    setUpAll(() => set = CardSet.parse(_fixture('cards_BP01.json')));
+
+    test('カードと刷りを読める', () {
+      expect(set.expansion, 'BP01');
+      expect(set.cards, isNotEmpty);
+      expect(set.printings, isNotEmpty);
+    });
+
+    test('★複数キャラ・複数グループが配列で入る (総合ルール 2.3.2.1 / 2.4.2.1)', () {
+      final card =
+          set.cards.firstWhere((c) => c.cardNumber == 'LL-bp1-001');
+      expect(card.characterNames,
+          ['上原歩夢', '澁谷かのん', '日野下花帆']);
+      expect(card.groupNames, ['虹ヶ咲', 'Liella!', '蓮ノ空']);
+    });
+
+    test('★メンバーのフィールド (cost / bladeCount / hearts)', () {
+      final card =
+          set.cards.firstWhere((c) => c.cardNumber == 'LL-bp1-001');
+      expect(card.cardType, CardType.member);
+      expect(card.cost, 20);
+      expect(card.bladeCount, 5);
+      expect(card.score, isNull);
+      expect(card.hearts, {
+        HeartColor.pink: 3,
+        HeartColor.green: 3,
+        HeartColor.purple: 3,
+      });
+      expect(card.heartTotal, 9);
+      expect(card.stats, 14, reason: '決定 D14: ブレード + ハート');
+    });
+
+    test('★ライブのフィールド (score / requiredHearts / bladeHearts)', () {
+      final live = set.cards.firstWhere((c) => c.cardType == CardType.live);
+      expect(live.score, isNotNull);
+      expect(live.requiredHearts, isNotEmpty);
+      expect(live.cost, isNull);
+      // 必要ハートには「色指定なし」(GRAY) が入りうる (総合ルール 2.1.1.2)
+      expect(
+        live.requiredHearts.keys,
+        everyElement(isIn(HeartColor.values)),
+      );
+    });
+
+    test('★printingId と cardNumber が 2 階層になっている', () {
+      final printing = set.printings.first;
+      expect(printing.printingId, startsWith(printing.cardNumber));
+      expect(printing.printingId.length,
+          greaterThan(printing.cardNumber.length),
+          reason: 'printingId はレアリティ接尾を含む');
+    });
+
+    test('imageHash が入っている (画像は不変・CDN キャッシュ可)', () {
+      expect(set.printings.every((p) => p.imageHash.isNotEmpty), isTrue);
+    });
+
+    test('全角プラスが NFKC で半角に統一されている', () {
+      for (final p in set.printings) {
+        expect(p.printingId.contains('\uFF0B'), isFalse,
+            reason: '${p.printingId} に全角プラスが残っている');
+        expect(p.rarity.contains('\uFF0B'), isFalse);
+      }
+    });
+  });
+
+  group('meta', () {
+    test('products.json が camelCase で読める', () {
+      final products = MasterMeta.parseProducts(_fixture('products.json'));
+      expect(products, isNotEmpty);
+      expect(products.first.expansionId, 'BP01');
+      expect(products.first.name, contains('ブースターパック'));
+      expect(products.first.releaseDateTime, DateTime(2025, 2, 8));
+    });
+
+    test('ruleConfig.json が総合ルール 6.1 の値を持つ', () {
+      final config = MasterMeta.parseRuleConfig(_fixture('ruleConfig.json'));
+      expect(config.mainDeckSize, 60);
+      expect(config.memberCount, 48);
+      expect(config.liveCount, 12);
+      expect(config.energyDeckSize, 12);
+      expect(config.maxCopiesPerCardNumber, 4);
+      expect(config.winCondition, 3);
+    });
+  });
+
+  group('差分更新の計画', () {
+    late VersionInfo remote;
+    late Manifest manifest;
+
+    setUpAll(() {
+      remote = VersionInfo.parse(_fixture('version.json'));
+      manifest = Manifest.parse(_fixture('manifest.json'));
+    });
+
+    test('同じ dataVersion なら更新不要', () {
+      final plan = planUpdate(
+        remoteVersion: remote,
+        remoteManifest: manifest,
+        appVersion: '1.0.0',
+        localDataVersion: remote.dataVersion,
+      );
+      expect(plan.decision, UpdateDecision.upToDate);
+      expect(plan.needsDownload, isFalse);
+    });
+
+    test('アプリが古すぎれば強制アップデート', () {
+      final plan = planUpdate(
+        remoteVersion: const VersionInfo(
+          dataVersion: 2,
+          minAppVersion: '2.0.0',
+          manifestPath: '',
+          manifestHash: '',
+        ),
+        remoteManifest: manifest,
+        appVersion: '1.0.0',
+        localDataVersion: 1,
+      );
+      expect(plan.decision, UpdateDecision.appTooOld);
+    });
+
+    test('初回は全ファイルを取得する', () {
+      final plan = planUpdate(
+        remoteVersion: remote,
+        remoteManifest: manifest,
+        appVersion: '1.0.0',
+        localDataVersion: 0,
+      );
+      expect(plan.decision, UpdateDecision.update);
+      expect(plan.filesToDownload.length, manifest.files.length);
+      expect(plan.totalBytes, manifest.totalBytes);
+    });
+
+    test('★ハッシュが同じファイルは取得しない (新弾追加時の差分更新)', () {
+      // 1 件だけハッシュが変わった状況を作る
+      final local = <String, String>{
+        for (final f in manifest.files) f.path: f.hash,
+      };
+      final changed = manifest.files.first.path;
+      local[changed] = 'sha256:0000';
+
+      final plan = planUpdate(
+        remoteVersion: remote,
+        remoteManifest: manifest,
+        appVersion: '1.0.0',
+        localDataVersion: 0,
+      // ignore: avoid_redundant_argument_values
+        localFileHashes: local,
+      );
+      expect(plan.filesToDownload.map((f) => f.path), [changed],
+          reason: '商品単位に分割してあるので変わったファイルだけ取れば済む');
+    });
+
+    test('配信から消えたファイルは削除対象になる', () {
+      final local = <String, String>{
+        for (final f in manifest.files) f.path: f.hash,
+        'cards/OLD99.json': 'sha256:dead',
+      };
+      final plan = planUpdate(
+        remoteVersion: remote,
+        remoteManifest: manifest,
+        appVersion: '1.0.0',
+        localDataVersion: 0,
+        localFileHashes: local,
+      );
+      expect(plan.filesToDelete, ['cards/OLD99.json']);
+    });
+  });
+
+  group('画像 URL', () {
+    test('サイズごとに組み立てられる', () {
+      expect(
+        imageUrl('https://cdn.example.com', 'abc123', ImageSize.thumb),
+        'https://cdn.example.com/images/thumb/abc123.webp',
+      );
+      expect(
+        imageUrl('https://cdn.example.com', 'abc123', ImageSize.large),
+        'https://cdn.example.com/images/large/abc123.webp',
+      );
+    });
+  });
+}
