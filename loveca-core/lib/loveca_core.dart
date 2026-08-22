@@ -14,6 +14,7 @@ export 'src/game/aggregation.dart';
 export 'src/game/card_instance.dart';
 export 'src/game/card_move.dart';
 export 'src/game/game_state.dart';
+export 'src/game/history.dart';
 export 'src/game/member_area.dart';
 export 'src/game/phase.dart';
 export 'src/game/refresh.dart';
