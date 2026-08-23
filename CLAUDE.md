@@ -154,6 +154,7 @@ python -m loveca_data fetch --all             # ★段階0-3: 公式サイトへ
 # Dart 側（ドメイン層）
 cd loveca-core
 dart test
+dart analyze                                  # ★テストでは検知できない指摘が出る
 python tools/verify_contract.py               # Dart SDK 不要
 
 # Dart 側（DB 層）
@@ -161,6 +162,7 @@ cd loveca-db
 dart pub get
 dart run build_runner build                   # drift のコード生成（*.g.dart はコミットする）
 dart test
+dart analyze                                  # ★同上
 dart run tool/probe_sqlite.dart               # sqlite3 の FTS5 / trigram の可否
 LOVECA_DIST_DIR=/path/to/dist dart test       # 実データの場所を変える
 ../loveca-data/.venv/Scripts/python.exe tool/build_fixtures.py   # ミニ配信物の再生成
@@ -178,6 +180,22 @@ SPIKE_AUTOEXIT=1 ./build/windows/x64/runner/Profile/loveca_ui.exe  # 計測し�
 `docs/UI技術検証メモ.md` §1-2）。`sqlite3` のビルドフックがそのまま Flutter でも働き、
 FTS5 / trigram つきの SQLite 3.53.4 がバンドルされることを実測で確認済み。
 採ると SQLite が二重調達になり、どちらを掴んだか分からなくなる。
+
+★**`dart test` はリントもアナライザも走らせない。** `dart analyze` を別に流すこと。
+テストが全通過していても指摘は検知されない（`ルール整合性チェック_v1.06.md` D-2）。
+
+### ★ テスト件数の正はここ
+
+**他の文書に書かれた件数は執筆時点のスナップショットであり、参照に留める。**
+食い違ったらこの表を優先し、この表が古ければここを直す。
+
+| パッケージ | 件数 | 確認コマンド |
+|---|---|---|
+| `loveca-data`（Python） | 33 | `python tests/run_all.py` |
+| `loveca-core`（Dart） | 255 | `dart test` |
+| `loveca-db`（Dart） | 115（★skip 0） | `dart test` |
+
+（2026-08-23 時点。`loveca-ui` は試作のみでテストを持たない）
 
 ★`loveca-db` のテスト結果を報告するときは **skip 件数も併記すること。**
 実データ（`loveca-data/data/dist/`）を使うテストは `data/` が git 管理外のため、
@@ -333,10 +351,10 @@ card_number = printing_id.rsplit("-", 1)[0]
 
 | フェーズ | 状態 |
 |---|---|
-| Phase 1-A データパイプライン（Python） | **完了**（1,708 種 / 2,527 刷り / 検証エラー 0） |
-| Phase 1-B `loveca_core` エンティティ・DeckValidator | **完了**（Python 33 件 全通過） |
-| Phase 2 PC ローカル DB・カードリスト・デッキ構築 | **着手中**（第一段階: drift スキーマ + マスタ取り込み層 = 完了。UI 着手前の技術検証 = 完了 / `docs/UI技術検証メモ.md`） |
-| Phase 3a GameState / 集計 / 進行 / 巻き戻し / reduce・redact | **完了**（Dart 255 件 全通過） |
+| Phase 1-A データパイプライン（Python） | **完了**（1,708 種 / 2,527 刷り / 検証エラー 0。Python テストで担保） |
+| Phase 1-B `loveca_core` エンティティ・DeckValidator | **完了**（`loveca-core` の **Dart** テストで担保。件数は §3 の表） |
+| Phase 2 PC ローカル DB・カードリスト・デッキ構築 | **着手中**（第一段階: drift スキーマ + マスタ取り込み層 = 完了。UI 着手前の技術検証 = 完了 / `docs/UI技術検証メモ.md`。検索の改善と移行機構 = 完了 / D49・D50） |
+| Phase 3a GameState / 集計 / 進行 / 巻き戻し / reduce・redact | **完了**（`loveca-core` の Dart テストで担保。件数は §3 の表） |
 | Phase 3b PC 盤面 UI | 未着手（★転用可否は検証済み。`docs/UI技術検証メモ.md` §7） |
 | Phase 4 認証・同期 / Phase 5 スマホ / Phase 6 対戦サーバ | 未着手 |
 
@@ -350,6 +368,20 @@ Git Bash の `python` は MSYS2 の 3.14.3 を掴むため使わない。
 
 決定事項の参照先は `docs/決定事項一覧.md`（`決定 DNN` / `決定 D-X` の実体）。
 **新しい決定は D49 以降を使う（D36〜D48 は使用済み）。** 未記録番号を再利用しないこと。
+
+### ★ ルール整合性チェックの未決項目
+
+`ルール整合性チェック_v1.06.md` には **B-1〜B-4** があり、**B-2 と B-4 は未決のまま**。
+着手フェイズから辿れないと見落とすのでここに再掲する。
+
+| # | 論点 | 状態 | いつ判断するか |
+|---|---|---|---|
+| B-1 | フェイズ構成 | **確定**（リーフフェイズ 12 個） | 済 |
+| **B-2** | **エネルギーデッキは「順番が管理されない」**（4.9.2 と 6.2.1.7 / 7.5.2 の食い違い）。提案は `DeterministicRng` による無作為 1 枚抽出 | **未決** | Phase 3b でエネルギー操作を実装するとき |
+| B-3 | 重ね置きの解消先 | **確定** | 済 |
+| **B-4** | **ポジションチェンジ / フォーメーションチェンジ**（11.10 / 11.11）。キーワード能力ではなく効果テキスト中の動詞なので `KEYWORD_TOKENS` に無いのは正しい。ただし**盤面 UI に補助コマンドがあると実用性が大きく変わる**。効果の自動処理ではなく物理操作の補助なので D-A に抵触しない | **未決** | **Phase 3b（盤面 UI）着手時** |
+
+★**B-4 は Phase 3b の論点である。** 盤面 UI に着手するときは必ず読むこと。
 
 B-1（フェイズ構成）と B-3（重ね置きの解消先）は**確定済み**。根拠と設計は
 `docs/PhaseEngine設計メモ.md` を参照する。要点だけ再掲する。
