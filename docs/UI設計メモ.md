@@ -33,6 +33,10 @@
 | 画像 | **`CardImageSource` の背後に閉じる。thumb + normal のみ（large は使わない）** | D57 | §5 |
 | キャッシュ無効化 | **content-addressed なファイル名に委ね、無効化処理を書かない** | D57 | §5-3 |
 | spike の知見 | **文書ではなく型で守る。ウィジェットテストで固定する** | D58 | §6 |
+| DB ファイルの置き場 | **`path_provider` の `getApplicationSupportDirectory()`。`loveca-ui` にだけ入れる** | D59 | §4-6 |
+| dist の場所 | **環境変数 → `settings.json` → 実行ファイルの隣の既定、の 3 段。不在時は段 3 で検出し段 4 で続行可否を決める** | D60 | §4-6 |
+| 設定の永続先 | **自前の JSON。`shared_preferences` は採らない** | D60 | §4-6 |
+| ペインの切替 | **840 論理px。★暫定値で、M4 と Phase 5 で見直す** | D61 | §2-1 |
 
 ★**最も重要なのは §4-4 と §6-1。**
 前者は「無効化漏れが起きうる構造を作らない」ための制約、
@@ -140,7 +144,7 @@ UI からセルごとに `canAdd` を呼ぶと **40〜60 ms × 呼び出し回�
 #### (4) D48 が要求する投影は `loveca_db` の公開 API に無い
 
 「表示に要る列だけを引く」経路は `spike/common/card_grid_data.dart` にしか無い。
-D51 により流用しないため、本実装側に書き直す先が要る（§4-2 / §4-6）。
+D51 により流用しないため、本実装側に書き直す先が要る（§4-2 / §4-5）。
 
 ---
 
@@ -158,6 +162,30 @@ Release 1 が PC とモバイルを同時に要求するため、**同じ機能�
 ★**同じ Widget を器だけ替えて置く。ルートを増やして分岐させない。**
 切替の判断点は `PaneScaffold` **1 箇所**に閉じる。
 判断点が散ると「PC では直したがモバイルでは直っていない」が起きる。
+
+#### ★ ブレークポイントは **840 論理px**（決定 D61 / ★暫定値）
+
+`PaneScaffold` は**しきい値を 1 つだけ**持つ。`maxWidth >= 840` で 2 ペイン、下回れば 1 ペイン。
+
+**根拠（2 つ。片方は見積りである）**
+
+| # | 根拠 | 格 |
+|---|---|---|
+| (a) | Material 3 の window size class の **expanded 境界が 840dp**。Flutter の `MediaQuery` の論理px は dp と一致する | **外部の標準。確か** |
+| (b) | R3 が 2 ペインで成立する最小幅の見積り: 一覧 3 列（3 × 140 + 間隔 ≈ **450**）+ デッキペイン（**≈ 320**）+ 余白 ≈ **800**。これを上回る最小の標準値が 840 | ★**見積り。実測ではない** |
+
+★★**(b) のデッキペイン 320 は実測値ではない。**★★
+本実装のデッキ行の寸法はまだ決まっていない（P3 のメタ編集や検証パネルの同居も未確定）。
+したがって **840 は暫定値である。**
+
+**見直す時点は 2 つ。**
+
+1. **M4（R3 の実装時）** — デッキペインの最小幅が実際に決まった時点で 840 を検算する
+2. **Phase 5（実機）** — タブレットの実寸で 1 ペイン / 2 ペインの切り替わりが妥当か確かめる
+
+★**3 つ目のペイン（P1 検証パネル）にしきい値を増やさない。**
+検証パネルは**デッキペインの内側に縦に積む**。しきい値が 2 つになると、
+「どの幅でどうなるか」の組み合わせが 4 通りになり、テストも判断点も倍になる。
 
 ### 2-2. ルート（6 本）
 
@@ -500,6 +528,47 @@ loveca-ui/lib/src/data/
 `package:loveca_db/native.dart` の `openFileExecutor` は **UI isolate 実行なのでアプリ本体では使わない**
 （D45 / `native.dart:22-27`）。
 
+#### `CardListRow` の列
+
+★**`spike` の `CardGridRow` を写さない（D51）。** 一覧が何を要るかから起こす。
+
+| 列 | 型 | なぜ要るか |
+|---|---|---|
+| `printingId` | `String` | 一覧の一意キー。**デッキが保持する単位**（D11） |
+| `cardNumber` | `String` | **4 枚制限の単位**（D11 / 6.1.1.2）。カード詳細への鍵 |
+| `name` | `String` | 表示 |
+| `cardType` | **`CardType`** | 絞り込み。★**`String` にしない**（下記） |
+| `expansion` | `String` | 絞り込みと既定の並び順 |
+| `rarity` | `String` | 表示・絞り込み |
+| `isParallel` | `bool` | パラレル表示 OFF の判定（CLAUDE.md §5-(4)） |
+| `imageHash` | `String` | 画像の解決。★**空文字がありうる**（§5-2(4)） |
+| `cost` | `int?` | 絞り込み。★**メンバーにしか値が無い**（下記） |
+
+並びは `expansion`, `printingId`（`ORDER BY p.expansion, p.printing_id`）。
+
+★**`cardType` は `loveca_core` の `CardType` enum で持つ。**
+`spike` は `String` で持っており、`entry.row.cardType == 'energy'` という
+**文字列比較**が `main_drag.dart:718` にあった。
+綴りを間違えても**コンパイルは通り、静かに false になる。**
+投影クエリは `TEXT` を読むので、**リポジトリの境界で 1 回だけ enum へ直す。**
+
+★★**`cost` はメンバーにしか値が無い。**★★
+`normalize.py:362-363` は `card.cost` を **`KIND_MEMBER` の分岐でしか設定していない。**
+ライブは `cost` フィールドを**ブレードハートの供給元として使う**（同 375-377 / CLAUDE.md §5-(1)）。
+したがって配信 JSON でも `cost` はライブ・エネルギーで `null` である。
+
+**帰結: 「コスト N 以下」で素朴に絞ると、ライブとエネルギーが全部消える。**
+`spike` の `CardGridFilter.matches` は `r.cost == null` を除外していたので、
+実測の「コスト 2 以下 = 208 件」は**メンバーだけの件数**である。
+
+→ **コスト絞り込みは種別フィルタと連動させる。**
+実装は 2 案あり、**M1 では (a) を採る**（M3 の検索と同時に見直す）。
+
+| 案 | 挙動 |
+|---|---|
+| **(a) 採用** | コスト絞り込みを出すのは**種別が「メンバー」のときだけ**。ほかの種別では UI ごと出さない |
+| (b) | 「コスト無しを含む」チェックを添える。★**既定でどちらにするかを決めねばならず、既定が「含まない」なら結局静かに消える** |
+
 ### 4-3. ★ `MasterCatalog` を起動時に 1 回だけ組む
 
 ```dart
@@ -554,6 +623,101 @@ class MasterCatalog {
 `loveca_db` に置くのが自明に正しいとは言えない。
 **移す条件**: Phase 5 で「スマホ側が同じ投影を必要とする」ことが確定したとき。
 それまでは UI 側に置き、`CardListRow` の形を `loveca_db` へ移しやすい素直な形に保つ。
+
+### 4-6. アプリのファイル置き場（決定 D59 / D60）
+
+`loveca_db` は **DB ファイルの置き場所を決めない**（`native.dart:24-25`
+「置き場所は呼び出し側が決める。`path_provider` は Flutter 依存なのでこのパッケージからは参照しない」）。
+**決めるのは `loveca-ui` の責務。**
+
+#### (1) `path_provider` を採る（D59）
+
+★**`loveca-ui` にだけ入れる。`loveca_core` / `loveca_db` には持ち込まない。**
+`path_provider` は Flutter プラグインなので `package:flutter` を引き込む。
+CLAUDE.md §1 / §2 の検証コマンドが**既にこれを検知する**（両パッケージで `package:flutter` が 0 件であること）。
+新しい見張りは要らない。
+
+★**`sqlite3_flutter_libs` を却下した理由（D45 / SQLite の二重調達）は当てはまらない。**
+`path_provider` は**何も二重調達しない。**OS のディレクトリを問い合わせるだけである。
+
+#### (2) 置き場を解決する唯一の場所 — `AppPaths`
+
+```dart
+/// アプリのファイル置き場。★path_provider に触れてよいのはここだけ。
+class AppPaths {
+  static Future<AppPaths> resolve() async { /* getApplicationSupportDirectory() */ }
+
+  final Directory supportDir;
+  File get databaseFile => File(p.join(supportDir.path, 'loveca.db'));
+  File get settingsFile => File(p.join(supportDir.path, 'settings.json'));
+}
+```
+
+★★**キャッシュディレクトリに置かない。**★★
+DB は `decks`（**作り直せないユーザデータ** / D11・D35）と
+`cards` / `printings` / `card_search`（dist からの派生物で作り直せる）を**同じ 1 ファイル**に持つ。
+`getApplicationCacheDirectory()` は **OS がいつでも消してよい場所**なので、
+置くと**デッキが黙って消えうる。**これは A-3 と同じ型の失敗である。
+→ **`getApplicationSupportDirectory()` を使う。**
+
+★**Phase 5 で `app_database.dart` を書き換えずに済む形になっている。**
+`getApplicationSupportDirectory()` は Windows / Android / iOS のすべてで
+「アプリが支援ファイルを置いてよい場所」を返す契約なので、**DB の置き場は差し替え不要。**
+プラットフォームで変わるのは次の (3) の dist だけである。
+
+#### (3) dist の場所と解決順（D60）
+
+★**M1 の時点で設定画面（R6）はまだ無い。既定値だけで動く必要がある。**
+
+解決順は 3 段。**上から順に見て、最初に見つかったものを採る。**
+
+| 順 | 出所 | 用途 |
+|---:|---|---|
+| 1 | 環境変数 `LOVECA_DIST_DIR` | ★**開発と検証。M1 はこれで動かす** |
+| 2 | `settings.json` の `distDir` | R6（M6）が書く。M1 でも手で置ける |
+| 3 | **既定: 実行ファイルの隣の `data/dist/`** | 配布形態（zip を展開して exe を実行） |
+
+★段 3 は**デスクトップでしか成立しない。**モバイルは実行ファイルの隣に置けない。
+→ **`DistLocator` 抽象**にし、モバイル実装は Phase 5 で足す（§5-5 の未決と同じ場所で決まる）。
+
+#### (4) ★ dist が見つからない場合の挙動
+
+★★**無言で空のカタログを返さない。**★★ それは A-3 と同じ型である。
+
+起動ゲートの 4 段（§3-5）のうち、**段 3（マスタ取り込み）で検出し、段 4 で続行可否を決める。**
+
+| 段 | やること |
+|---|---|
+| **段 3** | `DistLocator` が解決を試み、**`version.json` と `manifest.json` の存在**まで確かめる。無ければ**取り込みを飛ばし、「dist 不在」と探した場所の一覧を記録する**（`MasterImporter` を呼ばない。呼ぶと読み取り例外になり、原因が「読めない」に化ける） |
+| **段 4** | カタログを読む。**`cards` が 0 件かどうかで分岐する** |
+
+| 状況 | 挙動 |
+|---|---|
+| **dist 不在 かつ `cards` が 0 件**（初回起動） | ★**停止する。**「カードデータが見つかりません」と**探した場所を全部並べる**。空の一覧を出さない |
+| **dist 不在 だが `cards` がある**（2 回目以降） | ★**続行する。**「データを更新できませんでした（前回取り込んだ内容で動いています）」を**シェルのバッジに出す**。これは D39 が「失敗しても既存の行を消さない」としたのと同じ考え方 |
+| dist はあるが取り込みが一部失敗 | D39 のとおり `import_issues` に記録し、続行（P2 / §2-6） |
+
+★**「探した場所を並べる」ことを省かない。**
+3 段の解決順を持つ以上、**どこを見て無かったのかが出ないと利用者は直せない。**
+
+#### (5) 設定の永続先 — **自前の JSON ファイル**（D60）
+
+`shared_preferences` を**採らない。**
+
+| | 自前 JSON（採用） | `shared_preferences` |
+|---|---|---|
+| 依存 | **増やさない** | 増える |
+| 器 | 全プラットフォームで**同じ 1 ファイル** | Windows は JSON / Android は SharedPreferences / iOS は NSUserDefaults と**器が違う** |
+| 置き場 | `AppPaths.settingsFile`。**DB と同じ寿命・同じバックアップ対象** | プラットフォーム任せ |
+| 項目数 | 現時点で 2 つ（`distDir` / パラレル表示の既定） | 同じ |
+
+★**器が 3 通りに分かれる代償を、2 項目のために払う理由が無い。**
+書き込みは**一時ファイルへ書いてから rename** する（途中で落ちても壊れた設定が残らない）。
+
+★**設定ファイルが壊れていたら、既定に戻したうえで警告を出す。**
+黙って既定に戻すと「設定したのに効かない」が原因不明のまま残る。
+
+★**見直す条件**: 設定項目が**10 を超える**、または型付きの構造（入れ子・配列）が要るようになったとき。
 
 ---
 
@@ -754,6 +918,29 @@ D46 は profile ビルド + 合成ポインタで見つけたが、
 ★CLAUDE.md §3 の**テスト件数表に `loveca-ui` の行を足すのは、実際にテストを書いたとき。**
 設計の段階で表に載せない（載せると「あるはず」の件数が独り歩きする）。
 
+### 6-6. グリッドの寸法 — 出典と再現条件
+
+★**出典の格が 2 つある。混ぜないこと。**
+
+| 値 | 出典 | 格 |
+|---|---|---|
+| セル幅 **120 物理px** | `docs/UI技術検証メモ.md` §3（測定条件） | ★**正。**D42 の数値はこの条件で得られた |
+| thumb の原寸 **200 × 279** | 同 §3 / §1-2 | ★**正。**実データの寸法 |
+| 実測 **144Hz** / 予算 **6.9 ms** | 同 §1-3 | ★**正** |
+| `maxExtent` **140 論理px** | `spike/main_grid.dart:491` | **再現手段。**メモには無い |
+| `spacing` **6** | 同 `:492` | 同上 |
+| `childAspectRatio` **200 / 279** | 同 `:522` | 同上（原寸の比） |
+
+本実装は **`maxExtent 140` / `spacing 6` / `childAspectRatio 200/279` を採る。**
+列数は `ceil(利用可能幅 / 140)`、セル幅はそこから割り戻す。
+
+★★**この 3 つを変えると、セル幅 120 物理px という D42 の前提が動く。**★★
+`ResizeImage` の効果（予算超え 25 フレーム → 0）も、キャッシュの見積り
+（1 枚 74 KB / 1000 枚）も、**すべてこのセル幅で測ったものである。**
+**変えるなら測り直すこと。**
+
+★`cacheWidth` は §7 の規則に従う: **`min(セル物理px, その段の原寸幅)`。**
+
 ---
 
 ## 7. ★ Phase 5 着手時に最初に潰す項目（決定 D52）
@@ -788,11 +975,16 @@ lib/
   main.dart                       runApp のみ
   src/
     app.dart                      MaterialApp / ルート / AppScope の設置
+    app_info.dart                 AppInfo.version（§9-2）
     boot/
       boot_gate.dart              R1。§3-5 の 4 段
       catalog_loader.dart         MasterCatalog を 1 回だけ組む
     data/
-      app_database.dart           ★drift / dart:io / パス解決に触れるのはここだけ
+      app_paths.dart              ★path_provider に触れる唯一の場所（§4-6 / D59）
+      dist_locator.dart           dist の 3 段解決と不在の検出（§4-6 / D60）
+      app_settings.dart           settings.json の読み書き（§4-6(5)）
+      clock.dart                  ★UI 層で DateTime.now() を書く唯一の場所（§9-1）
+      app_database.dart           ★drift / dart:io に触れるのはここだけ
       master_catalog.dart
       card_list_row.dart
       card_catalog_repository.dart
@@ -813,8 +1005,10 @@ lib/
         debouncer.dart            ★150 ms（D44）
       browse/ deck/ settings/
 test/
-  layout/pane_scaffold_test.dart
-  common/card_drag_test.dart      ★D46 のヒットテスト回帰
+  app_info_test.dart              ★pubspec.yaml の version と突き合わせる（§9-2）
+  layout/pane_scaffold_test.dart  ★840 論理px の前後で 1/2 ペインが切り替わる（D61）
+  data/dist_locator_test.dart     ★3 段の解決順と「不在」の検出（D60）
+  common/card_drag_test.dart      ★D46 のヒットテスト回帰 / DragStartMode 両経路
   common/debouncer_test.dart
 ```
 
@@ -841,6 +1035,51 @@ revision: revision ?? this.revision + 1,          // ★呼ぶたびに +1
 ★`DeckDao.save` は `revision` をそのまま書く（`deck_dao.dart:75-89`）ので、
 **`revision` を管理するのは UI 側の責務**である。
 
+### 9-1. `now` の供給元 — `Clock`
+
+`loveca_core` / `loveca_db` はどちらも**層の内側で `DateTime.now()` を呼ばない**設計で、
+`DeckDao.softDelete(deckId, at)` / `MasterImporter.import(now:)` /
+`MasterStateDao.recordIssue(at:)` はいずれも**呼び出し側から受け取る。**
+その「呼び出し側」を UI のどこにするかを決める。
+
+```dart
+typedef Clock = DateTime Function();
+
+/// ★UI 層で DateTime.now() を書いてよいのはこの 1 行だけ。
+DateTime systemClockUtc() => DateTime.now().toUtc();
+```
+
+`AppScope` が `Clock` を 1 つ持ち、`DeckRepository` / `MasterRepository` へ渡す。
+
+★**利得は 2 つ。**
+(1) テストで固定時刻を入れられる（`revision` と `updatedAt` の検証が決定的になる）。
+(2) ★**`DateTime.now()` の grep が 1 箇所に収まる**ので、
+CLAUDE.md §1 の既知違反（`Deck.copyWith` の既定値）を UI 側から踏んでいないことを確認できる。
+
+### 9-2. `appVersion` の供給元 — `AppInfo.version`
+
+`MasterImporter.import(appVersion:)` が要る。`planUpdate` がこれを
+配信側の `minAppVersion` と比べ、**古ければ取り込みを拒否する**（`master_data.dart`）。
+
+`package_info_plus` を**入れない。**依存を 1 つ増やす価値が無い。
+
+```dart
+/// ★pubspec.yaml の version と手で揃える。ズレると minAppVersion の判定が誤る。
+abstract final class AppInfo {
+  static const String version = '0.1.0';
+}
+```
+
+★★**手で揃えるものは必ずズレる。テストで固定する。**★★
+
+```
+test/app_info_test.dart:
+  pubspec.yaml の version: 行を読み、AppInfo.version と一致することを検証する
+```
+
+これは D58 の「知見は文書ではなく型（とテスト）で守る」と同じ手当てである。
+定数のコメントに「揃えること」と書くだけでは守られない。
+
 ---
 
 ## 10. 未決一覧
@@ -856,6 +1095,7 @@ revision: revision ?? this.revision + 1,          // ★呼ぶたびに +1
 | **U5** | **盤面のカード表示に `thumb` で足りるか**（`normal` が要るか） | **Phase 3b**（UI技術検証メモ §10-5 の再掲） |
 | **U6** | **先読みを採る条件**（「スクロールが止まったら 1 画面分」などの具体値） | 要求が出たとき（同 §10-4 の再掲） |
 | **U7** | **共有形式インポートの既定の刷りの選び方**（§2-5(a)） | **M6 実装時** |
+| **U8** | ★**ペインの切替しきい値 840 論理px は暫定値**（§2-1）。デッキペインの最小幅 320 が見積りのため | **M4**（実装で検算）と **Phase 5**（実機） |
 
 ★このほか `docs/UI技術検証メモ.md` §10 の
 「タッチ環境は実機未検証」「測定は 1 台・1 解像度・144Hz のみ」は**そのまま有効**。
