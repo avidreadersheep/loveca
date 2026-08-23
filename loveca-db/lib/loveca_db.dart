@@ -6,6 +6,7 @@
 /// Phase 5 で Web / WASM 経路を足すときは、そちらを差し替えれば済む。
 library;
 
+export 'src/dao/card_dao.dart';
 export 'src/schema/database.dart';
 export 'src/schema/enums.dart';
 export 'src/schema/tables.dart';
