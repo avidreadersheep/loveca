@@ -24,6 +24,16 @@ dependencies:
 
   path: ^1.9.0
 
+  # ★DB と設定ファイルの置き場を解決する（決定 D59）。
+  #   loveca_db は置き場所を決めない（native.dart「置き場所は呼び出し側が決める。
+  #   path_provider は Flutter 依存なのでこのパッケージからは参照しない」）ので、
+  #   決めるのは loveca-ui の責務。
+  #   ★loveca_core / loveca_db には持ち込まない。package:flutter を引き込むため、
+  #     CLAUDE.md §1 / §2 の検証コマンドが既にこれを検知する。
+  #   ★sqlite3_flutter_libs を却下した理由（D45 / SQLite の二重調達）は当てはまらない。
+  #     path_provider は何も二重調達せず、OS のディレクトリを問い合わせるだけ。
+  path_provider: ^2.1.5
+
   # ★spike の計測でだけ使う。索引の形を変えた場合の大きさと速さを
   #   メモリ上の DB で比べるために、drift を通さず素の sqlite3 を触る。
   sqlite3: ^3.5.2
