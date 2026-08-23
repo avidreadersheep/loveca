@@ -78,6 +78,14 @@ Phase 2 で入れたもので、Phase 4（同期）の設計時に呼び出し�
 grep -rnE "package:flutter|dart:ui|dart:io|DateTime\.now|Random\(\)" loveca-core/lib
 ```
 
+`loveca_db` は Flutter 非依存だけを課す（`dart:io` は `lib/native.dart` と
+`lib/src/native/` に閉じる）。
+
+```bash
+grep -rnE "package:flutter|dart:ui" loveca-db/lib          # 0 件であること
+grep -rln "dart:io" loveca-db/lib                          # native 配下のみ
+```
+
 ---
 
 ## 2. ディレクトリ構成
@@ -95,10 +103,27 @@ loveca-core/     Dart: ドメイン層（Flutter 非依存）
   lib/src/entities/   card.dart / deck.dart / product.dart
   lib/src/master/     master_data.dart（配信 JSON パース・差分更新の計画）
   lib/src/rules/      deck_validator.dart
-  lib/src/game/       ★Phase 3a で実装。現在は空
+  lib/src/game/       GameState / 集計 / フェイズ進行 / 巻き戻し / reduce / redact
   test/fixtures/      Python が実際に生成した JSON のコピー
   tools/verify_contract.py   Python↔Dart のキー整合検証（Dart SDK 不要）
+
+loveca-db/       Dart: ローカル DB 層（drift / SQLite。★Flutter 非依存）
+  lib/loveca_db.dart      スキーマ・DAO・取り込み層。dart:io を含まない
+  lib/native.dart         ★dart:io に触れるのはこのエントリの下だけ
+  lib/src/schema/         drift のテーブル定義とコード生成物
+  lib/src/dao/            Card / Deck / 取り込み状態の読み書き
+  lib/src/search/         fold（表記ゆれ折りたたみ）/ FTS5(trigram) 検索
+  lib/src/import/         MasterFileSource / MasterImporter（planUpdate を使う）
+  test/fixtures/dist/     ミニ配信物。tool/build_fixtures.py が実データから生成
+  tool/build_fixtures.py  ★相互にハッシュ参照するので一括生成する
+  tool/probe_sqlite.dart  解決された sqlite3 の診断（FTS5 / trigram の可否）
 ```
+
+★`loveca_db` は Flutter に依存させない。`drift_flutter` / `sqlite3_flutter_libs` /
+`path_provider` は採らず、`QueryExecutor` を呼び出し側から受け取る。
+`dart test` だけで検証できる状態を保つことが目的で、Phase 6 のサーバでも使える。
+`dart:io` 禁止は **`loveca_core` に対する制約**であり `loveca_db` には及ばないが、
+汚染範囲は `lib/native.dart` と `lib/src/native/` に閉じてある。
 
 ---
 
@@ -114,11 +139,25 @@ python -m loveca_data validate --complete     # 段階5（ネットワーク不�
 python -m loveca_data build --data-version 1 --skip-images   # 段階6（JSON のみ・数秒）
 python -m loveca_data fetch --all             # ★段階0-3: 公式サイトへ実アクセス
 
-# Dart 側
+# Dart 側（ドメイン層）
 cd loveca-core
 dart test
 python tools/verify_contract.py               # Dart SDK 不要
+
+# Dart 側（DB 層）
+cd loveca-db
+dart pub get
+dart run build_runner build                   # drift のコード生成（*.g.dart はコミットする）
+dart test
+dart run tool/probe_sqlite.dart               # sqlite3 の FTS5 / trigram の可否
+LOVECA_DIST_DIR=/path/to/dist dart test       # 実データの場所を変える
+../loveca-data/.venv/Scripts/python.exe tool/build_fixtures.py   # ミニ配信物の再生成
 ```
+
+★`loveca-db` のテスト結果を報告するときは **skip 件数も併記すること。**
+実データ（`loveca-data/data/dist/`）を使うテストは `data/` が git 管理外のため、
+未配置なら `markTestSkipped` で理由を明示して飛ばす。
+「全通過」の報告に skip が埋もれると、検証しているつもりで検証していない状態になる。
 
 **`fetch` は明示的な指示がない限り実行しない。** 公式サイトへの実アクセスを伴う。
 
