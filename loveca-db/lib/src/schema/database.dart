@@ -41,7 +41,7 @@ part 'database.g.dart';
 class LovecaDatabase extends _$LovecaDatabase {
   LovecaDatabase(super.executor);
 
-  /// ★2: 移行機構の導入にあわせて上げた。
+  /// ★2: 検索索引に `card_number_raw` を足した（決定 D49）。
   ///
   /// 上げるときは必ず [migration] の `onUpgrade` に対応する手順を足すこと。
   /// 版だけ上げて手順を足さないと、既存の端末が古い形のまま動き続ける。
@@ -68,7 +68,8 @@ class LovecaDatabase extends _$LovecaDatabase {
         /// 落として建て直すだけでよく、ユーザデータに触れずに済む。
         onUpgrade: (m, from, to) async {
           if (from < 2) {
-            // v1 -> v2: 検索索引を現在の仕様で建て直す。
+            // v1 -> v2: 索引に `card_number_raw` を足した（決定 D49）。
+            //           索引は派生物なので建て直すだけでよい。
             await CardSearchDao(this).rebuildAll();
           }
         },

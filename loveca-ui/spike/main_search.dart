@@ -217,9 +217,11 @@ class _SearchSpikePageState extends State<SearchSpikePage>
       ftsUs = sw.elapsedMicroseconds;
     }
 
-    // --- 内訳: cardNumber を元の表記へ戻すための全件読み ---
-    // `CardSearchDao._resolveCardNumbers` が trigram 経路で毎回行っている
-    // `SELECT * FROM cards`（1,708 行）に相当する部分。
+    // --- 参考値: かつて復元に使われていた全件読み ---
+    // ★決定 D49 でこの処理は search() から消えた★
+    //   索引が生の cardNumber を持つようになったため、cards を読む必要が無い。
+    //   ここは「以前どれだけ掛かっていたか」を並べて見るためだけに残してある。
+    //   search() の実測値にはもう含まれない。
     var resolveUs = 0;
     if (result.mode == CardSearchMode.trigram && !result.isEmpty) {
       final sw = Stopwatch()..start();
@@ -324,7 +326,7 @@ class _SearchSpikePageState extends State<SearchSpikePage>
           'FTS の MATCH と cardNumber の復元の両方を行う。')
       ..writeln()
       ..writeln('| 語 | 文字数 | 経路 | 種 | 刷り | search() 全体 | '
-          'うち FTS MATCH | うち cards 全件読み | 刷りへの展開 |')
+          'うち FTS MATCH | 参考: 旧復元処理 (D49 で廃止) | 刷りへの展開 |')
       ..writeln('|---|---:|---|---:|---:|---:|---:|---:|---:|');
 
     for (final q in queries) {
@@ -638,7 +640,7 @@ class _TimingBar extends StatelessWidget {
             : '経路 ${t.mode.name} / ${t.hits} 種 → $results 刷り / '
                 'search() ${SearchTiming.ms(t.totalUs)} ms '
                 '(FTS ${SearchTiming.ms(t.ftsOnlyUs)} / '
-                'cards 全件読み ${SearchTiming.ms(t.resolveUs)} / '
+                '旧復元 ${SearchTiming.ms(t.resolveUs)} / '
                 '展開 ${SearchTiming.ms(t.expandUs)})',
         style: const TextStyle(fontSize: 12),
       ),

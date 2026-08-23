@@ -158,6 +158,56 @@ void main() {
     });
   });
 
+  // ★決定 D49 の本質的な利得を固定するテスト★
+  // 索引が生の cardNumber を持つようになったことで、
+  // 折りたたみ後に衝突する 2 つの cardNumber を取り違えなくなった。
+  // 以前は {fold(cardNumber): cardNumber} という写像で元の表記へ戻していたため、
+  // 衝突すると片方が黙って消えていた。
+  group('★fold が衝突する cardNumber (決定 D49)', () {
+    Card synthetic(String cardNumber) => Card(
+          cardNumber: cardNumber,
+          name: '衝突検証用',
+          cardType: CardType.member,
+          effectText: 'しょうとつけんしょう',
+        );
+
+    // 全角 Ａ と半角 A は fold で同じ値へ畳まれる。
+    const fullWidth = 'TEST-bp9-001-Ａ';
+    const halfWidth = 'TEST-bp9-001-A';
+
+    test('前提: この 2 つは同じ値へ畳まれる', () {
+      expect(fold(fullWidth), fold(halfWidth));
+      expect(fullWidth, isNot(halfWidth));
+    });
+
+    test('両方が別々に引ける（保存されている表記のまま返る）', () async {
+      await search.reindex([synthetic(fullWidth), synthetic(halfWidth)]);
+
+      final result = await search.search('bp9-001');
+      expect(result.mode, CardSearchMode.trigram);
+      expect(result.cardNumbers, containsAll(<String>[fullWidth, halfWidth]));
+    });
+
+    test('片方だけを索引から消せる', () async {
+      await search.reindex([synthetic(fullWidth), synthetic(halfWidth)]);
+      await search.removeFromIndex([fullWidth]);
+
+      final result = await search.search('bp9-001');
+      expect(result.cardNumbers, contains(halfWidth));
+      expect(result.cardNumbers, isNot(contains(fullWidth)));
+    });
+
+    // ★cards に行が無くても検索が成立する★
+    // 復元のために cards を読む必要が無くなったことの裏づけ。
+    test('cards に行が無くても索引だけで引ける', () async {
+      await search.reindex([synthetic(fullWidth)]);
+      expect(await cards.cardByNumber(fullWidth), isNull);
+
+      final result = await search.search('bp9-001');
+      expect(result.cardNumbers, contains(fullWidth));
+    });
+  });
+
   group('★索引の作り直し（移行の受け皿）', () {
     // `card_search` は cards / card_names からの純粋な派生物なので、
     // 落として建て直せば必ず現在の索引仕様に揃う。
