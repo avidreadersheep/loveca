@@ -119,17 +119,29 @@ loveca-db/       Dart: ローカル DB 層（drift / SQLite。★Flutter 非依�
   tool/probe_sqlite.dart  解決された sqlite3 の診断（FTS5 / trigram の可否）
 
 loveca-ui/       Flutter: UI 層（Windows デスクトップ）
-  lib/           ★Phase 2 後半の本実装用。まだ空（placeholder の main.dart のみ）
-  spike/         ★技術検証の試作。本実装と混ざらないよう lib/ の外に置く
+  ── ここから下は【本実装の土台】。Phase 2 後半がそのまま使う ──
+  lib/           ★本実装はここに書く。今は placeholder の main.dart のみ
+  windows/       ランナー。flutter create が生成した実プロダクトの一部
+  pubspec.yaml   依存の正本
+  ── ここから下は【技術検証の試作】。本実装から参照しない（決定 D51） ──
+  spike/         ★lib/ の外に置いてあり、lib/ から import できない
+    README.md    ★扱いの取り決め。触る前に読む
     common/      DB 起動 / 計測 / 合成ポインタ / パス解決
     main_probe.dart   sqlite3 の Flutter 経路の疎通
     main_grid.dart    試作1 仮想リスト
     main_search.dart  試作2 検索
     main_drag.dart    試作3-A デッキ編集
     main_board.dart   試作3-B 最小盤面
+    main_search_variants.dart  検索改善案の比較（D49 の判断材料）
   spike/.cache/  ★DB ファイルと測定結果。git 管理外
-  windows/       flutter create が生成したランナー
 ```
+
+★**`lib/` `windows/` `pubspec.yaml` と `spike/` は扱いが違う（決定 D51）。**
+前者は本実装そのもの。後者は D42〜D50 の数値の再現手段であり、
+**Phase 3b 完了時に削除を再判断する。**
+`spike/` にはテストが無く、本実装を変えても静かに腐る
+（D49 で実際に `main_search.dart` の計測が実態と食い違った）。
+**本実装の変更で spike の計測が意味を失ったら、その場で注記を直すか消すこと。**
 
 ★`loveca_db` は Flutter に依存させない。`drift_flutter` / `sqlite3_flutter_libs` /
 `path_provider` は採らず、`QueryExecutor` を呼び出し側から受け取る。
