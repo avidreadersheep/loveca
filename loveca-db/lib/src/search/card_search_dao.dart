@@ -60,16 +60,82 @@ class CardSearchDao {
 
     await removeFromIndex(numbers);
     for (final card in cards) {
-      await db.customInsert(
-        'INSERT INTO card_search '
-        '(${cardSearchColumns.join(', ')}) VALUES (?, ?, ?, ?, ?)',
-        variables: [
-          Variable<String>(fold(card.cardNumber)),
-          Variable<String>(fold(card.name)),
-          Variable<String>(fold(card.effectText)),
-          Variable<String>(foldJoin(card.groupNames)),
-          Variable<String>(foldJoin(card.unitNames)),
-        ],
+      await _insert(
+        cardNumber: card.cardNumber,
+        name: card.name,
+        effect: card.effectText,
+        groupNames: card.groupNames,
+        unitNames: card.unitNames,
+      );
+    }
+  }
+
+  /// 索引行を 1 件書く。[reindex] と [rebuildAll] の共通部。
+  ///
+  /// ★プレースホルダは [cardSearchColumns] の要素数から作る★
+  /// `VALUES (?, ?, ?, ?, ?)` と数を直書きすると、列を足したときに
+  /// 片方だけ直して静かに壊れる。
+  Future<void> _insert({
+    required String cardNumber,
+    required String name,
+    required String effect,
+    required List<String> groupNames,
+    required List<String> unitNames,
+  }) async {
+    final placeholders = List.filled(cardSearchColumns.length, '?').join(', ');
+    await db.customInsert(
+      'INSERT INTO card_search '
+      '(${cardSearchColumns.join(', ')}) VALUES ($placeholders)',
+      variables: [
+        Variable<String>(fold(cardNumber)),
+        Variable<String>(fold(name)),
+        Variable<String>(fold(effect)),
+        Variable<String>(foldJoin(groupNames)),
+        Variable<String>(foldJoin(unitNames)),
+      ],
+    );
+  }
+
+  /// 索引を丸ごと作り直す。
+  ///
+  /// ★`card_search` は `cards` / `card_names` からの純粋な派生物★
+  /// 落として建て直せば必ず現在の索引仕様に揃う。
+  /// **ユーザデータ（`decks`）には一切触れない。**
+  /// これが `LovecaDatabase.migration` の `onUpgrade` の受け皿になる。
+  ///
+  /// ★`CardDao` を経由せず生の SQL で読む★
+  /// 移行はエンティティの形が変わっても動き続ける必要がある。
+  /// `Card` の組み立てに依存させない。
+  Future<void> rebuildAll() async {
+    await db.customStatement('DROP TABLE IF EXISTS card_search');
+    await db.customStatement(createCardSearchTable);
+
+    final rows =
+        await db.customSelect('SELECT card_number, name, effect_text '
+            'FROM cards ORDER BY card_number').get();
+    if (rows.isEmpty) return;
+
+    // グループ名・ユニット名は別テーブルにある。順序は ord のとおりに戻す。
+    final nameRows = await db.customSelect(
+      "SELECT card_number, kind, value FROM card_names "
+      "WHERE kind IN ('group', 'unit') ORDER BY card_number, kind, ord",
+    ).get();
+    final groups = <String, List<String>>{};
+    final units = <String, List<String>>{};
+    for (final r in nameRows) {
+      final number = r.read<String>('card_number');
+      final target = r.read<String>('kind') == 'group' ? groups : units;
+      (target[number] ??= []).add(r.read<String>('value'));
+    }
+
+    for (final r in rows) {
+      final number = r.read<String>('card_number');
+      await _insert(
+        cardNumber: number,
+        name: r.read<String>('name'),
+        effect: r.read<String>('effect_text'),
+        groupNames: groups[number] ?? const [],
+        unitNames: units[number] ?? const [],
       );
     }
   }

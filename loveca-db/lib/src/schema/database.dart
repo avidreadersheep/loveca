@@ -11,6 +11,7 @@ import 'package:drift/drift.dart';
 //   生成コードから見えるように、ここで import しておく必要がある。
 import 'package:loveca_core/loveca_core.dart';
 
+import '../search/card_search_dao.dart';
 import '../search/card_search_schema.dart';
 import 'enums.dart';
 import 'tables.dart';
@@ -40,8 +41,12 @@ part 'database.g.dart';
 class LovecaDatabase extends _$LovecaDatabase {
   LovecaDatabase(super.executor);
 
+  /// ★2: 移行機構の導入にあわせて上げた。
+  ///
+  /// 上げるときは必ず [migration] の `onUpgrade` に対応する手順を足すこと。
+  /// 版だけ上げて手順を足さないと、既存の端末が古い形のまま動き続ける。
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -49,6 +54,23 @@ class LovecaDatabase extends _$LovecaDatabase {
           await m.createAll();
           // ★仮想テーブルは drift の Dart テーブル API で表現できないので手で作る。
           await customStatement(createCardSearchTable);
+        },
+
+        /// ★移行機構（Phase 4 でどのみち要るものの前倒し）★
+        ///
+        /// これが無いと、スキーマを変えた版を配ったときに
+        /// **既存端末のデッキ（ユーザデータ）を捨てるしか手が無くなる。**
+        /// `cards` / `printings` / `card_search` は配信物からの派生なので作り直せるが、
+        /// `decks` は作り直せない（決定 D11 / D35）。
+        ///
+        /// ★検索索引の作り直しで済む変更は `rebuildAll` に寄せる★
+        /// `card_search` は `cards` / `card_names` からの純粋な派生物なので、
+        /// 落として建て直すだけでよく、ユーザデータに触れずに済む。
+        onUpgrade: (m, from, to) async {
+          if (from < 2) {
+            // v1 -> v2: 検索索引を現在の仕様で建て直す。
+            await CardSearchDao(this).rebuildAll();
+          }
         },
         beforeOpen: (details) async {
           // ★外部キーは既定で無効。有効にしないと onDelete: cascade が効かない。

@@ -1,6 +1,7 @@
 /// FTS5(trigram) 検索の検証.
 library;
 
+import 'package:loveca_core/loveca_core.dart';
 import 'package:loveca_db/loveca_db.dart';
 import 'package:loveca_db/native.dart';
 import 'package:test/test.dart';
@@ -154,6 +155,44 @@ void main() {
       final result = await search.search('%');
       expect(result.mode, CardSearchMode.likeFallback);
       expect(result.length, lessThan(await cards.cardCount()));
+    });
+  });
+
+  group('★索引の作り直し（移行の受け皿）', () {
+    // `card_search` は cards / card_names からの純粋な派生物なので、
+    // 落として建て直せば必ず現在の索引仕様に揃う。
+    // MigrationStrategy の onUpgrade がこれを呼ぶ。
+    test('rebuildAll で索引が同じ状態に戻る', () async {
+      final countBefore = await search.indexedCount();
+      final hitBefore = await search.search('ライブ開始時');
+      expect(countBefore, greaterThan(0));
+      expect(hitBefore.cardNumbers, isNotEmpty);
+
+      await db.customStatement('DROP TABLE card_search');
+      await search.rebuildAll();
+
+      expect(await search.indexedCount(), countBefore);
+      final hitAfter = await search.search('ライブ開始時');
+      expect(hitAfter.cardNumbers, hitBefore.cardNumbers);
+    });
+
+    // ★移行がユーザデータに触れないことの証拠★
+    // decks は配信物から作り直せない（決定 D11 / D35）。
+    test('rebuildAll はデッキに触らない', () async {
+      final decks = DeckDao(db);
+      await decks.save(Deck(
+        deckId: 'a3f1c2d4-0000-4000-8000-0000000000ff',
+        name: '移行しても残ること',
+        entries: const [],
+        createdAt: DateTime.utc(2026, 8, 23),
+        updatedAt: DateTime.utc(2026, 8, 23),
+      ));
+
+      await search.rebuildAll();
+
+      final after = await decks.byId('a3f1c2d4-0000-4000-8000-0000000000ff');
+      expect(after, isNotNull);
+      expect(after!.name, '移行しても残ること');
     });
   });
 
