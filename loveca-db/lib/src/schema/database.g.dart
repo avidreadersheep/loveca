@@ -4104,6 +4104,1159 @@ class RuleConfigsCompanion extends UpdateCompanion<RuleConfigRow> {
   }
 }
 
+class $DecksTable extends Decks with TableInfo<$DecksTable, DeckRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DecksTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _deckIdMeta = const VerificationMeta('deckId');
+  @override
+  late final GeneratedColumn<String> deckId = GeneratedColumn<String>(
+    'deck_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _memoMeta = const VerificationMeta('memo');
+  @override
+  late final GeneratedColumn<String> memo = GeneratedColumn<String>(
+    'memo',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _coverPrintingIdMeta = const VerificationMeta(
+    'coverPrintingId',
+  );
+  @override
+  late final GeneratedColumn<String> coverPrintingId = GeneratedColumn<String>(
+    'cover_printing_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _deletedAtMeta = const VerificationMeta(
+    'deletedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+    'deleted_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _revisionMeta = const VerificationMeta(
+    'revision',
+  );
+  @override
+  late final GeneratedColumn<int> revision = GeneratedColumn<int>(
+    'revision',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _lastDeviceIdMeta = const VerificationMeta(
+    'lastDeviceId',
+  );
+  @override
+  late final GeneratedColumn<String> lastDeviceId = GeneratedColumn<String>(
+    'last_device_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _masterDataVersionMeta = const VerificationMeta(
+    'masterDataVersion',
+  );
+  @override
+  late final GeneratedColumn<int> masterDataVersion = GeneratedColumn<int>(
+    'master_data_version',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    deckId,
+    name,
+    memo,
+    coverPrintingId,
+    createdAt,
+    updatedAt,
+    deletedAt,
+    revision,
+    lastDeviceId,
+    masterDataVersion,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'decks';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<DeckRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('deck_id')) {
+      context.handle(
+        _deckIdMeta,
+        deckId.isAcceptableOrUnknown(data['deck_id']!, _deckIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_deckIdMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('memo')) {
+      context.handle(
+        _memoMeta,
+        memo.isAcceptableOrUnknown(data['memo']!, _memoMeta),
+      );
+    }
+    if (data.containsKey('cover_printing_id')) {
+      context.handle(
+        _coverPrintingIdMeta,
+        coverPrintingId.isAcceptableOrUnknown(
+          data['cover_printing_id']!,
+          _coverPrintingIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    if (data.containsKey('deleted_at')) {
+      context.handle(
+        _deletedAtMeta,
+        deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
+      );
+    }
+    if (data.containsKey('revision')) {
+      context.handle(
+        _revisionMeta,
+        revision.isAcceptableOrUnknown(data['revision']!, _revisionMeta),
+      );
+    }
+    if (data.containsKey('last_device_id')) {
+      context.handle(
+        _lastDeviceIdMeta,
+        lastDeviceId.isAcceptableOrUnknown(
+          data['last_device_id']!,
+          _lastDeviceIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('master_data_version')) {
+      context.handle(
+        _masterDataVersionMeta,
+        masterDataVersion.isAcceptableOrUnknown(
+          data['master_data_version']!,
+          _masterDataVersionMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {deckId};
+  @override
+  DeckRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DeckRow(
+      deckId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}deck_id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      memo: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}memo'],
+      )!,
+      coverPrintingId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}cover_printing_id'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}deleted_at'],
+      ),
+      revision: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}revision'],
+      )!,
+      lastDeviceId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}last_device_id'],
+      )!,
+      masterDataVersion: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}master_data_version'],
+      )!,
+    );
+  }
+
+  @override
+  $DecksTable createAlias(String alias) {
+    return $DecksTable(attachedDatabase, alias);
+  }
+}
+
+class DeckRow extends DataClass implements Insertable<DeckRow> {
+  /// ★UUID v4。連番にすると端末間で衝突する（P1）。
+  final String deckId;
+  final String name;
+  final String memo;
+  final String? coverPrintingId;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  /// ★論理削除（P3）。物理削除すると削除が同期で伝播しない。
+  final DateTime? deletedAt;
+
+  /// ★更新のたびに +1（P2）。同期の差分検出に使う。
+  final int revision;
+  final String lastDeviceId;
+
+  /// ★作成時のカードマスタ版（P5）。未知カード検出に使う（決定 D35）。
+  final int masterDataVersion;
+  const DeckRow({
+    required this.deckId,
+    required this.name,
+    required this.memo,
+    this.coverPrintingId,
+    required this.createdAt,
+    required this.updatedAt,
+    this.deletedAt,
+    required this.revision,
+    required this.lastDeviceId,
+    required this.masterDataVersion,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['deck_id'] = Variable<String>(deckId);
+    map['name'] = Variable<String>(name);
+    map['memo'] = Variable<String>(memo);
+    if (!nullToAbsent || coverPrintingId != null) {
+      map['cover_printing_id'] = Variable<String>(coverPrintingId);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt);
+    }
+    map['revision'] = Variable<int>(revision);
+    map['last_device_id'] = Variable<String>(lastDeviceId);
+    map['master_data_version'] = Variable<int>(masterDataVersion);
+    return map;
+  }
+
+  DecksCompanion toCompanion(bool nullToAbsent) {
+    return DecksCompanion(
+      deckId: Value(deckId),
+      name: Value(name),
+      memo: Value(memo),
+      coverPrintingId: coverPrintingId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(coverPrintingId),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+      deletedAt: deletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedAt),
+      revision: Value(revision),
+      lastDeviceId: Value(lastDeviceId),
+      masterDataVersion: Value(masterDataVersion),
+    );
+  }
+
+  factory DeckRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DeckRow(
+      deckId: serializer.fromJson<String>(json['deckId']),
+      name: serializer.fromJson<String>(json['name']),
+      memo: serializer.fromJson<String>(json['memo']),
+      coverPrintingId: serializer.fromJson<String?>(json['coverPrintingId']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
+      revision: serializer.fromJson<int>(json['revision']),
+      lastDeviceId: serializer.fromJson<String>(json['lastDeviceId']),
+      masterDataVersion: serializer.fromJson<int>(json['masterDataVersion']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'deckId': serializer.toJson<String>(deckId),
+      'name': serializer.toJson<String>(name),
+      'memo': serializer.toJson<String>(memo),
+      'coverPrintingId': serializer.toJson<String?>(coverPrintingId),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'deletedAt': serializer.toJson<DateTime?>(deletedAt),
+      'revision': serializer.toJson<int>(revision),
+      'lastDeviceId': serializer.toJson<String>(lastDeviceId),
+      'masterDataVersion': serializer.toJson<int>(masterDataVersion),
+    };
+  }
+
+  DeckRow copyWith({
+    String? deckId,
+    String? name,
+    String? memo,
+    Value<String?> coverPrintingId = const Value.absent(),
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    Value<DateTime?> deletedAt = const Value.absent(),
+    int? revision,
+    String? lastDeviceId,
+    int? masterDataVersion,
+  }) => DeckRow(
+    deckId: deckId ?? this.deckId,
+    name: name ?? this.name,
+    memo: memo ?? this.memo,
+    coverPrintingId: coverPrintingId.present
+        ? coverPrintingId.value
+        : this.coverPrintingId,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+    deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
+    revision: revision ?? this.revision,
+    lastDeviceId: lastDeviceId ?? this.lastDeviceId,
+    masterDataVersion: masterDataVersion ?? this.masterDataVersion,
+  );
+  DeckRow copyWithCompanion(DecksCompanion data) {
+    return DeckRow(
+      deckId: data.deckId.present ? data.deckId.value : this.deckId,
+      name: data.name.present ? data.name.value : this.name,
+      memo: data.memo.present ? data.memo.value : this.memo,
+      coverPrintingId: data.coverPrintingId.present
+          ? data.coverPrintingId.value
+          : this.coverPrintingId,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+      revision: data.revision.present ? data.revision.value : this.revision,
+      lastDeviceId: data.lastDeviceId.present
+          ? data.lastDeviceId.value
+          : this.lastDeviceId,
+      masterDataVersion: data.masterDataVersion.present
+          ? data.masterDataVersion.value
+          : this.masterDataVersion,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DeckRow(')
+          ..write('deckId: $deckId, ')
+          ..write('name: $name, ')
+          ..write('memo: $memo, ')
+          ..write('coverPrintingId: $coverPrintingId, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('revision: $revision, ')
+          ..write('lastDeviceId: $lastDeviceId, ')
+          ..write('masterDataVersion: $masterDataVersion')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    deckId,
+    name,
+    memo,
+    coverPrintingId,
+    createdAt,
+    updatedAt,
+    deletedAt,
+    revision,
+    lastDeviceId,
+    masterDataVersion,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DeckRow &&
+          other.deckId == this.deckId &&
+          other.name == this.name &&
+          other.memo == this.memo &&
+          other.coverPrintingId == this.coverPrintingId &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt &&
+          other.deletedAt == this.deletedAt &&
+          other.revision == this.revision &&
+          other.lastDeviceId == this.lastDeviceId &&
+          other.masterDataVersion == this.masterDataVersion);
+}
+
+class DecksCompanion extends UpdateCompanion<DeckRow> {
+  final Value<String> deckId;
+  final Value<String> name;
+  final Value<String> memo;
+  final Value<String?> coverPrintingId;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> updatedAt;
+  final Value<DateTime?> deletedAt;
+  final Value<int> revision;
+  final Value<String> lastDeviceId;
+  final Value<int> masterDataVersion;
+  final Value<int> rowid;
+  const DecksCompanion({
+    this.deckId = const Value.absent(),
+    this.name = const Value.absent(),
+    this.memo = const Value.absent(),
+    this.coverPrintingId = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.revision = const Value.absent(),
+    this.lastDeviceId = const Value.absent(),
+    this.masterDataVersion = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  DecksCompanion.insert({
+    required String deckId,
+    required String name,
+    this.memo = const Value.absent(),
+    this.coverPrintingId = const Value.absent(),
+    required DateTime createdAt,
+    required DateTime updatedAt,
+    this.deletedAt = const Value.absent(),
+    this.revision = const Value.absent(),
+    this.lastDeviceId = const Value.absent(),
+    this.masterDataVersion = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : deckId = Value(deckId),
+       name = Value(name),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<DeckRow> custom({
+    Expression<String>? deckId,
+    Expression<String>? name,
+    Expression<String>? memo,
+    Expression<String>? coverPrintingId,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? updatedAt,
+    Expression<DateTime>? deletedAt,
+    Expression<int>? revision,
+    Expression<String>? lastDeviceId,
+    Expression<int>? masterDataVersion,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (deckId != null) 'deck_id': deckId,
+      if (name != null) 'name': name,
+      if (memo != null) 'memo': memo,
+      if (coverPrintingId != null) 'cover_printing_id': coverPrintingId,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+      if (revision != null) 'revision': revision,
+      if (lastDeviceId != null) 'last_device_id': lastDeviceId,
+      if (masterDataVersion != null) 'master_data_version': masterDataVersion,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  DecksCompanion copyWith({
+    Value<String>? deckId,
+    Value<String>? name,
+    Value<String>? memo,
+    Value<String?>? coverPrintingId,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? updatedAt,
+    Value<DateTime?>? deletedAt,
+    Value<int>? revision,
+    Value<String>? lastDeviceId,
+    Value<int>? masterDataVersion,
+    Value<int>? rowid,
+  }) {
+    return DecksCompanion(
+      deckId: deckId ?? this.deckId,
+      name: name ?? this.name,
+      memo: memo ?? this.memo,
+      coverPrintingId: coverPrintingId ?? this.coverPrintingId,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      deletedAt: deletedAt ?? this.deletedAt,
+      revision: revision ?? this.revision,
+      lastDeviceId: lastDeviceId ?? this.lastDeviceId,
+      masterDataVersion: masterDataVersion ?? this.masterDataVersion,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (deckId.present) {
+      map['deck_id'] = Variable<String>(deckId.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (memo.present) {
+      map['memo'] = Variable<String>(memo.value);
+    }
+    if (coverPrintingId.present) {
+      map['cover_printing_id'] = Variable<String>(coverPrintingId.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
+    if (revision.present) {
+      map['revision'] = Variable<int>(revision.value);
+    }
+    if (lastDeviceId.present) {
+      map['last_device_id'] = Variable<String>(lastDeviceId.value);
+    }
+    if (masterDataVersion.present) {
+      map['master_data_version'] = Variable<int>(masterDataVersion.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DecksCompanion(')
+          ..write('deckId: $deckId, ')
+          ..write('name: $name, ')
+          ..write('memo: $memo, ')
+          ..write('coverPrintingId: $coverPrintingId, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('revision: $revision, ')
+          ..write('lastDeviceId: $lastDeviceId, ')
+          ..write('masterDataVersion: $masterDataVersion, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $DeckTagsTable extends DeckTags
+    with TableInfo<$DeckTagsTable, DeckTagRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DeckTagsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _deckIdMeta = const VerificationMeta('deckId');
+  @override
+  late final GeneratedColumn<String> deckId = GeneratedColumn<String>(
+    'deck_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES decks (deck_id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _ordMeta = const VerificationMeta('ord');
+  @override
+  late final GeneratedColumn<int> ord = GeneratedColumn<int>(
+    'ord',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _tagMeta = const VerificationMeta('tag');
+  @override
+  late final GeneratedColumn<String> tag = GeneratedColumn<String>(
+    'tag',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [deckId, ord, tag];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'deck_tags';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<DeckTagRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('deck_id')) {
+      context.handle(
+        _deckIdMeta,
+        deckId.isAcceptableOrUnknown(data['deck_id']!, _deckIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_deckIdMeta);
+    }
+    if (data.containsKey('ord')) {
+      context.handle(
+        _ordMeta,
+        ord.isAcceptableOrUnknown(data['ord']!, _ordMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_ordMeta);
+    }
+    if (data.containsKey('tag')) {
+      context.handle(
+        _tagMeta,
+        tag.isAcceptableOrUnknown(data['tag']!, _tagMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_tagMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {deckId, ord};
+  @override
+  DeckTagRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DeckTagRow(
+      deckId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}deck_id'],
+      )!,
+      ord: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}ord'],
+      )!,
+      tag: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}tag'],
+      )!,
+    );
+  }
+
+  @override
+  $DeckTagsTable createAlias(String alias) {
+    return $DeckTagsTable(attachedDatabase, alias);
+  }
+}
+
+class DeckTagRow extends DataClass implements Insertable<DeckTagRow> {
+  final String deckId;
+  final int ord;
+  final String tag;
+  const DeckTagRow({
+    required this.deckId,
+    required this.ord,
+    required this.tag,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['deck_id'] = Variable<String>(deckId);
+    map['ord'] = Variable<int>(ord);
+    map['tag'] = Variable<String>(tag);
+    return map;
+  }
+
+  DeckTagsCompanion toCompanion(bool nullToAbsent) {
+    return DeckTagsCompanion(
+      deckId: Value(deckId),
+      ord: Value(ord),
+      tag: Value(tag),
+    );
+  }
+
+  factory DeckTagRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DeckTagRow(
+      deckId: serializer.fromJson<String>(json['deckId']),
+      ord: serializer.fromJson<int>(json['ord']),
+      tag: serializer.fromJson<String>(json['tag']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'deckId': serializer.toJson<String>(deckId),
+      'ord': serializer.toJson<int>(ord),
+      'tag': serializer.toJson<String>(tag),
+    };
+  }
+
+  DeckTagRow copyWith({String? deckId, int? ord, String? tag}) => DeckTagRow(
+    deckId: deckId ?? this.deckId,
+    ord: ord ?? this.ord,
+    tag: tag ?? this.tag,
+  );
+  DeckTagRow copyWithCompanion(DeckTagsCompanion data) {
+    return DeckTagRow(
+      deckId: data.deckId.present ? data.deckId.value : this.deckId,
+      ord: data.ord.present ? data.ord.value : this.ord,
+      tag: data.tag.present ? data.tag.value : this.tag,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DeckTagRow(')
+          ..write('deckId: $deckId, ')
+          ..write('ord: $ord, ')
+          ..write('tag: $tag')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(deckId, ord, tag);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DeckTagRow &&
+          other.deckId == this.deckId &&
+          other.ord == this.ord &&
+          other.tag == this.tag);
+}
+
+class DeckTagsCompanion extends UpdateCompanion<DeckTagRow> {
+  final Value<String> deckId;
+  final Value<int> ord;
+  final Value<String> tag;
+  final Value<int> rowid;
+  const DeckTagsCompanion({
+    this.deckId = const Value.absent(),
+    this.ord = const Value.absent(),
+    this.tag = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  DeckTagsCompanion.insert({
+    required String deckId,
+    required int ord,
+    required String tag,
+    this.rowid = const Value.absent(),
+  }) : deckId = Value(deckId),
+       ord = Value(ord),
+       tag = Value(tag);
+  static Insertable<DeckTagRow> custom({
+    Expression<String>? deckId,
+    Expression<int>? ord,
+    Expression<String>? tag,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (deckId != null) 'deck_id': deckId,
+      if (ord != null) 'ord': ord,
+      if (tag != null) 'tag': tag,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  DeckTagsCompanion copyWith({
+    Value<String>? deckId,
+    Value<int>? ord,
+    Value<String>? tag,
+    Value<int>? rowid,
+  }) {
+    return DeckTagsCompanion(
+      deckId: deckId ?? this.deckId,
+      ord: ord ?? this.ord,
+      tag: tag ?? this.tag,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (deckId.present) {
+      map['deck_id'] = Variable<String>(deckId.value);
+    }
+    if (ord.present) {
+      map['ord'] = Variable<int>(ord.value);
+    }
+    if (tag.present) {
+      map['tag'] = Variable<String>(tag.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DeckTagsCompanion(')
+          ..write('deckId: $deckId, ')
+          ..write('ord: $ord, ')
+          ..write('tag: $tag, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $DeckEntriesTable extends DeckEntries
+    with TableInfo<$DeckEntriesTable, DeckEntryRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DeckEntriesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _deckIdMeta = const VerificationMeta('deckId');
+  @override
+  late final GeneratedColumn<String> deckId = GeneratedColumn<String>(
+    'deck_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES decks (deck_id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _printingIdMeta = const VerificationMeta(
+    'printingId',
+  );
+  @override
+  late final GeneratedColumn<String> printingId = GeneratedColumn<String>(
+    'printing_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _countMeta = const VerificationMeta('count');
+  @override
+  late final GeneratedColumn<int> count = GeneratedColumn<int>(
+    'count',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [deckId, printingId, count];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'deck_entries';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<DeckEntryRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('deck_id')) {
+      context.handle(
+        _deckIdMeta,
+        deckId.isAcceptableOrUnknown(data['deck_id']!, _deckIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_deckIdMeta);
+    }
+    if (data.containsKey('printing_id')) {
+      context.handle(
+        _printingIdMeta,
+        printingId.isAcceptableOrUnknown(data['printing_id']!, _printingIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_printingIdMeta);
+    }
+    if (data.containsKey('count')) {
+      context.handle(
+        _countMeta,
+        count.isAcceptableOrUnknown(data['count']!, _countMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_countMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {deckId, printingId};
+  @override
+  DeckEntryRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DeckEntryRow(
+      deckId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}deck_id'],
+      )!,
+      printingId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}printing_id'],
+      )!,
+      count: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}count'],
+      )!,
+    );
+  }
+
+  @override
+  $DeckEntriesTable createAlias(String alias) {
+    return $DeckEntriesTable(attachedDatabase, alias);
+  }
+}
+
+class DeckEntryRow extends DataClass implements Insertable<DeckEntryRow> {
+  final String deckId;
+  final String printingId;
+  final int count;
+  const DeckEntryRow({
+    required this.deckId,
+    required this.printingId,
+    required this.count,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['deck_id'] = Variable<String>(deckId);
+    map['printing_id'] = Variable<String>(printingId);
+    map['count'] = Variable<int>(count);
+    return map;
+  }
+
+  DeckEntriesCompanion toCompanion(bool nullToAbsent) {
+    return DeckEntriesCompanion(
+      deckId: Value(deckId),
+      printingId: Value(printingId),
+      count: Value(count),
+    );
+  }
+
+  factory DeckEntryRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DeckEntryRow(
+      deckId: serializer.fromJson<String>(json['deckId']),
+      printingId: serializer.fromJson<String>(json['printingId']),
+      count: serializer.fromJson<int>(json['count']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'deckId': serializer.toJson<String>(deckId),
+      'printingId': serializer.toJson<String>(printingId),
+      'count': serializer.toJson<int>(count),
+    };
+  }
+
+  DeckEntryRow copyWith({String? deckId, String? printingId, int? count}) =>
+      DeckEntryRow(
+        deckId: deckId ?? this.deckId,
+        printingId: printingId ?? this.printingId,
+        count: count ?? this.count,
+      );
+  DeckEntryRow copyWithCompanion(DeckEntriesCompanion data) {
+    return DeckEntryRow(
+      deckId: data.deckId.present ? data.deckId.value : this.deckId,
+      printingId: data.printingId.present
+          ? data.printingId.value
+          : this.printingId,
+      count: data.count.present ? data.count.value : this.count,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DeckEntryRow(')
+          ..write('deckId: $deckId, ')
+          ..write('printingId: $printingId, ')
+          ..write('count: $count')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(deckId, printingId, count);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DeckEntryRow &&
+          other.deckId == this.deckId &&
+          other.printingId == this.printingId &&
+          other.count == this.count);
+}
+
+class DeckEntriesCompanion extends UpdateCompanion<DeckEntryRow> {
+  final Value<String> deckId;
+  final Value<String> printingId;
+  final Value<int> count;
+  final Value<int> rowid;
+  const DeckEntriesCompanion({
+    this.deckId = const Value.absent(),
+    this.printingId = const Value.absent(),
+    this.count = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  DeckEntriesCompanion.insert({
+    required String deckId,
+    required String printingId,
+    required int count,
+    this.rowid = const Value.absent(),
+  }) : deckId = Value(deckId),
+       printingId = Value(printingId),
+       count = Value(count);
+  static Insertable<DeckEntryRow> custom({
+    Expression<String>? deckId,
+    Expression<String>? printingId,
+    Expression<int>? count,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (deckId != null) 'deck_id': deckId,
+      if (printingId != null) 'printing_id': printingId,
+      if (count != null) 'count': count,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  DeckEntriesCompanion copyWith({
+    Value<String>? deckId,
+    Value<String>? printingId,
+    Value<int>? count,
+    Value<int>? rowid,
+  }) {
+    return DeckEntriesCompanion(
+      deckId: deckId ?? this.deckId,
+      printingId: printingId ?? this.printingId,
+      count: count ?? this.count,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (deckId.present) {
+      map['deck_id'] = Variable<String>(deckId.value);
+    }
+    if (printingId.present) {
+      map['printing_id'] = Variable<String>(printingId.value);
+    }
+    if (count.present) {
+      map['count'] = Variable<int>(count.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DeckEntriesCompanion(')
+          ..write('deckId: $deckId, ')
+          ..write('printingId: $printingId, ')
+          ..write('count: $count, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $MasterStatesTable extends MasterStates
     with TableInfo<$MasterStatesTable, MasterStateRow> {
   @override
@@ -5276,6 +6429,9 @@ abstract class _$LovecaDatabase extends GeneratedDatabase {
   late final $FaqsTable faqs = $FaqsTable(this);
   late final $FaqPrintingsTable faqPrintings = $FaqPrintingsTable(this);
   late final $RuleConfigsTable ruleConfigs = $RuleConfigsTable(this);
+  late final $DecksTable decks = $DecksTable(this);
+  late final $DeckTagsTable deckTags = $DeckTagsTable(this);
+  late final $DeckEntriesTable deckEntries = $DeckEntriesTable(this);
   late final $MasterStatesTable masterStates = $MasterStatesTable(this);
   late final $MasterFilesTable masterFiles = $MasterFilesTable(this);
   late final $ImportIssuesTable importIssues = $ImportIssuesTable(this);
@@ -5307,6 +6463,10 @@ abstract class _$LovecaDatabase extends GeneratedDatabase {
     'idx_faq_printings_printing',
     'CREATE INDEX idx_faq_printings_printing ON faq_printings (printing_id)',
   );
+  late final Index idxDeckEntriesPrinting = Index(
+    'idx_deck_entries_printing',
+    'CREATE INDEX idx_deck_entries_printing ON deck_entries (printing_id)',
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -5322,6 +6482,9 @@ abstract class _$LovecaDatabase extends GeneratedDatabase {
     faqs,
     faqPrintings,
     ruleConfigs,
+    decks,
+    deckTags,
+    deckEntries,
     masterStates,
     masterFiles,
     importIssues,
@@ -5332,6 +6495,7 @@ abstract class _$LovecaDatabase extends GeneratedDatabase {
     idxPrintingsExpansion,
     idxPrintingsIsParallel,
     idxFaqPrintingsPrinting,
+    idxDeckEntriesPrinting,
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
@@ -5378,6 +6542,20 @@ abstract class _$LovecaDatabase extends GeneratedDatabase {
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('faq_printings', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'decks',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('deck_tags', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'decks',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('deck_entries', kind: UpdateKind.delete)],
     ),
   ]);
 }
@@ -8881,6 +10059,1060 @@ typedef $$RuleConfigsTableProcessedTableManager =
       RuleConfigRow,
       PrefetchHooks Function()
     >;
+typedef $$DecksTableCreateCompanionBuilder =
+    DecksCompanion Function({
+      required String deckId,
+      required String name,
+      Value<String> memo,
+      Value<String?> coverPrintingId,
+      required DateTime createdAt,
+      required DateTime updatedAt,
+      Value<DateTime?> deletedAt,
+      Value<int> revision,
+      Value<String> lastDeviceId,
+      Value<int> masterDataVersion,
+      Value<int> rowid,
+    });
+typedef $$DecksTableUpdateCompanionBuilder =
+    DecksCompanion Function({
+      Value<String> deckId,
+      Value<String> name,
+      Value<String> memo,
+      Value<String?> coverPrintingId,
+      Value<DateTime> createdAt,
+      Value<DateTime> updatedAt,
+      Value<DateTime?> deletedAt,
+      Value<int> revision,
+      Value<String> lastDeviceId,
+      Value<int> masterDataVersion,
+      Value<int> rowid,
+    });
+
+final class $$DecksTableReferences
+    extends BaseReferences<_$LovecaDatabase, $DecksTable, DeckRow> {
+  $$DecksTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static MultiTypedResultKey<$DeckTagsTable, List<DeckTagRow>>
+  _deckTagsRefsTable(_$LovecaDatabase db) => MultiTypedResultKey.fromTable(
+    db.deckTags,
+    aliasName: 'decks__deck_id__deck_tags__deck_id',
+  );
+
+  $$DeckTagsTableProcessedTableManager get deckTagsRefs {
+    final manager = $$DeckTagsTableTableManager($_db, $_db.deckTags).filter(
+      (f) => f.deckId.deckId.sqlEquals($_itemColumn<String>('deck_id')!),
+    );
+
+    final cache = $_typedResult.readTableOrNull(_deckTagsRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$DeckEntriesTable, List<DeckEntryRow>>
+  _deckEntriesRefsTable(_$LovecaDatabase db) => MultiTypedResultKey.fromTable(
+    db.deckEntries,
+    aliasName: 'decks__deck_id__deck_entries__deck_id',
+  );
+
+  $$DeckEntriesTableProcessedTableManager get deckEntriesRefs {
+    final manager = $$DeckEntriesTableTableManager($_db, $_db.deckEntries)
+        .filter(
+          (f) => f.deckId.deckId.sqlEquals($_itemColumn<String>('deck_id')!),
+        );
+
+    final cache = $_typedResult.readTableOrNull(_deckEntriesRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
+class $$DecksTableFilterComposer
+    extends Composer<_$LovecaDatabase, $DecksTable> {
+  $$DecksTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get deckId => $composableBuilder(
+    column: $table.deckId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get memo => $composableBuilder(
+    column: $table.memo,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get coverPrintingId => $composableBuilder(
+    column: $table.coverPrintingId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get revision => $composableBuilder(
+    column: $table.revision,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get lastDeviceId => $composableBuilder(
+    column: $table.lastDeviceId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get masterDataVersion => $composableBuilder(
+    column: $table.masterDataVersion,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  Expression<bool> deckTagsRefs(
+    Expression<bool> Function($$DeckTagsTableFilterComposer f) f,
+  ) {
+    final $$DeckTagsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.deckId,
+      referencedTable: $db.deckTags,
+      getReferencedColumn: (t) => t.deckId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DeckTagsTableFilterComposer(
+            $db: $db,
+            $table: $db.deckTags,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> deckEntriesRefs(
+    Expression<bool> Function($$DeckEntriesTableFilterComposer f) f,
+  ) {
+    final $$DeckEntriesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.deckId,
+      referencedTable: $db.deckEntries,
+      getReferencedColumn: (t) => t.deckId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DeckEntriesTableFilterComposer(
+            $db: $db,
+            $table: $db.deckEntries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$DecksTableOrderingComposer
+    extends Composer<_$LovecaDatabase, $DecksTable> {
+  $$DecksTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get deckId => $composableBuilder(
+    column: $table.deckId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get memo => $composableBuilder(
+    column: $table.memo,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get coverPrintingId => $composableBuilder(
+    column: $table.coverPrintingId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get revision => $composableBuilder(
+    column: $table.revision,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get lastDeviceId => $composableBuilder(
+    column: $table.lastDeviceId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get masterDataVersion => $composableBuilder(
+    column: $table.masterDataVersion,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$DecksTableAnnotationComposer
+    extends Composer<_$LovecaDatabase, $DecksTable> {
+  $$DecksTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get deckId =>
+      $composableBuilder(column: $table.deckId, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get memo =>
+      $composableBuilder(column: $table.memo, builder: (column) => column);
+
+  GeneratedColumn<String> get coverPrintingId => $composableBuilder(
+    column: $table.coverPrintingId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+
+  GeneratedColumn<int> get revision =>
+      $composableBuilder(column: $table.revision, builder: (column) => column);
+
+  GeneratedColumn<String> get lastDeviceId => $composableBuilder(
+    column: $table.lastDeviceId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get masterDataVersion => $composableBuilder(
+    column: $table.masterDataVersion,
+    builder: (column) => column,
+  );
+
+  Expression<T> deckTagsRefs<T extends Object>(
+    Expression<T> Function($$DeckTagsTableAnnotationComposer a) f,
+  ) {
+    final $$DeckTagsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.deckId,
+      referencedTable: $db.deckTags,
+      getReferencedColumn: (t) => t.deckId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DeckTagsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.deckTags,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<T> deckEntriesRefs<T extends Object>(
+    Expression<T> Function($$DeckEntriesTableAnnotationComposer a) f,
+  ) {
+    final $$DeckEntriesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.deckId,
+      referencedTable: $db.deckEntries,
+      getReferencedColumn: (t) => t.deckId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DeckEntriesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.deckEntries,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$DecksTableTableManager
+    extends
+        RootTableManager<
+          _$LovecaDatabase,
+          $DecksTable,
+          DeckRow,
+          $$DecksTableFilterComposer,
+          $$DecksTableOrderingComposer,
+          $$DecksTableAnnotationComposer,
+          $$DecksTableCreateCompanionBuilder,
+          $$DecksTableUpdateCompanionBuilder,
+          (DeckRow, $$DecksTableReferences),
+          DeckRow,
+          PrefetchHooks Function({bool deckTagsRefs, bool deckEntriesRefs})
+        > {
+  $$DecksTableTableManager(_$LovecaDatabase db, $DecksTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DecksTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DecksTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$DecksTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> deckId = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<String> memo = const Value.absent(),
+                Value<String?> coverPrintingId = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<DateTime?> deletedAt = const Value.absent(),
+                Value<int> revision = const Value.absent(),
+                Value<String> lastDeviceId = const Value.absent(),
+                Value<int> masterDataVersion = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => DecksCompanion(
+                deckId: deckId,
+                name: name,
+                memo: memo,
+                coverPrintingId: coverPrintingId,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                deletedAt: deletedAt,
+                revision: revision,
+                lastDeviceId: lastDeviceId,
+                masterDataVersion: masterDataVersion,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String deckId,
+                required String name,
+                Value<String> memo = const Value.absent(),
+                Value<String?> coverPrintingId = const Value.absent(),
+                required DateTime createdAt,
+                required DateTime updatedAt,
+                Value<DateTime?> deletedAt = const Value.absent(),
+                Value<int> revision = const Value.absent(),
+                Value<String> lastDeviceId = const Value.absent(),
+                Value<int> masterDataVersion = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => DecksCompanion.insert(
+                deckId: deckId,
+                name: name,
+                memo: memo,
+                coverPrintingId: coverPrintingId,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                deletedAt: deletedAt,
+                revision: revision,
+                lastDeviceId: lastDeviceId,
+                masterDataVersion: masterDataVersion,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) =>
+                    (e.readTable(table), $$DecksTableReferences(db, table, e)),
+              )
+              .toList(),
+          prefetchHooksCallback:
+              ({deckTagsRefs = false, deckEntriesRefs = false}) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (deckTagsRefs) db.deckTags,
+                    if (deckEntriesRefs) db.deckEntries,
+                  ],
+                  addJoins: null,
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (deckTagsRefs)
+                        await $_getPrefetchedData<
+                          DeckRow,
+                          $DecksTable,
+                          DeckTagRow
+                        >(
+                          currentTable: table,
+                          referencedTable: $$DecksTableReferences
+                              ._deckTagsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$DecksTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).deckTagsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.deckId == item.deckId,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (deckEntriesRefs)
+                        await $_getPrefetchedData<
+                          DeckRow,
+                          $DecksTable,
+                          DeckEntryRow
+                        >(
+                          currentTable: table,
+                          referencedTable: $$DecksTableReferences
+                              ._deckEntriesRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$DecksTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).deckEntriesRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.deckId == item.deckId,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
+                  },
+                );
+              },
+        ),
+      );
+}
+
+typedef $$DecksTableProcessedTableManager =
+    ProcessedTableManager<
+      _$LovecaDatabase,
+      $DecksTable,
+      DeckRow,
+      $$DecksTableFilterComposer,
+      $$DecksTableOrderingComposer,
+      $$DecksTableAnnotationComposer,
+      $$DecksTableCreateCompanionBuilder,
+      $$DecksTableUpdateCompanionBuilder,
+      (DeckRow, $$DecksTableReferences),
+      DeckRow,
+      PrefetchHooks Function({bool deckTagsRefs, bool deckEntriesRefs})
+    >;
+typedef $$DeckTagsTableCreateCompanionBuilder =
+    DeckTagsCompanion Function({
+      required String deckId,
+      required int ord,
+      required String tag,
+      Value<int> rowid,
+    });
+typedef $$DeckTagsTableUpdateCompanionBuilder =
+    DeckTagsCompanion Function({
+      Value<String> deckId,
+      Value<int> ord,
+      Value<String> tag,
+      Value<int> rowid,
+    });
+
+final class $$DeckTagsTableReferences
+    extends BaseReferences<_$LovecaDatabase, $DeckTagsTable, DeckTagRow> {
+  $$DeckTagsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $DecksTable _deckIdTable(_$LovecaDatabase db) =>
+      db.decks.createAlias('deck_tags__deck_id__decks__deck_id');
+
+  $$DecksTableProcessedTableManager get deckId {
+    final $_column = $_itemColumn<String>('deck_id')!;
+
+    final manager = $$DecksTableTableManager(
+      $_db,
+      $_db.decks,
+    ).filter((f) => f.deckId.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_deckIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$DeckTagsTableFilterComposer
+    extends Composer<_$LovecaDatabase, $DeckTagsTable> {
+  $$DeckTagsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get ord => $composableBuilder(
+    column: $table.ord,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get tag => $composableBuilder(
+    column: $table.tag,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$DecksTableFilterComposer get deckId {
+    final $$DecksTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.deckId,
+      referencedTable: $db.decks,
+      getReferencedColumn: (t) => t.deckId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DecksTableFilterComposer(
+            $db: $db,
+            $table: $db.decks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$DeckTagsTableOrderingComposer
+    extends Composer<_$LovecaDatabase, $DeckTagsTable> {
+  $$DeckTagsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get ord => $composableBuilder(
+    column: $table.ord,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get tag => $composableBuilder(
+    column: $table.tag,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$DecksTableOrderingComposer get deckId {
+    final $$DecksTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.deckId,
+      referencedTable: $db.decks,
+      getReferencedColumn: (t) => t.deckId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DecksTableOrderingComposer(
+            $db: $db,
+            $table: $db.decks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$DeckTagsTableAnnotationComposer
+    extends Composer<_$LovecaDatabase, $DeckTagsTable> {
+  $$DeckTagsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get ord =>
+      $composableBuilder(column: $table.ord, builder: (column) => column);
+
+  GeneratedColumn<String> get tag =>
+      $composableBuilder(column: $table.tag, builder: (column) => column);
+
+  $$DecksTableAnnotationComposer get deckId {
+    final $$DecksTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.deckId,
+      referencedTable: $db.decks,
+      getReferencedColumn: (t) => t.deckId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DecksTableAnnotationComposer(
+            $db: $db,
+            $table: $db.decks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$DeckTagsTableTableManager
+    extends
+        RootTableManager<
+          _$LovecaDatabase,
+          $DeckTagsTable,
+          DeckTagRow,
+          $$DeckTagsTableFilterComposer,
+          $$DeckTagsTableOrderingComposer,
+          $$DeckTagsTableAnnotationComposer,
+          $$DeckTagsTableCreateCompanionBuilder,
+          $$DeckTagsTableUpdateCompanionBuilder,
+          (DeckTagRow, $$DeckTagsTableReferences),
+          DeckTagRow,
+          PrefetchHooks Function({bool deckId})
+        > {
+  $$DeckTagsTableTableManager(_$LovecaDatabase db, $DeckTagsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DeckTagsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DeckTagsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$DeckTagsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> deckId = const Value.absent(),
+                Value<int> ord = const Value.absent(),
+                Value<String> tag = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => DeckTagsCompanion(
+                deckId: deckId,
+                ord: ord,
+                tag: tag,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String deckId,
+                required int ord,
+                required String tag,
+                Value<int> rowid = const Value.absent(),
+              }) => DeckTagsCompanion.insert(
+                deckId: deckId,
+                ord: ord,
+                tag: tag,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$DeckTagsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({deckId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (deckId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.deckId,
+                                referencedTable: $$DeckTagsTableReferences
+                                    ._deckIdTable(db),
+                                referencedColumn: $$DeckTagsTableReferences
+                                    ._deckIdTable(db)
+                                    .deckId,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$DeckTagsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$LovecaDatabase,
+      $DeckTagsTable,
+      DeckTagRow,
+      $$DeckTagsTableFilterComposer,
+      $$DeckTagsTableOrderingComposer,
+      $$DeckTagsTableAnnotationComposer,
+      $$DeckTagsTableCreateCompanionBuilder,
+      $$DeckTagsTableUpdateCompanionBuilder,
+      (DeckTagRow, $$DeckTagsTableReferences),
+      DeckTagRow,
+      PrefetchHooks Function({bool deckId})
+    >;
+typedef $$DeckEntriesTableCreateCompanionBuilder =
+    DeckEntriesCompanion Function({
+      required String deckId,
+      required String printingId,
+      required int count,
+      Value<int> rowid,
+    });
+typedef $$DeckEntriesTableUpdateCompanionBuilder =
+    DeckEntriesCompanion Function({
+      Value<String> deckId,
+      Value<String> printingId,
+      Value<int> count,
+      Value<int> rowid,
+    });
+
+final class $$DeckEntriesTableReferences
+    extends BaseReferences<_$LovecaDatabase, $DeckEntriesTable, DeckEntryRow> {
+  $$DeckEntriesTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $DecksTable _deckIdTable(_$LovecaDatabase db) =>
+      db.decks.createAlias('deck_entries__deck_id__decks__deck_id');
+
+  $$DecksTableProcessedTableManager get deckId {
+    final $_column = $_itemColumn<String>('deck_id')!;
+
+    final manager = $$DecksTableTableManager(
+      $_db,
+      $_db.decks,
+    ).filter((f) => f.deckId.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_deckIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$DeckEntriesTableFilterComposer
+    extends Composer<_$LovecaDatabase, $DeckEntriesTable> {
+  $$DeckEntriesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get printingId => $composableBuilder(
+    column: $table.printingId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get count => $composableBuilder(
+    column: $table.count,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$DecksTableFilterComposer get deckId {
+    final $$DecksTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.deckId,
+      referencedTable: $db.decks,
+      getReferencedColumn: (t) => t.deckId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DecksTableFilterComposer(
+            $db: $db,
+            $table: $db.decks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$DeckEntriesTableOrderingComposer
+    extends Composer<_$LovecaDatabase, $DeckEntriesTable> {
+  $$DeckEntriesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get printingId => $composableBuilder(
+    column: $table.printingId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get count => $composableBuilder(
+    column: $table.count,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$DecksTableOrderingComposer get deckId {
+    final $$DecksTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.deckId,
+      referencedTable: $db.decks,
+      getReferencedColumn: (t) => t.deckId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DecksTableOrderingComposer(
+            $db: $db,
+            $table: $db.decks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$DeckEntriesTableAnnotationComposer
+    extends Composer<_$LovecaDatabase, $DeckEntriesTable> {
+  $$DeckEntriesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get printingId => $composableBuilder(
+    column: $table.printingId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get count =>
+      $composableBuilder(column: $table.count, builder: (column) => column);
+
+  $$DecksTableAnnotationComposer get deckId {
+    final $$DecksTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.deckId,
+      referencedTable: $db.decks,
+      getReferencedColumn: (t) => t.deckId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$DecksTableAnnotationComposer(
+            $db: $db,
+            $table: $db.decks,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$DeckEntriesTableTableManager
+    extends
+        RootTableManager<
+          _$LovecaDatabase,
+          $DeckEntriesTable,
+          DeckEntryRow,
+          $$DeckEntriesTableFilterComposer,
+          $$DeckEntriesTableOrderingComposer,
+          $$DeckEntriesTableAnnotationComposer,
+          $$DeckEntriesTableCreateCompanionBuilder,
+          $$DeckEntriesTableUpdateCompanionBuilder,
+          (DeckEntryRow, $$DeckEntriesTableReferences),
+          DeckEntryRow,
+          PrefetchHooks Function({bool deckId})
+        > {
+  $$DeckEntriesTableTableManager(_$LovecaDatabase db, $DeckEntriesTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DeckEntriesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DeckEntriesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$DeckEntriesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> deckId = const Value.absent(),
+                Value<String> printingId = const Value.absent(),
+                Value<int> count = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => DeckEntriesCompanion(
+                deckId: deckId,
+                printingId: printingId,
+                count: count,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String deckId,
+                required String printingId,
+                required int count,
+                Value<int> rowid = const Value.absent(),
+              }) => DeckEntriesCompanion.insert(
+                deckId: deckId,
+                printingId: printingId,
+                count: count,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$DeckEntriesTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({deckId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (deckId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.deckId,
+                                referencedTable: $$DeckEntriesTableReferences
+                                    ._deckIdTable(db),
+                                referencedColumn: $$DeckEntriesTableReferences
+                                    ._deckIdTable(db)
+                                    .deckId,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$DeckEntriesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$LovecaDatabase,
+      $DeckEntriesTable,
+      DeckEntryRow,
+      $$DeckEntriesTableFilterComposer,
+      $$DeckEntriesTableOrderingComposer,
+      $$DeckEntriesTableAnnotationComposer,
+      $$DeckEntriesTableCreateCompanionBuilder,
+      $$DeckEntriesTableUpdateCompanionBuilder,
+      (DeckEntryRow, $$DeckEntriesTableReferences),
+      DeckEntryRow,
+      PrefetchHooks Function({bool deckId})
+    >;
 typedef $$MasterStatesTableCreateCompanionBuilder =
     MasterStatesCompanion Function({
       Value<int> id,
@@ -9540,6 +11772,12 @@ class $LovecaDatabaseManager {
       $$FaqPrintingsTableTableManager(_db, _db.faqPrintings);
   $$RuleConfigsTableTableManager get ruleConfigs =>
       $$RuleConfigsTableTableManager(_db, _db.ruleConfigs);
+  $$DecksTableTableManager get decks =>
+      $$DecksTableTableManager(_db, _db.decks);
+  $$DeckTagsTableTableManager get deckTags =>
+      $$DeckTagsTableTableManager(_db, _db.deckTags);
+  $$DeckEntriesTableTableManager get deckEntries =>
+      $$DeckEntriesTableTableManager(_db, _db.deckEntries);
   $$MasterStatesTableTableManager get masterStates =>
       $$MasterStatesTableTableManager(_db, _db.masterStates);
   $$MasterFilesTableTableManager get masterFiles =>
