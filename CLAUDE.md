@@ -193,7 +193,7 @@ FTS5 / trigram つきの SQLite 3.53.4 がバンドルされることを実測�
 |---|---|---|
 | `loveca-data`（Python） | 33 | `python tests/run_all.py` |
 | `loveca-core`（Dart） | 255 | `dart test` |
-| `loveca-db`（Dart） | 115（★skip 0） | `dart test` |
+| `loveca-db`（Dart） | 117（★skip 0） | `dart test` |
 
 （2026-08-23 時点。`loveca-ui` は試作のみでテストを持たない）
 
