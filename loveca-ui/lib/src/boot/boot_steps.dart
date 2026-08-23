@@ -111,18 +111,36 @@ abstract class BootSteps {
   CardImageSource imageSourceFor(MasterImportOutcome importOutcome);
 }
 
-/// dist が無く、DB にもカードが無いときの失敗（決定 D60）。
+/// カタログが空のまま起動しようとしたときの失敗（決定 D60 / 設計メモ §4-6(4)）。
 ///
 /// ★★ 無言で空のカタログを返さない ★★
 /// 空の一覧を出すと「カードが 1 枚も無いデータ」と区別がつかない。
-class DistMissingAndEmptyException implements Exception {
-  const DistMissingAndEmptyException(this.searchedPaths);
+///
+/// ★★ 2026-08-24 訂正 ★★
+/// 当初は「dist 不在 かつ 0 件」だけを止めていたが、それは**特殊形**だった。
+/// 実機で `dist はある が appTooOld で 1 件も取り込まれず 0 件` に落ち、
+/// **成功として通ってしまった。** 見るべきは入口（dist の有無）ではなく
+/// **出口（カタログが空か）**である。
+class EmptyCatalogException implements Exception {
+  const EmptyCatalogException({
+    required this.reason,
+    this.searchedPaths = const [],
+    this.hint,
+  });
 
-  /// ★どこを見て無かったのかを全部持つ。出さないと利用者は直せない。
+  /// なぜ空なのか。★段 3 の結末から決まる。
+  final String reason;
+
+  /// dist を探した場所（決定 D60）。★不在が原因のとき全部持つ。
   final List<String> searchedPaths;
 
+  /// ★実際の値（アプリ版と要求される最小版など）。
+  /// 「アプリが古い」だけでは利用者は直せない。
+  final String? hint;
+
   @override
-  String toString() => 'カードデータが見つかりません';
+  String toString() =>
+      hint == null ? reason : [reason, hint].join(' / ');
 }
 
 /// 本番の 4 段。
@@ -172,6 +190,7 @@ class RealBootSteps implements BootSteps {
       return MasterImportOutcome(
         distMissing: true,
         searchedPaths: located.searched,
+        appVersion: appVersion,
       );
     }
 
@@ -193,10 +212,8 @@ class RealBootSteps implements BootSteps {
     final rows = await catalog.loadListRows();
     final cards = await catalog.cardsByNumber();
 
-    // ★dist が無く、DB にもカードが無いなら停止する（決定 D60）。
-    if (importOutcome.distMissing && cards.isEmpty) {
-      throw DistMissingAndEmptyException(importOutcome.searchedPaths);
-    }
+    // ★★ 出口で見る。カタログが空なら理由を添えて止める（設計メモ §4-6(4)）★★
+    if (cards.isEmpty) throw emptyCatalogFailure(importOutcome);
 
     return MasterCatalog(
       cards: cards,
@@ -212,6 +229,49 @@ class RealBootSteps implements BootSteps {
       LocalDirectoryCardImageSource(
         _distDir == null ? null : Directory('${_distDir!.path}/images'),
       );
+}
+
+/// カタログが空だった理由を段 3 の結末から決める（設計メモ §4-6(4)）。
+///
+/// ★★ 理由には必ず「実際の値」を入れる ★★
+/// 「アプリが古い」だけでは利用者は直せない。
+EmptyCatalogException emptyCatalogFailure(MasterImportOutcome outcome) {
+  if (outcome.distMissing) {
+    return EmptyCatalogException(
+      reason: 'カードデータ（dist）が見つかりません',
+      searchedPaths: outcome.searchedPaths,
+      hint: '環境変数 LOVECA_DIST_DIR で場所を指定できます。',
+    );
+  }
+
+  final result = outcome.result;
+  switch (result?.decision) {
+    case UpdateDecision.appTooOld:
+      return EmptyCatalogException(
+        reason: 'アプリが古いため配信データを取り込めませんでした',
+        // ★実値を出す。これが無いと利用者はどちらを直せばよいか分からない。
+        hint: 'このアプリ: ${outcome.appVersion} / '
+            'データが要求する最小版: ${outcome.remoteMinAppVersion ?? '不明'}',
+      );
+    case UpdateDecision.upToDate:
+      return const EmptyCatalogException(
+        reason: '取り込み済みのはずですがカードがありません',
+        hint: 'master_state の版と実データが食い違っています。'
+            'データベースを削除して作り直してください。',
+      );
+    case UpdateDecision.update:
+      if (result!.hasFailures) {
+        return EmptyCatalogException(
+          reason: '${result.failedPaths.length} 件の商品ファイルを取り込めませんでした',
+          searchedPaths: result.failedPaths,
+        );
+      }
+      return const EmptyCatalogException(
+        reason: '取り込みは成功しましたがカードが 1 件もありません',
+      );
+    case null:
+      return const EmptyCatalogException(reason: 'カードがありません');
+  }
 }
 
 /// 画面が使う道具一式。★`AppScope` が配る。

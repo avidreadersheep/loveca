@@ -6,6 +6,7 @@
 library;
 
 import 'package:flutter/foundation.dart';
+import 'package:loveca_core/loveca_core.dart';
 
 import '../data/clock.dart';
 import '../data/master_catalog.dart';
@@ -121,7 +122,7 @@ class BootController extends Store<BootState> {
         error: error,
         stackTrace: stackTrace,
         searchedPaths: switch (error) {
-          DistMissingAndEmptyException(:final searchedPaths) => searchedPaths,
+          EmptyCatalogException(:final searchedPaths) => searchedPaths,
           _ => const [],
         },
       );
@@ -143,6 +144,25 @@ class BootController extends Store<BootState> {
 
     final result = outcome.result;
     if (result == null) return;
+
+    // ★★ 取り込みが 1 件も行われなかった事実を黙って落とさない ★★
+    // appTooOld / upToDate は例外を投げずに戻る。カタログが空でなければ
+    // 起動は続くので、ここで出さないと「新しい商品が出ているのに増えない」が
+    // 原因不明のまま残る（設計メモ §4-6(4)）。
+    switch (result.decision) {
+      case UpdateDecision.appTooOld:
+        notices.add(BootNotice(
+          'アプリが古いため配信データを取り込めませんでした',
+          // ★実値を出す。これが無いとどちらを直せばよいか分からない。
+          details: [
+            'このアプリ: ${outcome.appVersion}',
+            'データが要求する最小版: ${outcome.remoteMinAppVersion ?? '不明'}',
+          ],
+        ));
+      case UpdateDecision.upToDate:
+      case UpdateDecision.update:
+        break;
+    }
 
     if (result.failedPaths.isNotEmpty) {
       notices.add(BootNotice(

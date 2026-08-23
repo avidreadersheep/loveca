@@ -13,6 +13,7 @@ library;
 import 'package:flutter/material.dart' hide Card;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loveca_core/loveca_core.dart';
+import 'package:loveca_db/loveca_db.dart';
 import 'package:loveca_ui/src/boot/boot_gate.dart';
 import 'package:loveca_ui/src/boot/boot_steps.dart';
 import 'package:loveca_ui/src/data/card_image_source.dart';
@@ -27,6 +28,8 @@ class _FakeSteps implements BootSteps {
     this.distMissing = false,
     this.searchedPaths = const [],
     this.cards = const {},
+    this.decision = UpdateDecision.update,
+    this.minAppVersion = '1.0.0',
   });
 
   final BootStageId? failAt;
@@ -34,6 +37,10 @@ class _FakeSteps implements BootSteps {
   final bool distMissing;
   final List<String> searchedPaths;
   final Map<String, Card> cards;
+
+  /// ★dist はあるが取り込まれない経路（`appTooOld` / `upToDate`）を試すため。
+  final UpdateDecision decision;
+  final String minAppVersion;
 
   void _maybeFail(BootStageId stage) {
     if (failAt == stage) throw error ?? StateError('${stage.name} で失敗');
@@ -51,16 +58,23 @@ class _FakeSteps implements BootSteps {
     return MasterImportOutcome(
       distMissing: distMissing,
       searchedPaths: searchedPaths,
+      appVersion: '0.1.0',
+      remoteMinAppVersion: minAppVersion,
+      result: distMissing
+          ? null
+          : MasterImportResult(
+              decision: decision,
+              dataVersion: 2,
+              dataVersionAdvanced: decision == UpdateDecision.update,
+            ),
     );
   }
 
   @override
   Future<MasterCatalog> loadCatalog(MasterImportOutcome importOutcome) async {
     _maybeFail(BootStageId.catalog);
-    // ★本番と同じ判断: dist が無く DB にもカードが無ければ停止する（決定 D60）。
-    if (importOutcome.distMissing && cards.isEmpty) {
-      throw DistMissingAndEmptyException(importOutcome.searchedPaths);
-    }
+    // ★本番と同じ判断: カタログが空なら理由を添えて止める（設計メモ §4-6(4)）。
+    if (cards.isEmpty) throw emptyCatalogFailure(importOutcome);
     return MasterCatalog(
       cards: cards,
       printings: const {},
@@ -169,7 +183,10 @@ void main() {
 
       // ★段 4 の失敗として出る。
       expect(find.textContaining(BootStageId.catalog.label), findsOneWidget);
-      expect(find.textContaining('カードデータが見つかりません'), findsOneWidget);
+      expect(
+        find.textContaining('カードデータ（dist）が見つかりません'),
+        findsOneWidget,
+      );
 
       // ★★ どこを見て無かったのかが 3 件とも出ること ★★
       expect(find.text('探した場所'), findsOneWidget);
@@ -200,6 +217,57 @@ void main() {
       // ★止めない。前回取り込んだ内容で動く（決定 D39 と同じ考え方）。
       expect(find.text('READY'), findsOneWidget);
       expect(find.textContaining('起動できませんでした'), findsNothing);
+    });
+  });
+
+  group('★★ カタログが空なら止める（2026-08-24 に一般化）★★', () {
+    // ★当初は「dist 不在 かつ 0 件」しか止めていなかった。
+    //   実機で dist はあるのに appTooOld で 0 件になり、成功として通った。
+    testWidgets('dist はあるが appTooOld で 0 件 → 停止し、実値を出す',
+        (tester) async {
+      await _pump(
+        tester,
+        _FakeSteps(decision: UpdateDecision.appTooOld, minAppVersion: '1.0.0'),
+      );
+
+      expect(find.textContaining(BootStageId.catalog.label), findsOneWidget);
+      expect(
+        find.textContaining('アプリが古いため配信データを取り込めませんでした'),
+        findsOneWidget,
+      );
+      // ★★ 実値が出ること。これが無いとどちらを直せばよいか分からない ★★
+      expect(find.textContaining('0.1.0'), findsOneWidget);
+      expect(find.textContaining('1.0.0'), findsOneWidget);
+      expect(find.text('READY'), findsNothing);
+    });
+
+    testWidgets('dist はあるが upToDate で 0 件 → 停止する', (tester) async {
+      await _pump(tester, _FakeSteps(decision: UpdateDecision.upToDate));
+
+      expect(
+        find.textContaining('取り込み済みのはずですがカードがありません'),
+        findsOneWidget,
+      );
+      expect(find.text('READY'), findsNothing);
+    });
+
+    testWidgets('★appTooOld でも cards があれば続行し、警告を出す', (tester) async {
+      await _pump(
+        tester,
+        _FakeSteps(
+          decision: UpdateDecision.appTooOld,
+          cards: {
+            'X-1': const Card(
+              cardNumber: 'X-1',
+              name: 'テスト',
+              cardType: CardType.member,
+            ),
+          },
+        ),
+      );
+
+      // ★止めない。ただし取り込まれなかった事実は必ず出す。
+      expect(find.text('READY'), findsOneWidget);
     });
   });
 

@@ -147,11 +147,6 @@ class _BootFailure extends StatelessWidget {
                         style: theme.textTheme.bodySmall,
                       ),
                     ),
-                  const SizedBox(height: 12),
-                  SelectableText(
-                    '環境変数 LOVECA_DIST_DIR で場所を指定できます。',
-                    style: theme.textTheme.bodySmall,
-                  ),
                 ],
               ],
             ),
