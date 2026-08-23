@@ -10,6 +10,14 @@ import 'package:loveca_core/loveca_core.dart';
 
 import 'enums.dart';
 
+/// 単一行テーブル（`rule_configs` / `master_states`）の行 ID。
+///
+/// ★INSERT で必ず明示すること★
+/// `INTEGER NOT NULL PRIMARY KEY` は SQLite では rowid の別名になるため、
+/// 列を省略すると `DEFAULT 0` ではなく**自動採番**が入る。
+/// 単一行のつもりが 2 行目・3 行目が生まれ、`WHERE id = 0` が何も返さなくなる。
+const int singletonRowId = 0;
+
 // ---------------------------------------------------------------------------
 // カードマスタ
 // ---------------------------------------------------------------------------

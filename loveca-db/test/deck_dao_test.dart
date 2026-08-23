@@ -1,6 +1,7 @@
 /// デッキの保存・区分・検証の検証.
 library;
 
+import 'package:drift/drift.dart' show Value;
 import 'package:loveca_core/loveca_core.dart';
 import 'package:loveca_db/loveca_db.dart';
 import 'package:loveca_db/native.dart';
@@ -264,6 +265,7 @@ void main() {
     test('配信された ruleConfig を使う', () async {
       await db.into(db.ruleConfigs).insertOnConflictUpdate(
             RuleConfigsCompanion.insert(
+              id: const Value(singletonRowId),
               mainDeckSize: 60,
               memberCount: 48,
               liveCount: 12,

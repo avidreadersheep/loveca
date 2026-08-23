@@ -11,6 +11,7 @@ import 'package:drift/drift.dart';
 import 'package:loveca_core/loveca_core.dart';
 
 import '../schema/database.dart';
+import '../schema/tables.dart';
 import 'card_dao.dart';
 
 /// ★DB 層は日時を UTC に正規化する★
@@ -254,7 +255,8 @@ class DeckDao {
   /// ★定数にしない★
   /// 6.1.2 により構築条件を置換するカードが存在しうる。
   Future<RuleConfig> ruleConfig() async {
-    final row = await (db.select(db.ruleConfigs)..where((r) => r.id.equals(0)))
+    final row = await (db.select(db.ruleConfigs)
+          ..where((r) => r.id.equals(singletonRowId)))
         .getSingleOrNull();
     if (row == null) return RuleConfig.standard;
     return RuleConfig(
