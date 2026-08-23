@@ -1,0 +1,33 @@
+name: loveca_ui
+description: ラブカ シミュレーターの UI 層（Flutter / Windows デスクトップ）。
+publish_to: 'none'
+version: 0.1.0
+
+environment:
+  sdk: ^3.11.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # ドメイン層と DB 層。どちらも Flutter 非依存のまま使う（CLAUDE.md §1 / §2）。
+  loveca_core:
+    path: ../loveca-core
+  loveca_db:
+    path: ../loveca-db
+
+  # ★spike が QueryExecutor を自前で組み立てるために要る。
+  #   loveca_db の native.dart は UI isolate 実行の openFileExecutor しか出していないので、
+  #   別 isolate 版（NativeDatabase.createInBackground）は呼び出し側で作る。
+  #   loveca_db は変更しない。
+  drift: ^2.34.3
+
+  path: ^1.9.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
