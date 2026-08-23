@@ -127,6 +127,29 @@ void main() {
       expect(rows.read<int>('c'), 19);
     }, timeout: const Timeout(Duration(minutes: 3)));
 
+    // ★決定 D50 の回帰テスト★
+    // 既定が 500 だった頃、この語は 1,034 種に当たるのに 500 種しか返らず、
+    // 落ちた 534 種は戻り値に何の痕跡も残していなかった。
+    test('既定の上限で実データが切り捨てられない', () async {
+      if (_skipIfMissing()) return;
+      await importRealDist();
+
+      // 長音記号。実データで最も広く当たる語。
+      final result = await CardSearchDao(db).search('ー');
+      expect(result.mode, CardSearchMode.likeFallback);
+      expect(result.length, 1034);
+      expect(result.truncated, isFalse);
+    }, timeout: const Timeout(Duration(minutes: 3)));
+
+    test('★上限で切ったときは黙らず truncated を立てる', () async {
+      if (_skipIfMissing()) return;
+      await importRealDist();
+
+      final capped = await CardSearchDao(db).search('ー', limit: 500);
+      expect(capped.length, 500);
+      expect(capped.truncated, isTrue);
+    }, timeout: const Timeout(Duration(minutes: 3)));
+
     test('検索索引がカード件数と一致する', () async {
       if (_skipIfMissing()) return;
       await importRealDist();

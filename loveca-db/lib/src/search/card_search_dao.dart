@@ -55,10 +55,26 @@ enum CardSearchMode {
 }
 
 class CardSearchResult {
-  const CardSearchResult({required this.cardNumbers, required this.mode});
+  const CardSearchResult({
+    required this.cardNumbers,
+    required this.mode,
+    this.truncated = false,
+  });
 
   final List<String> cardNumbers;
   final CardSearchMode mode;
+
+  /// ★上限に達して結果が切り捨てられたか（決定 D50）★
+  ///
+  /// これが無いと、呼び出し側は「件数が上限とちょうど同じ」ことしか見られず、
+  /// **上限で切られたのか、たまたまその件数だったのかを区別できない。**
+  /// 実データで `ー` は 1,708 種中 1,034 種に当たるため、
+  /// 既定が 500 だった頃は 534 種が何の痕跡も残さず落ちていた。
+  ///
+  /// 黙って落とすのは A-3（数字なし表記を 59 種で無言に落としていた）と
+  /// 同じ失敗の型であり、[CardSearchMode.likeFallback] で
+  /// 「黙って 0 件を返さない」ようにしているのと同じ理由でこれが要る。
+  final bool truncated;
 
   bool get isEmpty => cardNumbers.isEmpty;
   int get length => cardNumbers.length;
@@ -197,7 +213,18 @@ class CardSearchDao {
   ///
   /// 戻り値は cardNumber の一覧。刷りへの展開は呼び出し側で行う
   /// （パラレル表示の ON/OFF は刷り単位の判断なので検索の責務ではない）。
-  Future<CardSearchResult> search(String query, {int limit = 500}) async {
+  /// 上限の既定値（決定 D50）。
+  ///
+  /// ★実データの全カード数（1,708 種）を上回る値にしてある★
+  /// 既定が 500 だった頃は `ー` で 1,034 種中 534 種が黙って落ちていた。
+  /// 上限そのものは歯止めとして残す。撤廃すると、将来データが増えたときに
+  /// 呼び出し側が全件を受け取る前提になってしまう。
+  static const int defaultLimit = 2000;
+
+  Future<CardSearchResult> search(
+    String query, {
+    int limit = defaultLimit,
+  }) async {
     final folded = fold(query.trim());
     if (folded.isEmpty) {
       return const CardSearchResult(
@@ -213,16 +240,33 @@ class CardSearchDao {
       'ORDER BY rank LIMIT ?',
       variables: [
         Variable<String>(_asFts5Phrase(folded)),
-        Variable<int>(limit),
+        // ★1 件多く引いて切り捨てを検出する（決定 D50）★
+        // COUNT(*) を別に取ると FTS をもう一度引くことになる。
+        // 要るのは「上限を超えたか」だけなので 1 件余分で足りる。
+        Variable<int>(limit + 1),
       ],
     ).get();
 
     // ★保存されている表記がそのまま索引に入っている（決定 D49）★
     // cards 側と突き合わせる必要は無い。
+    return _capped(
+      rows.map((r) => r.read<String>(cardSearchRawColumn)).toList(),
+      limit,
+      CardSearchMode.trigram,
+    );
+  }
+
+  /// 1 件多く引いた結果を上限まで詰め、切り捨ての有無を添えて返す。
+  static CardSearchResult _capped(
+    List<String> numbers,
+    int limit,
+    CardSearchMode mode,
+  ) {
+    final truncated = numbers.length > limit;
     return CardSearchResult(
-      cardNumbers:
-          rows.map((r) => r.read<String>(cardSearchRawColumn)).toList(),
-      mode: CardSearchMode.trigram,
+      cardNumbers: truncated ? numbers.sublist(0, limit) : numbers,
+      mode: mode,
+      truncated: truncated,
     );
   }
 
@@ -232,14 +276,16 @@ class CardSearchDao {
       'ORDER BY card_number LIMIT ?',
       variables: [
         Variable<String>('%${_escapeLike(folded)}%'),
-        Variable<int>(limit),
+        // trigram 経路と同じく 1 件多く引く（決定 D50）。
+        Variable<int>(limit + 1),
       ],
       readsFrom: {db.cards},
     ).get();
 
-    return CardSearchResult(
-      cardNumbers: rows.map((r) => r.read<String>('card_number')).toList(),
-      mode: CardSearchMode.likeFallback,
+    return _capped(
+      rows.map((r) => r.read<String>('card_number')).toList(),
+      limit,
+      CardSearchMode.likeFallback,
     );
   }
 

@@ -208,6 +208,60 @@ void main() {
     });
   });
 
+  // ★決定 D50: 上限で切ったことを黙らない★
+  // 呼び出し側は件数だけでは切り捨てを判定できない。
+  //   - length == limit は「ちょうど limit 件」と区別がつかない（偽陽性）
+  // したがって戻り値に旗を立てる。
+  group('★結果の上限と切り捨ての通知 (決定 D50)', () {
+    test('既定の上限は実データの全カード数を上回る', () {
+      expect(CardSearchDao.defaultLimit, greaterThan(1708));
+    });
+
+    test('切り捨てが起きなければ truncated は false', () async {
+      final result = await search.search('ライブ開始時');
+      expect(result.cardNumbers, isNotEmpty);
+      expect(result.truncated, isFalse);
+    });
+
+    test('trigram 経路で上限を超えると truncated が立つ', () async {
+      final full = await search.search('ライブ開始時');
+      expect(full.cardNumbers.length, greaterThan(1),
+          reason: '上限を試すには 2 件以上ヒットする語が要る');
+
+      final capped = await search.search('ライブ開始時', limit: 1);
+      expect(capped.mode, CardSearchMode.trigram);
+      expect(capped.cardNumbers, hasLength(1));
+      expect(capped.truncated, isTrue);
+    });
+
+    test('LIKE 経路でも上限を超えると truncated が立つ', () async {
+      final full = await search.search('ラ');
+      expect(full.mode, CardSearchMode.likeFallback);
+      expect(full.cardNumbers.length, greaterThan(1));
+
+      final capped = await search.search('ラ', limit: 1);
+      expect(capped.mode, CardSearchMode.likeFallback);
+      expect(capped.cardNumbers, hasLength(1));
+      expect(capped.truncated, isTrue);
+    });
+
+    test('ちょうど上限と同じ件数なら truncated は立たない', () async {
+      final full = await search.search('ライブ開始時');
+      final exact = await search.search(
+        'ライブ開始時',
+        limit: full.cardNumbers.length,
+      );
+      expect(exact.cardNumbers, hasLength(full.cardNumbers.length));
+      expect(exact.truncated, isFalse,
+          reason: '件数一致だけでは切り捨てと区別できないので旗で判定する');
+    });
+
+    test('切り捨てても返る件数は上限ちょうど', () async {
+      final capped = await search.search('ライブ開始時', limit: 2);
+      expect(capped.cardNumbers, hasLength(2));
+    });
+  });
+
   group('★索引の作り直し（移行の受け皿）', () {
     // `card_search` は cards / card_names からの純粋な派生物なので、
     // 落として建て直せば必ず現在の索引仕様に揃う。
