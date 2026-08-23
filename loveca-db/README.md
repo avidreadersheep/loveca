@@ -54,7 +54,7 @@ cd loveca-db && dart run tool/probe_sqlite.dart
 
 ```bash
 dart pub get
-dart run build_runner build --delete-conflicting-outputs   # drift のコード生成
+dart run build_runner build   # drift のコード生成（*.g.dart はコミットする）
 dart test
 ```
 

@@ -69,7 +69,7 @@ SqliteCapabilities probeSqliteCapabilities() {
       hasTrigram: hasTrigram,
     );
   } finally {
-    db.dispose();
+    db.close();
   }
 }
 
