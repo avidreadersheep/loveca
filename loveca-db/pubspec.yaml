@@ -1,0 +1,22 @@
+name: loveca_db
+description: ラブカ シミュレーターのローカル DB 層（drift / SQLite）。Flutter 非依存。
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.11.0
+
+dependencies:
+  # ★Flutter 非依存のものだけを入れる★
+  # drift_flutter / sqlite3_flutter_libs / path_provider は Flutter 依存なので採らない。
+  # DB ファイルの場所とネイティブライブラリの解決は呼び出し側の責務にする。
+  drift: ^2.34.3
+  sqlite3: ^3.5.2
+  loveca_core:
+    path: ../loveca-core
+
+dev_dependencies:
+  drift_dev: ^2.34.5
+  build_runner: ^2.16.0
+  test: ^1.31.2
+  lints: ^6.1.0

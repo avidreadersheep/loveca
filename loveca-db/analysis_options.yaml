@@ -1,0 +1,11 @@
+include: package:lints/recommended.yaml
+
+# ★これは loveca-db のみの設定であり、決定 D-2 を前倒ししない★
+# D-2（loveca-core にリントが接続されていない件）は StepId.s8_4_13 形式の enum 値名と
+# constant_identifier_names の衝突が論点で、判断時期は Phase 3b と定められている。
+# loveca-db には条番号 ID を持つ enum が無いため、その論点は発生しない。
+
+analyzer:
+  exclude:
+    # drift の生成物。生成側の都合でリントを曲げない。
+    - "**/*.g.dart"
