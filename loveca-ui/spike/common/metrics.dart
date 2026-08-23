@@ -9,6 +9,8 @@ library;
 import 'dart:async';
 import 'dart:io';
 
+import 'dart:ui' show FramePhase;
+
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
@@ -73,11 +75,34 @@ class FrameStats {
     return sorted[idx] / 1000.0;
   }
 
+  /// ★実際に出ているフレーム間隔から 1 フレームの予算を割り出す★
+  /// `display.refreshRate` は 60.0 と報告してくるが、この環境では実測 144Hz
+  /// 前後でフレームが出ている。報告値を信じると予算が 2 倍以上ゆるくなり、
+  /// 「予算超え 0 件」が実態と合わなくなる。
+  /// 連続フレームの vsync 開始時刻の中央値を真の周期とみなす
+  /// （落ちたフレームは周期の整数倍になるが、中央値なら影響しない）。
+  int _observedPeriodUs() {
+    if (_timings.length < 20) return 0;
+    final ts = _timings
+        .map((t) => t.timestampInMicroseconds(FramePhase.vsyncStart))
+        .toList()
+      ..sort();
+    final deltas = <int>[];
+    for (var i = 1; i < ts.length; i++) {
+      final d = ts[i] - ts[i - 1];
+      if (d > 0) deltas.add(d);
+    }
+    if (deltas.isEmpty) return 0;
+    deltas.sort();
+    return deltas[deltas.length ~/ 2];
+  }
+
   FrameSummary summary() {
     final build = _microsOf((t) => t.buildDuration);
     final raster = _microsOf((t) => t.rasterDuration);
     final total = _microsOf((t) => t.totalSpan);
-    final budget = frameBudget().inMicroseconds;
+    final observed = _observedPeriodUs();
+    final budget = observed > 0 ? observed : frameBudget().inMicroseconds;
     final over = _timings
         .where((t) =>
             t.buildDuration.inMicroseconds + t.rasterDuration.inMicroseconds >
@@ -86,7 +111,7 @@ class FrameStats {
     return FrameSummary(
       label: label,
       frames: _timings.length,
-      refreshHz: refreshRateHz(),
+      refreshHz: observed > 0 ? 1000000 / observed : refreshRateHz(),
       budgetMs: budget / 1000.0,
       buildP50: _percentile(build, 0.50),
       buildP95: _percentile(build, 0.95),
@@ -134,11 +159,12 @@ class FrameSummary {
   double get overBudgetRatio => frames == 0 ? 0 : overBudget / frames;
 
   static String get markdownHeader =>
-      '| 条件 | frames | build p50 | build p95 | build max | '
+      '| 条件 | frames | 実測Hz | 予算 | build p50 | build p95 | build max | '
       'raster p50 | raster p95 | raster max | 予算超え |\n'
-      '|---|---:|---:|---:|---:|---:|---:|---:|---:|';
+      '|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|';
 
-  String toMarkdownRow() => '| $label | $frames | ${_f(buildP50)} | '
+  String toMarkdownRow() => '| $label | $frames | '
+      '${refreshHz.toStringAsFixed(0)} | ${_f(budgetMs)} | ${_f(buildP50)} | '
       '${_f(buildP95)} | ${_f(buildMax)} | ${_f(rasterP50)} | '
       '${_f(rasterP95)} | ${_f(rasterMax)} | '
       '$overBudget (${(overBudgetRatio * 100).toStringAsFixed(1)}%) |';
@@ -199,8 +225,10 @@ String environmentHeading() {
   return [
     '- OS: ${Platform.operatingSystem} ${Platform.operatingSystemVersion}',
     '- Dart: ${Platform.version}',
-    '- リフレッシュレート: ${refreshRateHz().toStringAsFixed(1)} Hz '
-        '(1 フレーム予算 ${frameBudget().inMicroseconds / 1000} ms)',
+    '- リフレッシュレート（display.refreshRate の報告値）: '
+        '${refreshRateHz().toStringAsFixed(1)} Hz。'
+        '★報告値は当てにしない。各表の「実測Hz」は vsync 間隔の中央値から求めた値で、'
+        'この環境では報告値と食い違う',
     '- dist: ${paths.distDir.path}',
     '- DB: ${paths.dbFile.path}',
   ].join('\n');
