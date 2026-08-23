@@ -36,6 +36,7 @@ class CardInstance {
     required this.ownerId,
     this.orientation,
     this.face = FaceState.faceUp,
+    this.isRedacted = false,
   });
 
   /// 盤面上でこの 1 枚を指す識別子。
@@ -78,6 +79,18 @@ class CardInstance {
   /// 表示面を表す状態。総合ルール 4.3.3。
   final FaceState face;
 
+  /// ★このカードが `redact` により秘匿されているか。
+  ///
+  /// true のとき [printingId] と [cardNumber] は空文字で、
+  /// [instanceId] は位置由来のプレースホルダに差し替わっている。
+  /// 4.1.2.2 により**枚数だけは残す**ため、カードの器そのものは消さない。
+  ///
+  /// ★★ 秘匿された盤面で集計 (`LiveAggregator`) を走らせないこと ★★
+  ///   カードマスタを引けないため全件が除外扱いになり、意味のある数値が出ない。
+  ///   集計は必ず秘匿前の `GameState` に対して行い、結果だけを配る。
+  ///   詳細は `redact.dart`。
+  final bool isRedacted;
+
   CardInstance copyWith({
     CardOrientation? orientation,
     FaceState? face,
@@ -90,5 +103,6 @@ class CardInstance {
         ownerId: ownerId,
         orientation: clearOrientation ? null : (orientation ?? this.orientation),
         face: face ?? this.face,
+        isRedacted: isRedacted,
       );
 }
