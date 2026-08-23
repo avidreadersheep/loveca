@@ -117,7 +117,7 @@ class BootController extends Store<BootState> {
       _printSummary(catalog, timings, notices);
     } on Object catch (error, stackTrace) {
       final current = value;
-      state = BootFailed(
+      final failed = BootFailed(
         stage: current is BootRunning ? current.stage : BootStageId.catalog,
         error: error,
         stackTrace: stackTrace,
@@ -126,6 +126,11 @@ class BootController extends Store<BootState> {
           _ => const [],
         },
       );
+      state = failed;
+      // ★★ 失敗もログに出す ★★
+      // 画面にしか出さないと、ログしか見られない状況（CI・遠隔・自動確認）で
+      // 「起動しなかった」以上のことが分からない。成功時だけ出すのは片手落ち。
+      _printFailure(failed);
     }
   }
 
@@ -180,6 +185,13 @@ class BootController extends Store<BootState> {
       notices.add(const BootNotice(
         'データ版は据え置きです（失敗したファイルは次回再取得されます）',
       ));
+    }
+  }
+
+  static void _printFailure(BootFailed failed) {
+    debugPrint('[boot] FAILED at ${failed.stage.label}: ${failed.error}');
+    for (final path in failed.searchedPaths) {
+      debugPrint('[boot]   探した場所: $path');
     }
   }
 

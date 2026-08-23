@@ -206,8 +206,15 @@ FTS5 / trigram つきの SQLite 3.53.4 がバンドルされることを実測�
 | `loveca-data`（Python） | 33 | `python tests/run_all.py` |
 | `loveca-core`（Dart） | 255 | `dart test` |
 | `loveca-db`（Dart） | 117（★skip 0） | `dart test` |
+| `loveca-ui`（Flutter） | 37 | `flutter test` |
 
-（2026-08-23 時点。`loveca-ui` は試作のみでテストを持たない）
+（`loveca-core` / `loveca-db` は 2026-08-23 時点、`loveca-ui` は 2026-08-24 時点）
+
+★`loveca-ui` のテストは **M1 で初めて置いた**（決定 D58）。
+固定しているのは `PaneScaffold` の 1/2 ペイン切替（D61）・`AppInfo.version` と
+pubspec の突き合わせ・**起動ゲートの段ごとの失敗の区別**・dist の 3 段解決と不在の検出（D60）・
+一覧の絞り込み（D48）。
+★**フレーム統計は測らない。** profile ビルドでしか出ず、それは `spike/` の資産（D51）。
 
 ★`loveca-db` のテスト結果を報告するときは **skip 件数も併記すること。**
 実データ（`loveca-data/data/dist/`）を使うテストは `data/` が git 管理外のため、
@@ -400,6 +407,7 @@ Git Bash の `python` は MSYS2 の 3.14.3 を掴むため使わない。
 | ★**Phase 4 の着手前** | **D-5** | ★**`P1`〜`P5` の参照先が存在しない。**コードコメント 10 箇所が参照し、指す先は `deckId` / `revision` / `deletedAt` / `masterDataVersion` ——**同期の中核**。`P4` は手がかりが 1 つも無い | `ルール整合性チェック_v1.06.md` D-5 |
 | **Phase 4** | **D-1** | `fromKey` の厳格性を維持するか寛容化するか。新アイコン追加で**既存インストール済みアプリのマスタロードが全滅**しうる（決定 D39 は取り込み層の隔離だけで、本判断は残っている） | 同 D-1 |
 | **Phase 4** | **D-4** | ★**`imageHash` は原本 PNG のハッシュで配信 WebP のハッシュではない。**画像を差分で配る経路を作った瞬間に、古い画質が**無言で**残る | 同 D-4（= `docs/UI設計メモ.md` U2） |
+| **Phase 4** | **D-7** | ★**`min_app_version` が CLI に露出せず 1.0.0 固定。**既存の dist はすべてアプリ 1.0.0 以上を要求する。M1 は**アプリ版を上げて**回避した——★**データに合わせてアプリを変える本来と逆の向き** | `ルール整合性チェック_v1.06.md` D-7 |
 | **Phase 4** | **U1** | モバイルの画像供給経路（同梱 / 初回取得）。**D43「UI にネットワーク取得の口を作らない」に触れる** | `docs/UI設計メモ.md` §5-5 |
 | 次に `loveca_db` を触るとき（遅くとも **Phase 4 の着手前**） | **D-6** | ★**移行機構（`onUpgrade`）が一度も実行されていない。**`rebuildAll()` は固定済みだが、`onUpgrade` から呼ばれる経路を通したテストが無い。D-2 と同じ型 | `ルール整合性チェック_v1.06.md` D-6 |
 | **Phase 5 着手時** | **§7 の 5 項目** | `thumb` 200px がモバイルの物理セル幅を下回る / タッチのジェスチャ競合 / **sqlite3 の Android・iOS 経路で FTS5・trigram を未確認** / iOS は macOS が無いと検証不可 / 画像供給経路 | `docs/UI設計メモ.md` §7 |

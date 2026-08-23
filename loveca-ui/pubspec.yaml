@@ -1,7 +1,16 @@
 name: loveca_ui
 description: ラブカ シミュレーターの UI 層（Flutter / Windows デスクトップ）。
 publish_to: 'none'
-version: 0.1.0
+  # ★★ 1.0.0 なのは「製品として 1.0 に達したから」ではない ★★
+  #   配信物の minAppVersion は loveca-data/loveca_data/build_dist.py:84 の
+  #   関数既定値 "1.0.0" で固定されており、CLI に露出していない。
+  #   したがって**これまでに作られた dist はすべて「アプリ 1.0.0 以上」を要求**し、
+  #   それ未満だと planUpdate が appTooOld を返して 1 件も取り込めない。
+  #   ★これは「データに合わせてアプリ版を変える」という本来逆の回避である。
+  #     正す先は loveca-data 側で、ルール整合性チェック_v1.06.md D-7 に
+  #     未決として登録してある（判断は Phase 4）。
+  #   ★AppInfo.version と揃えること（test/app_info_test.dart が守る）。
+version: 1.0.0
 
 environment:
   sdk: ^3.11.1
