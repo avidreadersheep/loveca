@@ -763,6 +763,20 @@ abstract class CardImageSource {
 
 実装は Release 1 では **`LocalDirectoryImageSource` の 1 本だけ。**
 
+★★**`ImageProvider` を組むのは `CardImageSource` 側であって `CardThumb` ではない。**★★
+D57 が抽象を置いた理由は「実装をもう 1 本足すだけで UI が変わらない」ことなので、
+**ネットワーク実装は別の `ImageProvider` を返せなければならない。**
+組む場所を UI に置くと、その差し替えが成立しない。
+
+責務は次のように分かれる。**どちらも「唯一の場所」である。**
+
+| ファイル | 唯一である責務 |
+|---|---|
+| `data/card_image_source.dart` | **`FileImage` / `ResizeImage` を構築する唯一の場所。**パスと段（thumb / normal）を知っている |
+| `ui/common/card_thumb.dart` | **`Image` ウィジェットを作る唯一の場所**、かつ**セルの物理px を計算する唯一の場所。**プレースホルダを必ず描く |
+
+「UI コードで `Image` / `FileImage` を直接使わない」（D58）は**この分割で満たされる。**
+
 ★**D43「UI にネットワーク取得の口を作らない」は、実装が 1 本しかないことで守る。**
 抽象を置くこと自体は口を増やさないので D43 に反しない。
 経路が 2 つあると「どちらから来た画像か」で不具合の切り分けができなくなる、というのが D43 の理由であり、
@@ -866,7 +880,7 @@ D46 の発見（掴める領域は描画物の上にしか無い）は、**知�
 
 | 知見 | 出典 | 置き場 |
 |---|---|---|
-| `ResizeImage` + **物理px** `cacheWidth` | D42 / §3-2 | `ui/common/card_thumb.dart`。**`ImageProvider` を組むのはここだけ** |
+| `ResizeImage` + **物理px** `cacheWidth` | D42 / §3-2 | ★**2 つに分かれる。**`ImageProvider` を組むのは `data/card_image_source.dart`、`Image` を作り物理px を計算するのは `ui/common/card_thumb.dart`（§5-2(2)） |
 | プレースホルダ必須（fling では 1〜2% しかデコードが間に合わない） | D42 / §3-4 | 同上（**常に下地を描く**） |
 | `precacheImage` の常時先読みはしない | D42 / §3-5 | **実装しない**（要求が出たら条件つきで） |
 | `imageCache` の上限を触らない | D42 / §3-3 | **どこにも書かない。**理由をコメントで残す |
