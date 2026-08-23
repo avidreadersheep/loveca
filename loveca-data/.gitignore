@@ -1,4 +1,8 @@
-.venv/
-__pycache__/
+# ★規則の書き方はリポジトリ root の .gitignore 冒頭を見ること（D-10）。
+**/.venv/
+**/__pycache__/
 *.pyc
-data/
+
+# ★★ 先頭の / は必須 ★★
+#   素の `data/` は loveca_data/data/ のような**ソース**まで飲み込む（D-10）。
+/data/

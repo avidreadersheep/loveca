@@ -1,22 +1,25 @@
+# ★ディレクトリ規則は必ずアンカーする（`/dir/` か `**/dir/`）。
+#   素の `dir/` は書かない——理由はリポジトリ root の .gitignore 冒頭（D-10）。
+
 # Miscellaneous
 *.class
 *.log
 *.pyc
 *.swp
 .DS_Store
-.atom/
-.build/
-.buildlog/
+**/.atom/
+**/.build/
+**/.buildlog/
 .history
-.svn/
-.swiftpm/
-migrate_working_dir/
+**/.svn/
+**/.swiftpm/
+**/migrate_working_dir/
 
 # IntelliJ related
 *.iml
 *.ipr
 *.iws
-.idea/
+**/.idea/
 
 # The .vscode folder contains launch configuration and tasks you configure in
 # VS Code which you may wish to be included in version control, so this line
@@ -26,10 +29,10 @@ migrate_working_dir/
 # Flutter/Dart/Pub related
 **/doc/api/
 **/ios/Flutter/.last_build_id
-.dart_tool/
+**/.dart_tool/
 .flutter-plugins-dependencies
-.pub-cache/
-.pub/
+**/.pub-cache/
+**/.pub/
 /build/
 /coverage/
 
@@ -45,4 +48,4 @@ app.*.map.json
 /android/app/release
 
 # ★試作の作業用出力（DB ファイル・測定結果）。履歴に入れない
-spike/.cache/
+/spike/.cache/
