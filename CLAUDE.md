@@ -117,6 +117,18 @@ loveca-db/       Dart: ローカル DB 層（drift / SQLite。★Flutter 非依�
   test/fixtures/dist/     ミニ配信物。tool/build_fixtures.py が実データから生成
   tool/build_fixtures.py  ★相互にハッシュ参照するので一括生成する
   tool/probe_sqlite.dart  解決された sqlite3 の診断（FTS5 / trigram の可否）
+
+loveca-ui/       Flutter: UI 層（Windows デスクトップ）
+  lib/           ★Phase 2 後半の本実装用。まだ空（placeholder の main.dart のみ）
+  spike/         ★技術検証の試作。本実装と混ざらないよう lib/ の外に置く
+    common/      DB 起動 / 計測 / 合成ポインタ / パス解決
+    main_probe.dart   sqlite3 の Flutter 経路の疎通
+    main_grid.dart    試作1 仮想リスト
+    main_search.dart  試作2 検索
+    main_drag.dart    試作3-A デッキ編集
+    main_board.dart   試作3-B 最小盤面
+  spike/.cache/  ★DB ファイルと測定結果。git 管理外
+  windows/       flutter create が生成したランナー
 ```
 
 ★`loveca_db` は Flutter に依存させない。`drift_flutter` / `sqlite3_flutter_libs` /
@@ -152,7 +164,20 @@ dart test
 dart run tool/probe_sqlite.dart               # sqlite3 の FTS5 / trigram の可否
 LOVECA_DIST_DIR=/path/to/dist dart test       # 実データの場所を変える
 ../loveca-data/.venv/Scripts/python.exe tool/build_fixtures.py   # ミニ配信物の再生成
+
+# Flutter 側（UI）。★計測は profile ビルドで行う
+cd loveca-ui
+flutter pub get
+flutter analyze
+flutter run -d windows -t spike/main_probe.dart      # sqlite3 経路の疎通確認
+flutter build windows --profile -t spike/main_grid.dart
+SPIKE_AUTOEXIT=1 ./build/windows/x64/runner/Profile/loveca_ui.exe  # 計測して自己終了
 ```
+
+★`loveca_ui` は `sqlite3_flutter_libs` を採らない（決定 D45 の詳細・
+`docs/UI技術検証メモ.md` §1-2）。`sqlite3` のビルドフックがそのまま Flutter でも働き、
+FTS5 / trigram つきの SQLite 3.53.4 がバンドルされることを実測で確認済み。
+採ると SQLite が二重調達になり、どちらを掴んだか分からなくなる。
 
 ★`loveca-db` のテスト結果を報告するときは **skip 件数も併記すること。**
 実データ（`loveca-data/data/dist/`）を使うテストは `data/` が git 管理外のため、
@@ -310,19 +335,21 @@ card_number = printing_id.rsplit("-", 1)[0]
 |---|---|
 | Phase 1-A データパイプライン（Python） | **完了**（1,708 種 / 2,527 刷り / 検証エラー 0） |
 | Phase 1-B `loveca_core` エンティティ・DeckValidator | **完了**（Python 33 件 全通過） |
-| Phase 2 PC ローカル DB・カードリスト・デッキ構築 | **着手中**（第一段階: drift スキーマ + マスタ取り込み層。UI は含まない） |
+| Phase 2 PC ローカル DB・カードリスト・デッキ構築 | **着手中**（第一段階: drift スキーマ + マスタ取り込み層 = 完了。UI 着手前の技術検証 = 完了 / `docs/UI技術検証メモ.md`） |
 | Phase 3a GameState / 集計 / 進行 / 巻き戻し / reduce・redact | **完了**（Dart 255 件 全通過） |
-| Phase 3b PC 盤面 UI | 未着手 |
+| Phase 3b PC 盤面 UI | 未着手（★転用可否は検証済み。`docs/UI技術検証メモ.md` §7） |
 | Phase 4 認証・同期 / Phase 5 スマホ / Phase 6 対戦サーバ | 未着手 |
 
 Dart SDK は導入済み（3.11.1 stable / Flutter 3.41.4）。
 Python は **`loveca-data/.venv/Scripts/python.exe`（3.13.12）を使う**。
 Git Bash の `python` は MSYS2 の 3.14.3 を掴むため使わない。
 
-**次の一手**: Phase 2 第一段階（drift スキーマとマスタ取り込み層）。**UI は実装しない。**
+**次の一手**: Phase 2 後半（UI 本実装）。`loveca-ui/lib/` に書く。
+実装方針は決定 D42〜D48 で確定済みなので、そこから外れる場合は理由を示すこと。
+`loveca-ui/spike/` は検証用であり、**本実装から参照しない。**
 
 決定事項の参照先は `docs/決定事項一覧.md`（`決定 DNN` / `決定 D-X` の実体）。
-**新しい決定は D38 以降を使う。** 未記録番号を再利用しないこと。
+**新しい決定は D49 以降を使う（D36〜D48 は使用済み）。** 未記録番号を再利用しないこと。
 
 B-1（フェイズ構成）と B-3（重ね置きの解消先）は**確定済み**。根拠と設計は
 `docs/PhaseEngine設計メモ.md` を参照する。要点だけ再掲する。
