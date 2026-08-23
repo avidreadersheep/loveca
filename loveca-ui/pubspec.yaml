@@ -24,6 +24,10 @@ dependencies:
 
   path: ^1.9.0
 
+  # ★spike の計測でだけ使う。索引の形を変えた場合の大きさと速さを
+  #   メモリ上の DB で比べるために、drift を通さず素の sqlite3 を触る。
+  sqlite3: ^3.5.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
