@@ -11,6 +11,7 @@ import 'dart:io';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 
+export 'src/native/local_dir_source.dart';
 export 'src/native/open_sqlite.dart'
     show SqliteCapabilities, assertSqliteCapabilities, probeSqliteCapabilities;
 
