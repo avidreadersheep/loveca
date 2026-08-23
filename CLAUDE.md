@@ -205,10 +205,14 @@ FTS5 / trigram つきの SQLite 3.53.4 がバンドルされることを実測�
 |---|---|---|
 | `loveca-data`（Python） | 33 | `python tests/run_all.py` |
 | `loveca-core`（Dart） | 255 | `dart test` |
-| `loveca-db`（Dart） | 117（★skip 0） | `dart test` |
-| `loveca-ui`（Flutter） | 37 | `flutter test` |
+| `loveca-db`（Dart） | 127（★skip 0） | `dart test` |
+| `loveca-ui`（Flutter） | 59 | `flutter test` |
 
-（`loveca-core` / `loveca-db` は 2026-08-23 時点、`loveca-ui` は 2026-08-24 時点）
+（`loveca-core` は 2026-08-23 時点、`loveca-db` / `loveca-ui` は 2026-08-24 時点）
+
+★`loveca-db` の 127 件には **移行テスト（`migration_test.dart` / 10 件）**を含む。
+`onUpgrade` が走ること・`decks` が残ること・索引が建て直ることを固定している
+（`ルール整合性チェック_v1.06.md` D-6 の解消）。
 
 ★`loveca-ui` のテストは **M1 で初めて置いた**（決定 D58）。
 固定しているのは `PaneScaffold` の 1/2 ペイン切替（D61）・`AppInfo.version` と
@@ -409,7 +413,7 @@ Git Bash の `python` は MSYS2 の 3.14.3 を掴むため使わない。
 | **Phase 4** | **D-4** | ★**`imageHash` は原本 PNG のハッシュで配信 WebP のハッシュではない。**画像を差分で配る経路を作った瞬間に、古い画質が**無言で**残る | 同 D-4（= `docs/UI設計メモ.md` U2） |
 | **Phase 4** | **D-7** | ★**`min_app_version` が CLI に露出せず 1.0.0 固定。**既存の dist はすべてアプリ 1.0.0 以上を要求する。M1 は**アプリ版を上げて**回避した——★**データに合わせてアプリを変える本来と逆の向き** | `ルール整合性チェック_v1.06.md` D-7 |
 | **Phase 4** | **U1** | モバイルの画像供給経路（同梱 / 初回取得）。**D43「UI にネットワーク取得の口を作らない」に触れる** | `docs/UI設計メモ.md` §5-5 |
-| 次に `loveca_db` を触るとき（遅くとも **Phase 4 の着手前**） | **D-6** | ★**移行機構（`onUpgrade`）が一度も実行されていない。**`rebuildAll()` は固定済みだが、`onUpgrade` から呼ばれる経路を通したテストが無い。D-2 と同じ型 | `ルール整合性チェック_v1.06.md` D-6 |
+| **M3**（検索の実装時） | **D-8** | ★**`deleteOrphanCards` の本番呼び出し元が 0。**配信から商品が消えると孤児 `cards` と**索引エントリ**が残り、**検索が存在しない刷りの cardNumber を返しうる** | `ルール整合性チェック_v1.06.md` D-8 |
 | **Phase 5 着手時** | **§7 の 5 項目** | `thumb` 200px がモバイルの物理セル幅を下回る / タッチのジェスチャ競合 / **sqlite3 の Android・iOS 経路で FTS5・trigram を未確認** / iOS は macOS が無いと検証不可 / 画像供給経路 | `docs/UI設計メモ.md` §7 |
 | **Phase 5** | **U4** | 一覧の投影クエリを `loveca_db` へ移すか（スマホが同じ投影を要すると確定したとき） | `docs/UI設計メモ.md` §4-5 |
 | **M4** と **Phase 5** | **U8** | ★**ペインの切替しきい値 840 論理px は暫定値**（決定 D61）。デッキペインの最小幅 320 が見積りのため | `docs/UI設計メモ.md` §2-1 |
