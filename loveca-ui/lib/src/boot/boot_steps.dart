@@ -184,6 +184,10 @@ class RealBootSteps implements BootSteps {
       settingsDistDir: settings.settings.distDir,
     ).locate();
 
+    // ★設定が壊れていて既定に戻したなら、その事実を運ぶ（設計メモ §4-6(5)）。
+    //   捨てると「設定したのに効かない」が原因不明のまま残る。
+    final settingsRecoveredFrom = settings.recoveredFrom;
+
     if (!located.found) {
       // ★★ MasterImporter を呼ばない（決定 D60）★★
       // 呼ぶと読み取り例外になり、原因が「dist が無い」から「読めない」に化ける。
@@ -191,6 +195,7 @@ class RealBootSteps implements BootSteps {
         distMissing: true,
         searchedPaths: located.searched,
         appVersion: appVersion,
+        settingsRecoveredFrom: settingsRecoveredFrom,
       );
     }
 
@@ -200,6 +205,7 @@ class RealBootSteps implements BootSteps {
       searchedPaths: located.searched,
       appVersion: appVersion,
       now: clock(),
+      settingsRecoveredFrom: settingsRecoveredFrom,
     );
   }
 

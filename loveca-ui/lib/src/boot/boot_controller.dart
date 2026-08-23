@@ -139,6 +139,14 @@ class BootController extends Store<BootState> {
     MasterImportOutcome outcome,
     List<BootNotice> notices,
   ) {
+    // ★設定ファイルの復旧は dist の有無と独立に起きる。先に出す（設計メモ §4-6(5)）。
+    if (outcome.settingsRecoveredFrom case final reason?) {
+      notices.add(BootNotice(
+        '設定ファイルを読めなかったため既定に戻しました',
+        details: ['$reason'],
+      ));
+    }
+
     if (outcome.distMissing) {
       notices.add(BootNotice(
         'カードデータを更新できませんでした（前回取り込んだ内容で動いています）',

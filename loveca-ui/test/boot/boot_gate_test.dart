@@ -19,6 +19,7 @@ import 'package:loveca_ui/src/boot/boot_steps.dart';
 import 'package:loveca_ui/src/data/card_image_source.dart';
 import 'package:loveca_ui/src/data/master_catalog.dart';
 import 'package:loveca_ui/src/data/master_repository.dart';
+import 'package:loveca_ui/src/state/app_scope.dart';
 
 /// 指定した段で投げる差し替え可能な段。
 class _FakeSteps implements BootSteps {
@@ -30,6 +31,7 @@ class _FakeSteps implements BootSteps {
     this.cards = const {},
     this.decision = UpdateDecision.update,
     this.minAppVersion = '1.0.0',
+    this.settingsRecoveredFrom,
   });
 
   final BootStageId? failAt;
@@ -41,6 +43,9 @@ class _FakeSteps implements BootSteps {
   /// ★dist はあるが取り込まれない経路（`appTooOld` / `upToDate`）を試すため。
   final UpdateDecision decision;
   final String minAppVersion;
+
+  /// ★設定ファイルが壊れて既定に戻った経路（設計メモ §4-6(5)）。
+  final Object? settingsRecoveredFrom;
 
   void _maybeFail(BootStageId stage) {
     if (failAt == stage) throw error ?? StateError('${stage.name} で失敗');
@@ -60,6 +65,7 @@ class _FakeSteps implements BootSteps {
       searchedPaths: searchedPaths,
       appVersion: '0.1.0',
       remoteMinAppVersion: minAppVersion,
+      settingsRecoveredFrom: settingsRecoveredFrom,
       result: distMissing
           ? null
           : MasterImportResult(
@@ -89,12 +95,25 @@ class _FakeSteps implements BootSteps {
       const LocalDirectoryCardImageSource(null);
 }
 
+/// ★起動後の画面は `AppScope` の Notice を描く。
+///
+/// ★★ 「Notice が作られたこと」ではなく「画面まで届くこと」を見る ★★
+/// 作られただけで誰も読まない状態を通してしまうのは、
+/// このタスクで潰している D-6 とまったく同じ型の穴である。
 Future<void> _pump(WidgetTester tester, BootSteps steps) async {
   await tester.pumpWidget(
     MaterialApp(
       home: BootGate(
         steps: steps,
-        builder: (_) => const Scaffold(body: Text('READY')),
+        builder: (context) => Scaffold(
+          body: Column(
+            children: [
+              const Text('READY'),
+              for (final notice in AppScope.of(context).notices)
+                Text(notice.message),
+            ],
+          ),
+        ),
       ),
     ),
   );
@@ -217,6 +236,11 @@ void main() {
       // ★止めない。前回取り込んだ内容で動く（決定 D39 と同じ考え方）。
       expect(find.text('READY'), findsOneWidget);
       expect(find.textContaining('起動できませんでした'), findsNothing);
+      // ★更新できなかった事実は画面に出す。
+      expect(
+        find.text('カードデータを更新できませんでした（前回取り込んだ内容で動いています）'),
+        findsOneWidget,
+      );
     });
   });
 
@@ -268,7 +292,38 @@ void main() {
 
       // ★止めない。ただし取り込まれなかった事実は必ず出す。
       expect(find.text('READY'), findsOneWidget);
+      expect(
+        find.text('アプリが古いため配信データを取り込めませんでした'),
+        findsOneWidget,
+      );
     });
+  });
+
+  testWidgets('★設定ファイルが壊れていたら警告が出る（設計メモ §4-6(5)）',
+      (tester) async {
+    // ★黙って既定に戻すと「設定したのに効かない」が原因不明のまま残る。
+    //   M1 では recoveredFrom を作っただけで誰も読んでいなかった。
+    await _pump(
+      tester,
+      _FakeSteps(
+        settingsRecoveredFrom: const FormatException('壊れた JSON'),
+        cards: {
+          'X-1': const Card(
+            cardNumber: 'X-1',
+            name: 'テスト',
+            cardType: CardType.member,
+          ),
+        },
+      ),
+    );
+
+    // 起動は続く（設定は既定に戻せば動く）。
+    expect(find.text('READY'), findsOneWidget);
+    // ★★ 警告が画面まで届くこと ★★
+    expect(
+      find.text('設定ファイルを読めなかったため既定に戻しました'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('4 段すべて通れば画面が出る', (tester) async {
