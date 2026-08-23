@@ -10,6 +10,7 @@ import 'package:loveca_core/loveca_core.dart';
 
 import '../schema/database.dart';
 import '../schema/enums.dart';
+import '../search/card_search_dao.dart';
 import '../search/fold.dart';
 
 class CardDao {
@@ -21,7 +22,10 @@ class CardDao {
   // 書き込み
   // -------------------------------------------------------------------------
 
-  /// 商品ファイル 1 件分を置き換える。呼び出し側でトランザクションを張ること。
+  /// 商品ファイル 1 件分を置き換える。
+  ///
+  /// ★検索索引の更新も同じトランザクションで行う★
+  /// 別トランザクションにすると、途中で失敗したときに本体と索引がずれる。
   ///
   /// ★`printings` は expansion 単位で削除してから入れ直す★
   /// 配信ファイル `cards/{EXPANSION}.json` の `printings` はその商品の刷りが全てなので、
@@ -33,6 +37,13 @@ class CardDao {
   /// expansion 単位で消すと、他の商品から参照されている行を巻き添えで消してしまう。
   /// 内容は全ファイルで完全一致することを実測で確認済みなので upsert で矛盾しない。
   Future<void> replaceExpansion(CardSet set) async {
+    await db.transaction(() async {
+      await _writeExpansion(set);
+      await CardSearchDao(db).reindex(set.cards);
+    });
+  }
+
+  Future<void> _writeExpansion(CardSet set) async {
     final cardNumbers = set.cards.map((c) => c.cardNumber).toList();
 
     await db.batch((batch) {
@@ -76,12 +87,19 @@ class CardDao {
         .go();
   }
 
-  /// 刷りが 1 件も残っていないカードを消す。
-  Future<int> deleteOrphanCards() => db.customUpdate(
-        'DELETE FROM cards WHERE card_number NOT IN '
-        '(SELECT card_number FROM printings)',
-        updates: {db.cards},
-      );
+  /// 刷りが 1 件も残っていないカードを消す。検索索引からも同時に落とす。
+  Future<int> deleteOrphanCards() => db.transaction(() async {
+        final rows = await db
+            .customSelect('SELECT card_number FROM cards WHERE card_number '
+                'NOT IN (SELECT card_number FROM printings)')
+            .get();
+        final numbers = rows.map((r) => r.read<String>('card_number')).toList();
+        if (numbers.isEmpty) return 0;
+
+        await CardSearchDao(db).removeFromIndex(numbers);
+        return (db.delete(db.cards)..where((c) => c.cardNumber.isIn(numbers)))
+            .go();
+      });
 
   // -------------------------------------------------------------------------
   // 読み出し

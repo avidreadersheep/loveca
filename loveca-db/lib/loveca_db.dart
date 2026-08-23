@@ -10,4 +10,6 @@ export 'src/dao/card_dao.dart';
 export 'src/schema/database.dart';
 export 'src/schema/enums.dart';
 export 'src/schema/tables.dart';
+export 'src/search/card_search_dao.dart';
+export 'src/search/card_search_schema.dart';
 export 'src/search/fold.dart';

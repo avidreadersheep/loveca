@@ -11,6 +11,7 @@ import 'package:drift/drift.dart';
 //   生成コードから見えるように、ここで import しておく必要がある。
 import 'package:loveca_core/loveca_core.dart';
 
+import '../search/card_search_schema.dart';
 import 'enums.dart';
 import 'tables.dart';
 
@@ -43,6 +44,8 @@ class LovecaDatabase extends _$LovecaDatabase {
   MigrationStrategy get migration => MigrationStrategy(
         onCreate: (m) async {
           await m.createAll();
+          // ★仮想テーブルは drift の Dart テーブル API で表現できないので手で作る。
+          await customStatement(createCardSearchTable);
         },
         beforeOpen: (details) async {
           // ★外部キーは既定で無効。有効にしないと onDelete: cascade が効かない。
