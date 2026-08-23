@@ -108,6 +108,7 @@ class BootController extends Store<BootState> {
         environment: AppEnvironment(
           catalog: catalog,
           imageSource: _steps.imageSourceFor(outcome),
+          decks: _steps.decksFor(catalog),
           clock: clock,
         ),
         notices: notices,

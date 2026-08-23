@@ -21,6 +21,7 @@ import '../data/card_catalog_repository.dart';
 import '../data/card_image_source.dart';
 import '../data/card_list_row.dart';
 import '../data/clock.dart';
+import '../data/deck_repository.dart';
 import '../data/dist_locator.dart';
 import '../data/master_catalog.dart';
 import '../data/master_repository.dart';
@@ -109,6 +110,16 @@ abstract class BootSteps {
 
   /// 段 4 まで通ったあとに作る、画面が使う道具一式。
   CardImageSource imageSourceFor(MasterImportOutcome importOutcome);
+
+  /// デッキの読み書き（M2）。
+  ///
+  /// ★★ `LovecaDatabase` を返さない ★★
+  /// drift の型が `AppEnvironment` に載ると UI へ漏れ、Phase 5 の Web / WASM 経路で
+  /// UI ごと巻き込む（決定 D55）。DB ハンドルは段の内側に閉じたまま、
+  /// **組み立て済みのリポジトリだけ**を画面へ出す。
+  ///
+  /// [catalog] は段 4 の結果。`DeckValidator` の材料になる（決定 D55）。
+  DeckRepository decksFor(MasterCatalog catalog);
 }
 
 /// カタログが空のまま起動しようとしたときの失敗（決定 D60 / 設計メモ §4-6(4)）。
@@ -235,6 +246,11 @@ class RealBootSteps implements BootSteps {
       LocalDirectoryCardImageSource(
         _distDir == null ? null : Directory('${_distDir!.path}/images'),
       );
+
+  @override
+  DeckRepository decksFor(MasterCatalog catalog) =>
+      // ★時刻は Clock から供給する（設計メモ §9-1）。層の内側で DateTime.now() を呼ばない。
+      DeckRepository(_db.db, catalog: catalog, clock: clock);
 }
 
 /// カタログが空だった理由を段 3 の結末から決める（設計メモ §4-6(4)）。
@@ -285,11 +301,16 @@ class AppEnvironment {
   const AppEnvironment({
     required this.catalog,
     required this.imageSource,
+    required this.decks,
     required this.clock,
   });
 
   final MasterCatalog catalog;
   final CardImageSource imageSource;
+
+  /// デッキの読み書き（M2）。★UI はこれより下（DAO / drift）を直接呼ばない（決定 D55）。
+  final DeckRepository decks;
+
   final Clock clock;
 
   List<CardListRow> get rows => catalog.rows;

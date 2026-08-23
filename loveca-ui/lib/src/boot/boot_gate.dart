@@ -12,12 +12,16 @@ import 'boot_controller.dart';
 import 'boot_steps.dart';
 
 class BootGate extends StatefulWidget {
-  const BootGate({super.key, required this.steps, required this.builder});
+  const BootGate({super.key, required this.steps, required this.child});
 
   final BootSteps steps;
 
-  /// 起動が通ったあとに出す画面。
-  final WidgetBuilder builder;
+  /// 起動が通ったあとに出すもの。
+  ///
+  /// ★`MaterialApp.builder` から Navigator が渡ってくる。**`AppScope` の内側に
+  /// 置くのが要点**で、そうしないと `push` した画面から `AppScope.of` が届かない。
+  /// 起動が通るまでここは組み立てられない（返さない Widget は build されない）。
+  final Widget child;
 
   @override
   State<BootGate> createState() => _BootGateState();
@@ -48,7 +52,7 @@ class _BootGateState extends State<BootGate> {
               environment: state.environment,
               notices: state.notices,
               timings: state.timings,
-              child: Builder(builder: widget.builder),
+              child: widget.child,
             ),
         },
       );

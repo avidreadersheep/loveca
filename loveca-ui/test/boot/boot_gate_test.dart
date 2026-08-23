@@ -13,87 +13,12 @@ library;
 import 'package:flutter/material.dart' hide Card;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loveca_core/loveca_core.dart';
-import 'package:loveca_db/loveca_db.dart';
 import 'package:loveca_ui/src/boot/boot_gate.dart';
 import 'package:loveca_ui/src/boot/boot_steps.dart';
-import 'package:loveca_ui/src/data/card_image_source.dart';
-import 'package:loveca_ui/src/data/master_catalog.dart';
-import 'package:loveca_ui/src/data/master_repository.dart';
 import 'package:loveca_ui/src/state/app_scope.dart';
 
-/// 指定した段で投げる差し替え可能な段。
-class _FakeSteps implements BootSteps {
-  _FakeSteps({
-    this.failAt,
-    this.error,
-    this.distMissing = false,
-    this.searchedPaths = const [],
-    this.cards = const {},
-    this.decision = UpdateDecision.update,
-    this.minAppVersion = '1.0.0',
-    this.settingsRecoveredFrom,
-  });
-
-  final BootStageId? failAt;
-  final Object? error;
-  final bool distMissing;
-  final List<String> searchedPaths;
-  final Map<String, Card> cards;
-
-  /// ★dist はあるが取り込まれない経路（`appTooOld` / `upToDate`）を試すため。
-  final UpdateDecision decision;
-  final String minAppVersion;
-
-  /// ★設定ファイルが壊れて既定に戻った経路（設計メモ §4-6(5)）。
-  final Object? settingsRecoveredFrom;
-
-  void _maybeFail(BootStageId stage) {
-    if (failAt == stage) throw error ?? StateError('${stage.name} で失敗');
-  }
-
-  @override
-  Future<void> checkSqlite() async => _maybeFail(BootStageId.sqlite);
-
-  @override
-  Future<void> openDatabase() async => _maybeFail(BootStageId.database);
-
-  @override
-  Future<MasterImportOutcome> importMaster() async {
-    _maybeFail(BootStageId.import);
-    return MasterImportOutcome(
-      distMissing: distMissing,
-      searchedPaths: searchedPaths,
-      appVersion: '0.1.0',
-      remoteMinAppVersion: minAppVersion,
-      settingsRecoveredFrom: settingsRecoveredFrom,
-      result: distMissing
-          ? null
-          : MasterImportResult(
-              decision: decision,
-              dataVersion: 2,
-              dataVersionAdvanced: decision == UpdateDecision.update,
-            ),
-    );
-  }
-
-  @override
-  Future<MasterCatalog> loadCatalog(MasterImportOutcome importOutcome) async {
-    _maybeFail(BootStageId.catalog);
-    // ★本番と同じ判断: カタログが空なら理由を添えて止める（設計メモ §4-6(4)）。
-    if (cards.isEmpty) throw emptyCatalogFailure(importOutcome);
-    return MasterCatalog(
-      cards: cards,
-      printings: const {},
-      config: RuleConfig.standard,
-      rows: const [],
-      dataVersion: 1,
-    );
-  }
-
-  @override
-  CardImageSource imageSourceFor(MasterImportOutcome importOutcome) =>
-      const LocalDirectoryCardImageSource(null);
-}
+// ★段の差し替えは test/support/ に出してある（app_home_test.dart と共有する）。
+import '../support/fake_boot_steps.dart';
 
 /// ★起動後の画面は `AppScope` の Notice を描く。
 ///
@@ -105,13 +30,16 @@ Future<void> _pump(WidgetTester tester, BootSteps steps) async {
     MaterialApp(
       home: BootGate(
         steps: steps,
-        builder: (context) => Scaffold(
-          body: Column(
-            children: [
-              const Text('READY'),
-              for (final notice in AppScope.of(context).notices)
-                Text(notice.message),
-            ],
+        // ★AppScope は BootGate が内側に置く。Builder で読み直す。
+        child: Builder(
+          builder: (context) => Scaffold(
+            body: Column(
+              children: [
+                const Text('READY'),
+                for (final notice in AppScope.of(context).notices)
+                  Text(notice.message),
+              ],
+            ),
           ),
         ),
       ),
@@ -125,7 +53,7 @@ void main() {
     testWidgets('段1 sqlite', (tester) async {
       await _pump(
         tester,
-        _FakeSteps(
+        FakeBootSteps(
           failAt: BootStageId.sqlite,
           error: StateError('FTS5 がありません'),
         ),
@@ -143,7 +71,7 @@ void main() {
     testWidgets('段2 database', (tester) async {
       await _pump(
         tester,
-        _FakeSteps(
+        FakeBootSteps(
           failAt: BootStageId.database,
           error: StateError('移行に失敗しました'),
         ),
@@ -158,7 +86,7 @@ void main() {
     testWidgets('段3 import', (tester) async {
       await _pump(
         tester,
-        _FakeSteps(
+        FakeBootSteps(
           failAt: BootStageId.import,
           error: StateError('取り込みに失敗しました'),
         ),
@@ -173,7 +101,7 @@ void main() {
     testWidgets('段4 catalog', (tester) async {
       await _pump(
         tester,
-        _FakeSteps(
+        FakeBootSteps(
           failAt: BootStageId.catalog,
           error: StateError('カタログを組めませんでした'),
         ),
@@ -190,7 +118,7 @@ void main() {
         (tester) async {
       await _pump(
         tester,
-        _FakeSteps(
+        FakeBootSteps(
           distMissing: true,
           searchedPaths: const [
             r'C:\env\dist',
@@ -220,7 +148,7 @@ void main() {
     testWidgets('dist 不在 でも cards があれば続行する', (tester) async {
       await _pump(
         tester,
-        _FakeSteps(
+        FakeBootSteps(
           distMissing: true,
           searchedPaths: const [r'C:\app\data\dist'],
           cards: {
@@ -251,7 +179,7 @@ void main() {
         (tester) async {
       await _pump(
         tester,
-        _FakeSteps(decision: UpdateDecision.appTooOld, minAppVersion: '1.0.0'),
+        FakeBootSteps(decision: UpdateDecision.appTooOld, minAppVersion: '1.0.0'),
       );
 
       expect(find.textContaining(BootStageId.catalog.label), findsOneWidget);
@@ -266,7 +194,7 @@ void main() {
     });
 
     testWidgets('dist はあるが upToDate で 0 件 → 停止する', (tester) async {
-      await _pump(tester, _FakeSteps(decision: UpdateDecision.upToDate));
+      await _pump(tester, FakeBootSteps(decision: UpdateDecision.upToDate));
 
       expect(
         find.textContaining('取り込み済みのはずですがカードがありません'),
@@ -278,7 +206,7 @@ void main() {
     testWidgets('★appTooOld でも cards があれば続行し、警告を出す', (tester) async {
       await _pump(
         tester,
-        _FakeSteps(
+        FakeBootSteps(
           decision: UpdateDecision.appTooOld,
           cards: {
             'X-1': const Card(
@@ -305,7 +233,7 @@ void main() {
     //   M1 では recoveredFrom を作っただけで誰も読んでいなかった。
     await _pump(
       tester,
-      _FakeSteps(
+      FakeBootSteps(
         settingsRecoveredFrom: const FormatException('壊れた JSON'),
         cards: {
           'X-1': const Card(
@@ -329,7 +257,7 @@ void main() {
   testWidgets('4 段すべて通れば画面が出る', (tester) async {
     await _pump(
       tester,
-      _FakeSteps(
+      FakeBootSteps(
         cards: {
           'X-1': const Card(
             cardNumber: 'X-1',
