@@ -270,9 +270,9 @@ card_number = printing_id.rsplit("-", 1)[0]
 | フェーズ | 状態 |
 |---|---|
 | Phase 1-A データパイプライン（Python） | **完了**（1,708 種 / 2,527 刷り / 検証エラー 0） |
-| Phase 1-B `loveca_core` エンティティ・DeckValidator | **完了**（Dart 32 件 / Python 33 件 全通過） |
-| Phase 2 PC ローカル DB・カードリスト・デッキ構築 | 未着手 |
-| Phase 3a GameState / 集計エンジン | 未着手 |
+| Phase 1-B `loveca_core` エンティティ・DeckValidator | **完了**（Python 33 件 全通過） |
+| Phase 2 PC ローカル DB・カードリスト・デッキ構築 | **着手中**（第一段階: drift スキーマ + マスタ取り込み層。UI は含まない） |
+| Phase 3a GameState / 集計 / 進行 / 巻き戻し / reduce・redact | **完了**（Dart 255 件 全通過） |
 | Phase 3b PC 盤面 UI | 未着手 |
 | Phase 4 認証・同期 / Phase 5 スマホ / Phase 6 対戦サーバ | 未着手 |
 
@@ -280,7 +280,10 @@ Dart SDK は導入済み（3.11.1 stable / Flutter 3.41.4）。
 Python は **`loveca-data/.venv/Scripts/python.exe`（3.13.12）を使う**。
 Git Bash の `python` は MSYS2 の 3.14.3 を掴むため使わない。
 
-**次の一手**: Phase 2 と Phase 3a を並行着手。
+**次の一手**: Phase 2 第一段階（drift スキーマとマスタ取り込み層）。**UI は実装しない。**
+
+決定事項の参照先は `docs/決定事項一覧.md`（`決定 DNN` / `決定 D-X` の実体）。
+**新しい決定は D38 以降を使う。** 未記録番号を再利用しないこと。
 
 B-1（フェイズ構成）と B-3（重ね置きの解消先）は**確定済み**。根拠と設計は
 `docs/PhaseEngine設計メモ.md` を参照する。要点だけ再掲する。
