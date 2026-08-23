@@ -1,6 +1,6 @@
 /// ローカルの `dist` ディレクトリから配信ファイルを読む.
 ///
-/// ★このファイルと open_sqlite.dart が loveca_db で唯一 `dart:io` に触れる場所★
+/// ★このファイルと lib/native.dart が loveca_db で唯一 `dart:io` を import する★
 ///
 /// 開発時の取り込みと、実データを使うテストのためのもの。
 /// ネットワーク経由の実装は Phase 4 で配信経路が固まってから足す。

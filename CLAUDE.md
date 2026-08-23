@@ -83,7 +83,7 @@ grep -rnE "package:flutter|dart:ui|dart:io|DateTime\.now|Random\(\)" loveca-core
 
 ```bash
 grep -rnE "package:flutter|dart:ui" loveca-db/lib          # 0 件であること
-grep -rln "dart:io" loveca-db/lib                          # native 配下のみ
+grep -rln "^import 'dart:io'" loveca-db/lib            # native 配下のみ
 ```
 
 ---

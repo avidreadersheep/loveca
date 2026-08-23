@@ -1,14 +1,5 @@
 /// ネイティブ sqlite3 の調達と能力検査.
 ///
-/// ★★ このファイルと local_dir_source.dart が loveca_db で唯一
-///    `dart:io` に触れる場所である ★★
-///
-/// スキーマ層と DAO 層は `QueryExecutor` を受け取るだけにしてあるので、
-/// Phase 5（スマホ）や将来の Web / WASM 経路をここが塞ぐことはない。
-///
-/// なお `dart:io` 禁止は CLAUDE.md §1 が **`loveca_core` に対して**課している制約であり、
-/// `loveca_db` には及ばない。それでも汚染範囲は最小に閉じておく。
-///
 /// ★ネイティブライブラリの調達方法★
 /// `sqlite3` 3.x はビルドフック（native assets）で SQLite 本体を自前調達する。
 /// システムの `sqlite3.dll` / `libsqlite3.so` に依存しないため、
