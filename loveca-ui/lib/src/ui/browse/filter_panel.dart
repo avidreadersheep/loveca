@@ -108,8 +108,10 @@ class FilterPanel extends StatelessWidget {
                 onChanged: store.setShowParallel,
               ),
               const Divider(height: 32),
+              // ★件数が言えるのは `Ready` のときだけ（M3）。
+              //   検索中や失敗時に 0 と書くと「0 件だった」と区別がつかない。
               Text(
-                '${state.visibleCount} 件 / 全 ${state.totalCount} 件',
+                '${state.visibleCount ?? '—'} 件 / 全 ${state.totalCount} 件',
                 style: theme.textTheme.bodyMedium,
               ),
             ],
