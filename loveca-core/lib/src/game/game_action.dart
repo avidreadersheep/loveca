@@ -174,8 +174,19 @@ final class SetOrientation extends GameAction {
 
 /// シャッフル。総合ルール 5.5.1。
 ///
-/// ★★ このアクションだけが乱数を消費する（[DrawCards] / [Refresh] は
-///   リフレッシュ 10.2.3 の内部で間接的に消費する）★★
+/// ★★ 乱数を消費するアクションは 4 つある ★★
+///   [ShuffleZone] … 5.5.1 のシャッフル（直接）
+///   [DrawCards]   … 10.2.1 の割り込みリフレッシュ（10.2.3 のシャッフル）
+///   [Refresh]     … 同上
+///   [AdvanceStep] … ★同上。7.6.2 (`_draw`) と 8.3.11 (`_yell`) が
+///                   `Refresher.takeFromMainDeck` を通るため
+///
+///   ★★ ここは「このアクションだけが乱数を消費する」と書かれていた ★★
+///     書かれた時点で既に誤っていた。[AdvanceStep] の消費経路
+///     (`step_engine.dart` の 7.6.2 / 8.3.11 と `refresh.dart`) は **3a-3** で存在し、
+///     この断定は **3a-4** で書かれている。**断定のほうが後である**。
+///     `ルール整合性チェック_v1.06.md` D-15 (b) / `reduce.dart` 冒頭も同じ列挙を持つ。
+///
 ///   5.5.1.2: 0 枚・1 枚でもシャッフルは行われたものとして扱う。
 final class ShuffleZone extends GameAction {
   const ShuffleZone({required this.playerId, required this.zone});

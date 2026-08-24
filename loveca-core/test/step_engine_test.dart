@@ -546,4 +546,73 @@ void main() {
       expect(cardsIn(result.state, 'A', Zone.waitingRoom), isEmpty);
     });
   });
+
+  // =========================================================================
+  // ★★ D-15 (a)(b) の裏取り — AdvanceStep は乱数を消費する ★★
+  //
+  // `reduce.dart` / `game_action.dart` は「乱数を消費するのは 3 つだけ
+  // (ShuffleZone / Refresh / DrawCards)」と書いていた。**元から誤っていた。**
+  // 7.6.2 (`_draw`) と 8.3.11 (`_yell`) が `Refresher.takeFromMainDeck` を通り、
+  // メインデッキが尽きると 10.2.1 の割り込みリフレッシュ (10.2.3 のシャッフル) で
+  // 乱数を消費する。
+  //
+  // ★★ コメントを直しただけでは「そう書いた」にしかならない ★★
+  //   このリポジトリで繰り返してきた失敗 (D-10) を避けるため、
+  //   **断定の中身をテストで固定する。**
+  //
+  // ★D73 で `_drawEnergy` が 5 つ目の消費者になる前に、ここまでの事実を固定しておく
+  //   (`docs/盤面設計メモ.md` §8-3 / §12-3)。
+  // =========================================================================
+  group('★AdvanceStep が乱数を消費する (D-15 (a)(b) の裏取り)', () {
+    /// メインデッキが空で控え室に 4 枚。7.6.2 で引くと 10.2.1 が割り込む。
+    GameState emptyDeckAt7_6_2() => _at(
+          PhaseId.firstDraw,
+          StepId.s7_6_2,
+          a: PlayerState(
+            playerId: 'A',
+            waitingRoom: _cards('M1', 4),
+          ),
+        );
+
+    test('7.6.2 で割り込みリフレッシュが起きる (10.2.1)', () {
+      final result = StepEngine(cards: _master, rng: SeededRng(1))
+          .advance(emptyDeckAt7_6_2());
+
+      expect(result.refreshCount, 1, reason: '★割り込みが起きたことが数で出る');
+      expect(cardsIn(result.state, 'A', Zone.hand).length, 1);
+      expect(cardsIn(result.state, 'A', Zone.waitingRoom), isEmpty);
+      expect(cardsIn(result.state, 'A', Zone.mainDeck).length, 3);
+    });
+
+    test('★★seed を変えると AdvanceStep の結果が変わる (= 乱数を消費している)★★', () {
+      // ★同じ state に対して seed だけを変える。state を作り直すと
+      //   instanceId の連番がずれて、乱数以外の理由で並びが変わってしまう。
+      final state = emptyDeckAt7_6_2();
+
+      GameState afterWith(int seed) =>
+          StepEngine(cards: _master, rng: SeededRng(seed)).advance(state).state;
+
+      List<String> deckOrder(GameState s) =>
+          cardsIn(s, 'A', Zone.mainDeck).map((c) => c.instanceId).toList();
+
+      /// 引いた 1 枚 + 残ったメインデッキ = シャッフル対象の 4 枚。
+      Set<String> allFour(GameState s) => {
+            ...cardsIn(s, 'A', Zone.hand).map((c) => c.instanceId),
+            ...deckOrder(s),
+          };
+
+      final a = afterWith(1);
+      final b = afterWith(7);
+
+      expect(deckOrder(a), isNot(equals(deckOrder(b))),
+          reason: '★並びが変われば、このアクションが乱数を消費した証拠になる');
+      // ★対: 同じ seed なら同じ (再現性。差が「乱数由来」であることの裏づけ)
+      expect(deckOrder(afterWith(1)), equals(deckOrder(a)));
+      // ★対: カードが増減したのではなく並びだけが変わっている。
+      //   ★手札まで含めて見ること。seed が変われば**引かれる 1 枚も変わる**ので、
+      //   メインデッキだけを比べると集合が一致せず、この対照は成立しない。
+      expect(allFour(a), equals(allFour(b)));
+      expect(allFour(a).length, 4);
+    });
+  });
 }
