@@ -564,6 +564,10 @@ void main() {
 
       expect(a, b);
       expect(a.hashCode, b.hashCode);
+      // ★★ 意図的に等しい 2 つを並べている ★★
+      //   `StepCursor` が値として等価なら Set が 1 つに畳むこと自体が検査対象。
+      //   直すと**この検査が消える**ので、ルールのほうを 1 行だけ黙らせる。
+      // ignore: equal_elements_in_set
       expect({a, b}.length, 1);
       expect(a.toString(), 'liveJudgement@8.4.9');
     });

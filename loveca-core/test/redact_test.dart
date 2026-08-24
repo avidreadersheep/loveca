@@ -78,7 +78,9 @@ String _fingerprint(GameState state) {
     for (final zone in Zone.values) {
       if (zone == Zone.resolution ||
           zone == Zone.memberArea ||
-          zone == Zone.stage) continue;
+          zone == Zone.stage) {
+        continue;
+      }
       buffer.write('\n ${zone.name}:'
           '${cardsIn(state, p.playerId, zone).map(card).join(",")}');
     }

@@ -1,0 +1,23 @@
+include: package:lints/recommended.yaml
+
+# ★★ D-2 の解消（2026-08-24 / Phase 3b の M-B1 と同時）★★
+#
+# `loveca-core` は `lints` を dev_dependency に持ちながら
+# **`analysis_options.yaml` が無く、リントが 1 つも効いていなかった。**
+# `loveca-db` / `loveca-ui` には有ったので、この 1 パッケージだけが素通りしていた。
+#
+# ★★ D-2 の前提は誤りだった ★★
+#   D-2 は「`StepId.s8_4_13` 形式の enum 値名が `constant_identifier_names` に
+#   当たるので除外設定が要る」と書いていたが、**当たらない。**
+#   実際に走らせて確かめた ——
+#     `const FOO_BAR` と `enum { NOT_CAMEL }` は**どちらも指摘が出る**ので
+#     ルールは有効に効いている。そのうえで `s8_4_13` は出ない
+#     （先頭が小文字なら以降の数字と下線は lowerCamelCase として通る）。
+#   → **除外は 1 つも要らない。**
+#
+# ★0 件を「無い」と読まないための確認手順（D-10）:
+#   意図的な違反を 1 つ置いて、**指摘が出ることを先に確かめてから** 0 件を信じる。
+#
+# 実測: 導入時の指摘は **7 件**（すべて解消済み）。
+#   unnecessary_brace_in_string_interps 3 / curly_braces_in_flow_control_structures 2 /
+#   unnecessary_library_name 1 / equal_elements_in_set 1

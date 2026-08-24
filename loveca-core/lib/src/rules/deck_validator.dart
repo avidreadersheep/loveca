@@ -181,7 +181,7 @@ class DeckValidator {
         code: DeckIssueCode.memberCountMismatch,
         actual: members,
         expected: config.memberCount,
-        message: 'メンバーカード ${members}枚 (${config.memberCount}枚ちょうど必要)',
+        message: 'メンバーカード $members枚 (${config.memberCount}枚ちょうど必要)',
       ));
     }
     if (lives != config.liveCount) {
@@ -189,7 +189,7 @@ class DeckValidator {
         code: DeckIssueCode.liveCountMismatch,
         actual: lives,
         expected: config.liveCount,
-        message: 'ライブカード ${lives}枚 (${config.liveCount}枚ちょうど必要)',
+        message: 'ライブカード $lives枚 (${config.liveCount}枚ちょうど必要)',
       ));
     }
     if (energies != config.energyDeckSize) {
@@ -197,7 +197,7 @@ class DeckValidator {
         code: DeckIssueCode.energyCountMismatch,
         actual: energies,
         expected: config.energyDeckSize,
-        message: 'エネルギーカード ${energies}枚 (${config.energyDeckSize}枚ちょうど必要)',
+        message: 'エネルギーカード $energies枚 (${config.energyDeckSize}枚ちょうど必要)',
       ));
     }
 

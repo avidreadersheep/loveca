@@ -3,7 +3,7 @@
 /// ★ このパッケージは Flutter に一切依存させないこと ★
 /// PC / スマホ / サーバの 3 者で共有される唯一の真実であり、
 /// 単体テストの書きやすさとロジックの二重実装回避がプロジェクト全体の品質を決める。
-library loveca_core;
+library;
 
 export 'src/entities/card.dart';
 export 'src/entities/deck.dart';
