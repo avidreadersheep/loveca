@@ -247,8 +247,13 @@ class DeckEditStore extends Store<DeckEditState> {
   // 保存
   // ---------------------------------------------------------------------------
 
-  /// ★ここが `Deck.copyWith` を踏む唯一の入口（`DeckRepository.save` の中）。
+  /// ★ここが `Deck` を組み直す唯一の入口（`DeckRepository.save` の中）。
   /// 何回編集していても、保存 1 回につき `revision` は +1 しか増えない。
+  ///
+  /// ★★ 2026-08-24 訂正（`ルール整合性チェック_v1.06.md` D-15 (d)）★★
+  /// ここには「`Deck.copyWith` を踏む唯一の入口」と書いてあったが、
+  /// 決定 D70 で `save` を明示コンストラクタにしたので**踏んでいない**。
+  /// `revision` +1 と `updatedAt` を `Clock` から取ることは変わっていない。
   Future<bool> save() async {
     if (!value.canSave) return false;
     state = value.copyWith(busy: true, clearActionError: true);
