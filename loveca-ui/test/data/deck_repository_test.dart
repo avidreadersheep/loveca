@@ -466,6 +466,34 @@ void main() {
       expect(restored!.entries.map((e) => e.printingId), ['M-1-N', 'M-2-N']);
     });
 
+    test('★★ 区分をまたいで足しただけでは縮退にしない（実機で誤検知した）★★', () async {
+      // ★★ 画面は区分ごとに分けて出す ★★
+      //   平坦なリストで比べると、エネルギーの次にメンバーを足した瞬間に
+      //   「並べ替えました」と出る。**利用者は並べ替えていない。**
+      //   M4 の実機確認で実際に出た誤検知。比べるのは各区分の中の並びである。
+      final created = await repositoryOn(db).create(name: 'X');
+      final repository = repositoryOn(db);
+
+      final draft = repository
+          .draftOf(created)
+          .addCopy('E-1-N') // 先にエネルギー
+          .addCopy('M-1-N'); // あとからメンバー（平坦には E, M の順）
+
+      expect(repository.isReordered(draft), isFalse);
+    });
+
+    test('★同じ区分の中で順が崩れていれば縮退になる（出る側）', () async {
+      final created = await repositoryOn(db).create(name: 'X');
+      final repository = repositoryOn(db);
+
+      final draft = repository
+          .draftOf(created)
+          .addCopy('M-2-N')
+          .addCopy('M-1-N'); // メンバーの中で降順になった
+
+      expect(repository.isReordered(draft), isTrue);
+    });
+
     test('★並べ替えていなければ isReordered は false（出ない側）', () async {
       final created = await repositoryOn(db).create(name: 'X');
       final repository = repositoryOn(db);

@@ -312,11 +312,26 @@ class DeckCatalogView {
         entries: normalizedEntries(deck.entries),
       );
 
-  /// ドラフトの並びが「開き直したときの並び」と違うか（決定 D65）。
-  bool isReordered(DeckDraft draft) => !listEquals(
-        draft.entries.map((e) => e.printingId).toList(),
-        normalizedEntries(draft.entries).map((e) => e.printingId).toList(),
-      );
+  /// ドラフトの**画面に見えている並び**が「開き直したときの並び」と違うか（決定 D65）。
+  ///
+  /// ★★ 平坦なリストを比べてはいけない ★★
+  /// 画面は区分ごとに分けて出す（）ので、
+  /// **区分をまたいで足しただけでは見た目の並びは変わらない。**
+  /// 平坦なリストで比べると、エネルギーの次にメンバーを足した瞬間に
+  /// 「並べ替えました」と出てしまう。★実機確認（M4）で実際に出た。
+  /// 比べるのは**各区分の中が printingId 昇順かどうか**である。
+  bool isReordered(DeckDraft draft) {
+    final sections = sectionsOf(draft.entries);
+    bool ascending(List<DeckEntry> entries) {
+      final ids = entries.map((e) => e.printingId).toList();
+      return listEquals(ids, [...ids]..sort());
+    }
+
+    return !(ascending(sections.members) &&
+        ascending(sections.lives) &&
+        ascending(sections.energies) &&
+        ascending(sections.unknown));
+  }
 }
 
 /// デッキの読み書き。★カタログだけで済む分は [DeckCatalogView] へ預ける。
