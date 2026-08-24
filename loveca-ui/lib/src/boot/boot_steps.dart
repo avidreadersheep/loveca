@@ -18,6 +18,7 @@ import '../data/app_database.dart';
 import '../data/app_paths.dart';
 import '../data/app_settings.dart';
 import '../data/card_catalog_repository.dart';
+import '../data/card_detail.dart';
 import '../data/card_image_source.dart';
 import '../data/card_list_row.dart';
 import '../data/clock.dart';
@@ -329,6 +330,7 @@ class AppEnvironment {
     required this.imageSource,
     required this.decks,
     required this.cardCatalog,
+    required this.cardDetail,
     required this.searchLimit,
     required this.clock,
   });
@@ -341,6 +343,13 @@ class AppEnvironment {
 
   /// カードの読み出しと検索（M3）。★同上。
   final CardCatalogRepository cardCatalog;
+
+  /// カード詳細の材料（M5 / R5）。
+  ///
+  /// ★★ カタログから起動時に 1 回だけ組む（決定 D55 / D56）★★
+  /// 取り込みは起動ゲートでしか走らないのでセッション中ずっと不変であり、
+  /// **無効化処理そのものが要らない。** DB へも行かない。
+  final CardDetailView cardDetail;
 
   /// 検索結果の上限と、その出所（決定 D50 / D64）。
   final SearchLimitSetting searchLimit;

@@ -14,6 +14,7 @@ import '../data/master_catalog.dart';
 import '../data/master_repository.dart';
 import '../data/search_limit.dart';
 import '../state/store.dart';
+import '../data/card_detail.dart';
 import 'boot_steps.dart';
 
 sealed class BootState {
@@ -116,6 +117,9 @@ class BootController extends Store<BootState> {
           imageSource: _steps.imageSourceFor(outcome),
           decks: _steps.decksFor(catalog),
           cardCatalog: _steps.cardCatalogFor(),
+          // ★カタログから組むだけ。段（BootSteps）を経由しないのは
+          //   DB も dist も要らないため（決定 D55）。
+          cardDetail: CardDetailView(catalog),
           searchLimit: _steps.searchLimit,
           clock: clock,
         ),

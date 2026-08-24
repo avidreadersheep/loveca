@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loveca_ui/src/boot/boot_steps.dart';
 import 'package:loveca_ui/src/data/card_catalog_repository.dart';
+import 'package:loveca_ui/src/data/card_detail.dart';
 import 'package:loveca_ui/src/data/card_image_source.dart';
 import 'package:loveca_ui/src/data/master_catalog.dart';
 import 'package:loveca_ui/src/data/search_limit.dart';
@@ -28,18 +29,23 @@ Future<void> pumpInAppScope(
   Widget child, {
   required FakeDeckRepository decks,
   List<BootNotice> notices = const [],
+  /// ★画像の経路を確かめたいときだけ差し替える（M5）。既定は dist 不在。
+  CardImageSource? imageSource,
   CardCatalogRepository? cardCatalog,
   MasterCatalog? catalog,
   SearchLimitSetting searchLimit = SearchLimitSetting.standard,
 }) async {
+  // ★本番と同じく、カタログから 1 回だけ組んで配る（決定 D55 / M5）。
+  final resolved = catalog ?? fakeCatalog();
   await tester.pumpWidget(
     MaterialApp(
       builder: (context, navigator) => AppScope(
         environment: AppEnvironment(
-          catalog: catalog ?? fakeCatalog(),
-          imageSource: const LocalDirectoryCardImageSource(null),
+          catalog: resolved,
+          imageSource: imageSource ?? const LocalDirectoryCardImageSource(null),
           decks: decks,
           cardCatalog: cardCatalog ?? FakeCardCatalogRepository(),
+          cardDetail: CardDetailView(resolved),
           searchLimit: searchLimit,
           clock: fakeNow,
         ),
