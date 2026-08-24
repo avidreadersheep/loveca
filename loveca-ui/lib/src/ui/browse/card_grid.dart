@@ -5,12 +5,17 @@
 /// | 値 | 出典 | 格 |
 /// |---|---|---|
 /// | セル幅 120 物理px / thumb 原寸 200×279 | `docs/UI技術検証メモ.md` §3 | **正**（D42 の数値はこの条件で得られた） |
-/// | `maxExtent 140` / `spacing 6` / 比 200:279 | `spike/main_grid.dart` | 再現手段。メモには無い |
+/// | `maxExtent 140` / `spacing 6` / **タイル**比 200:279 | `spike/main_grid.dart` | 再現手段。メモには無い |
 ///
 /// ★これらを変えると、セル幅 120 物理px という D42 の前提が動く。
 /// `ResizeImage` の効果（予算超え 25 フレーム → 0）もキャッシュの見積り
 /// （1 枚 74 KB / 1000 枚）も、すべてこのセル幅で測ったものである。
 /// **変えるなら測り直すこと。**
+///
+/// ★★ **タイルの比**と**絵の枠の比**は別物である（決定 D72）★★
+/// thumb の原寸 200×279 は**メンバー / エネルギー**の値で、**ライブは 200×143 の横長**。
+/// 枠は `CardArt` が種別で選ぶが、**タイルは 200:279 のまま**なので
+/// セル幅も `cacheWidth` もデコード幅も動かない。**だから D42 は測り直しに当たらない。**
 library;
 
 import 'package:flutter/material.dart';
@@ -52,10 +57,15 @@ class CardGrid extends StatelessWidget {
   /// セルの間隔（同 :492）。
   static const double spacing = 6;
 
-  /// thumb の原寸比（同 :522 / `docs/UI技術検証メモ.md` §3）。
+  /// ★★ **タイル**の比（同 :522 / `docs/UI技術検証メモ.md` §3）★★
   ///
   /// ★実体は `ui/common/card_thumb.dart` の [kCardAspectRatio]。
-  /// 詳細（R5）も同じ比で置くので、数を 2 箇所に書かない。
+  /// 数を 2 箇所に書かない。
+  ///
+  /// ★★ タイルの比は種別で変えない（決定 D72）★★
+  /// 種別で選ぶのは**タイルの中に置く枠**（`CardArt`）であって、これではない。
+  /// ここを種別で変えるとタイルの高さが 2 通りになり、
+  /// **グリッドに寸法の前提が 2 つ生まれる**（`docs/UI設計メモ.md` §6-6）。
   static const double aspectRatio = kCardAspectRatio;
 
   @override
@@ -122,13 +132,17 @@ class _CardCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final thumb = ClipRRect(
+    // ★★ タイルは 200:279 のまま。枠だけ種別で選ぶ（決定 D72 / U11 の解消）★★
+    //   ライブの thumb は 200:143 の横長なので、以前は cover で
+    //   **左右 48.7% が切り落とされ、1.95 倍に拡大されていた。**
+    //   ★帯（ライブのセルの上下）を掴める / 押せるようにするのは外側の役目——
+    //     押す側は下の GestureDetector、掴む側は R3 の CardDragSource（決定 D46）。
+    final thumb = CardArt(
+      source: imageSource,
+      imageHash: row.imageHash,
+      cardType: row.cardType,
+      logicalWidth: logicalWidth,
       borderRadius: BorderRadius.circular(4),
-      child: CardThumb(
-        source: imageSource,
-        imageHash: row.imageHash,
-        logicalWidth: logicalWidth,
-      ),
     );
 
     return Tooltip(

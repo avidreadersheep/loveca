@@ -269,13 +269,22 @@ class _CoverPicker extends StatelessWidget {
                       ),
                     ),
                     padding: const EdgeInsets.all(2),
-                    // ★横スクロールの中では幅が無限に来る。
-                    //   `CardThumb` は比から高さを決めるので、幅を閉じてやる。
+                    // ★横スクロールの中では幅が無限に来るので、幅を閉じてやる。
+                    //   高さは ListView の交差軸（96）から来る。
+                    // ★★ 枠は種別で選ぶ（決定 D72）★★
+                    //   ライブは横長（200:143）。縦長の箱で cover すると左右が切れる。
+                    //   ★★ 叩ける矩形を作るのは外側であって、この絵ではない（決定 D46）★★
+                    //     支えているのは 2 つ。(a) 上の `Container` の `BoxDecoration`
+                    //     ——`RenderDecoratedBox.hitTestSelf` が `Decoration.hitTest` に
+                    //     委ね、矩形の中ならどこでも true になる。(b) `InkWell` の
+                    //     `HitTestBehavior.opaque`。★実測では (a) だけでも帯は叩ける。
+                    //     **どちらかを消すときは `test/ui/card_art_test.dart` を見ること。**
                     child: SizedBox(
                       width: 56,
-                      child: CardThumb(
+                      child: CardArt(
                         source: imageSource,
                         imageHash: row.imageHash,
+                        cardType: row.cardType,
                         logicalWidth: 56,
                       ),
                     ),

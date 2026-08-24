@@ -228,8 +228,11 @@ class _DeckEditPageState extends State<DeckEditPage> {
             // ★決定 D46: 掴める矩形を作る。セルの余白でも掴める。
             background: theme.colorScheme.surface,
             feedback: SizedBox(
+              // ★★ feedback は箱そのものが札（決定 D72）★★
+              //   枠を中に作ると宙に浮くので、箱の高さを種別で決める。
+              //   ライブは 60 / 1.399 = 43、メンバー・エネルギーは 60 / 0.717 = 84。
               width: 60,
-              height: 84,
+              height: 60 / cardAspectRatioOf(row.cardType),
               child: CardThumb(
                 source: _scope.environment.imageSource,
                 imageHash: row.imageHash,

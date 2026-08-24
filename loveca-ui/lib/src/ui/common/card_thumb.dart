@@ -31,7 +31,10 @@ import '../../data/card_image_source.dart';
 /// カードの縦横比（`docs/UI技術検証メモ.md` §3 / §1-2 の実測）。
 ///
 /// ★★ 縦長の札（メンバー / エネルギー）の比 ★★
-/// 一覧のセル（`CardGrid`）はこの比で固定してある（D42 の測定条件）。
+/// 一覧の**タイル**はこの比で固定してある（D42 の測定条件）。
+///
+/// ★★ タイルの比と「絵の枠」の比は別物である（決定 D72）★★
+/// タイルは種別で変えない。中に置く枠だけを [cardAspectRatioOf] で選ぶ。
 const double kCardAspectRatio = 200 / 279;
 
 /// ★★ ライブの札は**横長**である ★★
@@ -55,10 +58,10 @@ const double kLiveCardAspectRatio = 200 / 143;
 /// `BoxFit.cover` では**札の左右が切れる**。詳細は札を同定するための画面なので
 /// どちらも困る。
 ///
-/// ★一覧（`CardGrid`）は全セルを [kCardAspectRatio] のままにしてある。
-/// セル幅 120 物理px という D42 の測定条件がその比で得られており、
-/// **セルごとに高さが変わるグリッドは別の設計判断**になるため
-/// （`docs/UI設計メモ.md` §10 の **U11**）。
+/// ★★ 一覧（`CardGrid`）もこれを使う（決定 D72 / 未決 U11 の解消）★★
+/// ただし**タイル**の比は [kCardAspectRatio] のまま動かさない。
+/// セル幅 120 物理px という D42 の測定条件がその比で得られているためで、
+/// **選ぶのはタイルではなく、その中に置く枠である**（[CardArt]）。
 double cardAspectRatioOf(CardType cardType) => switch (cardType) {
       CardType.live => kLiveCardAspectRatio,
       CardType.member || CardType.energy => kCardAspectRatio,
@@ -127,6 +130,82 @@ class CardThumb extends StatelessWidget {
       ],
     );
   }
+}
+
+/// 種別に合う枠へ収めたカードの絵（決定 D72）。
+///
+/// ★★ 与えられた箱を埋めない ★★
+/// 箱の中に [cardAspectRatioOf] の枠を作り、中央に置く。
+/// **箱（タイル・行・スロット）の寸法は種別で変えない。**
+/// 一覧のタイルは 200:279 のまま（D42 の測定条件）なので、
+/// ライブのセルには上下に帯ができる（片側 0.340 × セル幅）。
+///
+/// ★★ したがって掴める / 押せる矩形は「外側のラッパ」が作る（決定 D46）★★
+/// これまでは [CardThumb] の下地（`ColoredBox`）が箱全面を埋めていたため、
+/// **ラッパが無くても当たっていた。その二重化がライブのセルで消える。**
+/// 掴む側は `CardDragSource` の `background`、押す側は
+/// `GestureDetector(behavior: opaque)` / `InkWell`（既定で opaque）が矩形を作ること。
+/// ★`test/common/card_drag_test.dart` が**帯を掴めること**を固定してある。
+/// ★Phase 3b の盤面でも同じ——空きスロット・領域の背景・札の枠は
+/// **必ず描画物にする**（`docs/UI技術検証メモ.md` §6-1 / §7-1 の前提 1）。
+/// 怠ると「**ライブだけ帯を掴めない**」という種別依存の再現しにくい不具合になる。
+///
+/// ★★ [logicalWidth] は「枠の幅」である ★★
+/// 本実装の置き場はすべて**箱が枠の比より縦長**なので、`AspectRatio` は幅いっぱいを取り、
+/// **枠の幅 == 箱の幅**になる。だから `cacheWidth`（= 論理幅 × DPR）は D42 のまま動かない。
+/// ★箱が枠より横長になる置き方をするときは、[logicalWidth] に**枠の幅**を渡すこと。
+///
+/// ★ドラッグ中の feedback は**箱そのものが札**なので、これではなく
+/// 箱の高さを `幅 / cardAspectRatioOf(...)` で決める（枠を中に作ると宙に浮く）。
+///
+/// ★R5 のカード詳細（`ui/detail/card_detail_pane.dart` の `_DetailImage`）は
+/// 同じ形を自前で組んでいる。幅の頭打ち（`kCardDetailImageMaxWidth`）が絡むため。
+/// **比の出どころは [cardAspectRatioOf] 1 つ**なので、数が 2 箇所に割れることはない。
+class CardArt extends StatelessWidget {
+  const CardArt({
+    super.key,
+    required this.source,
+    required this.imageHash,
+    required this.cardType,
+    required this.logicalWidth,
+    this.size = CardImageSize.thumb,
+    this.fit = BoxFit.cover,
+    this.borderRadius = BorderRadius.zero,
+  });
+
+  final CardImageSource source;
+  final String imageHash;
+
+  /// 枠の比を決める（[cardAspectRatioOf]）。
+  final CardType cardType;
+
+  /// ★枠の論理幅。物理px への変換は [CardThumb] が行う（決定 D42）。
+  final double logicalWidth;
+
+  final CardImageSize size;
+
+  /// ★枠が比に合っているので [BoxFit.cover] でも切り落としは実質 0
+  /// （279/280・143/144 の 1px の揺れぶんだけ）。
+  final BoxFit fit;
+
+  final BorderRadius borderRadius;
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: AspectRatio(
+          aspectRatio: cardAspectRatioOf(cardType),
+          child: ClipRRect(
+            borderRadius: borderRadius,
+            child: CardThumb(
+              source: source,
+              imageHash: imageHash,
+              logicalWidth: logicalWidth,
+              size: size,
+              fit: fit,
+            ),
+          ),
+        ),
+      );
 }
 
 class _Placeholder extends StatelessWidget {

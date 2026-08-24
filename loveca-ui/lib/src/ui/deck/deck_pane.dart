@@ -350,9 +350,14 @@ class _EntryRow extends StatelessWidget {
                         color: theme.disabledColor,
                       ),
                     )
-                  : CardThumb(
+                  // ★★ 枠は種別で選ぶ（決定 D72）★★
+                  //   ライブは横長（200:143）。縦長の箱で cover すると左右が切れる。
+                  //   ★行を掴める矩形を作るのは下の CardDragSource の
+                  //     `background` であって、この絵ではない（決定 D46）。
+                  : CardArt(
                       source: imageSource,
                       imageHash: row.imageHash,
+                      cardType: row.cardType,
                       logicalWidth: kDeckRowThumbWidth,
                     ),
             ),
@@ -429,8 +434,11 @@ class _EntryRow extends StatelessWidget {
           data: DeckEntryDrag(entry.printingId),
           background: background,
           feedback: SizedBox(
+            // ★★ feedback は箱そのものが札（決定 D72）★★
+            //   枠を中に作ると宙に浮くので、箱の高さを種別で決める。
+            //   ★row == null（マスタに無い刷り / 決定 D35）は縦長に倒す。
             width: 40,
-            height: 56,
+            height: row == null ? 56 : 40 / cardAspectRatioOf(row.cardType),
             child: row == null
                 ? ColoredBox(color: theme.colorScheme.surfaceContainerHighest)
                 : CardThumb(

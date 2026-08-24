@@ -17,6 +17,7 @@ library;
 import 'package:flutter/material.dart' hide Card;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loveca_core/loveca_core.dart';
+import 'package:loveca_ui/src/ui/common/card_thumb.dart';
 import 'package:loveca_ui/src/ui/deck/deck_edit_page.dart';
 import 'package:loveca_ui/src/ui/deck/deck_pane.dart';
 
@@ -180,6 +181,65 @@ void main() {
       );
 
       expect(_deckRow('M-1-N'), findsNothing);
+    });
+
+    // ★★ ここから下は決定 D72（ライブは横長の枠になった）の受け ★★
+    //   絵がタイルを埋めなくなったので、**帯を掴めるかどうかは
+    //   外側の `CardDragSource` の `ColoredBox` だけが決めている。**
+    //   ★Phase 3b の盤面でライブを掴む場面が必ず来る。ここで崩れていると後で踏む。
+    testWidgets('★★ ライブのセルは帯（タイル上端）を掴んでもドラッグが始まる（決定 D72）★★',
+        (tester) async {
+      await _open(tester, deck: _deck());
+
+      final cell = tester.getRect(_catalogCell('L-1-N'));
+      final art = tester.getRect(
+        find.descendant(
+          of: _catalogCell('L-1-N'),
+          matching: find.byType(CardThumb),
+        ),
+      );
+      // ★掴む点が本当に「絵の外」であることを先に確かめる。
+      //   ここが偽だと、このテストは**絵の上を掴んでいるだけ**になる。
+      expect(art.top, greaterThan(cell.top + 4),
+          reason: 'ライブのセルには上下に帯がある（決定 D72）');
+
+      await _dragTo(
+        tester,
+        Offset(cell.center.dx, cell.top + 4),
+        tester.getCenter(find.byType(DeckPane)),
+      );
+
+      expect(_deckRow('L-1-N'), findsOneWidget);
+    });
+
+    testWidgets('★対: メンバーのセルも同じ位置（タイル上端）で掴める', (tester) async {
+      // ★メンバーには帯が無い（枠 == タイル）。**帯の有無に関係なく掴める**ことを示す。
+      await _open(tester, deck: _deck());
+
+      final cell = tester.getRect(_catalogCell('M-1-N'));
+      await _dragTo(
+        tester,
+        Offset(cell.center.dx, cell.top + 4),
+        tester.getCenter(find.byType(DeckPane)),
+      );
+
+      expect(_deckRow('M-1-N'), findsOneWidget);
+    });
+
+    testWidgets('★ライブのデッキ行も余白から持ち出せる（34×48 の箱も横長になった）',
+        (tester) async {
+      await _open(
+        tester,
+        deck: _deck(entries: const [DeckEntry(printingId: 'L-1-N', count: 1)]),
+      );
+
+      await _dragTo(
+        tester,
+        _rowPadding(tester, _deckRow('L-1-N')),
+        tester.getCenter(find.text('ここへ落とすとデッキから外す')),
+      );
+
+      expect(_deckRow('L-1-N'), findsNothing);
     });
   });
 
