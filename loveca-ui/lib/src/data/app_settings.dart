@@ -24,8 +24,18 @@ class AppSettings {
 
   static const AppSettings defaults = AppSettings();
 
-  AppSettings copyWith({String? distDir, bool? showParallel}) => AppSettings(
-        distDir: distDir ?? this.distDir,
+  /// ★★ [clearDistDir] が要る理由 ★★
+  /// `distDir ?? this.distDir` だけだと **設定を消す手段が無い。**
+  /// R6（M6）は「段 2 をやめて段 3 の既定に戻す」を出すので、
+  /// 消す口が無いと片道になる。`CardListFilter.copyWith` の
+  /// `clearExpansion` と同じ流儀に揃えてある。
+  AppSettings copyWith({
+    String? distDir,
+    bool clearDistDir = false,
+    bool? showParallel,
+  }) =>
+      AppSettings(
+        distDir: clearDistDir ? null : (distDir ?? this.distDir),
         showParallel: showParallel ?? this.showParallel,
       );
 

@@ -12,6 +12,9 @@ import 'package:loveca_core/loveca_core.dart';
 import 'package:loveca_db/loveca_db.dart';
 import 'package:loveca_db/native.dart';
 
+import 'app_settings.dart';
+import 'dist_locator.dart';
+import 'import_issue.dart';
 import 'repository_exception.dart';
 
 /// 取り込みを試みた結果。
@@ -23,17 +26,25 @@ import 'repository_exception.dart';
 class MasterImportOutcome {
   const MasterImportOutcome({
     required this.distMissing,
-    required this.searchedPaths,
+    required this.location,
     required this.appVersion,
+    required this.settings,
     this.result,
     this.remoteMinAppVersion,
+    this.remoteDataVersion,
     this.settingsRecoveredFrom,
   });
 
   final bool distMissing;
 
+  /// dist をどこで探し、**どの段で見つけたか**（決定 D60 / R6）。
+  final DistLocation location;
+
+  /// このセッションで効いている設定（R6 が初期値に使う）。
+  final AppSettings settings;
+
   /// dist を探した場所（決定 D60）。★不在のとき利用者に全部見せる。
-  final List<String> searchedPaths;
+  List<String> get searchedPaths => location.searchedPaths;
 
   /// このアプリの版。★`appTooOld` のとき最小版と並べて出す。
   final String appVersion;
@@ -55,6 +66,10 @@ class MasterImportOutcome {
   /// 決定 D60 が「探した場所を並べる」と定めたのと同じ理屈である。
   final String? remoteMinAppVersion;
 
+  /// 配信物が持つ `dataVersion`。★取り込み済みの版と並べて出す（R6）。
+  /// これが取り込み済みより大きければ「再起動すると取り込まれます」と言える。
+  final int? remoteDataVersion;
+
   /// ★取り込みが 1 件も行われなかったか。
   /// `appTooOld` / `upToDate` は例外を投げずに戻るので、これを見ないと
   /// 「取り込んだ結果 0 件」と区別できない。
@@ -73,13 +88,14 @@ class MasterRepository {
   ///
   /// [now] は呼び出し側から渡す（`Clock` / `docs/UI設計メモ.md` §9-1）。
   Future<MasterImportOutcome> import({
-    required Directory distDir,
-    required List<String> searchedPaths,
+    required DistLocation location,
     required String appVersion,
+    required AppSettings settings,
     required DateTime now,
     Object? settingsRecoveredFrom,
   }) =>
       guardRepository('master.import', () async {
+        final distDir = location.directory!;
         final version = VersionInfo.parse(
           await File('${distDir.path}/version.json').readAsString(),
         );
@@ -97,10 +113,12 @@ class MasterRepository {
 
         return MasterImportOutcome(
           distMissing: false,
-          searchedPaths: searchedPaths,
+          location: location,
           appVersion: appVersion,
+          settings: settings,
           result: result,
           remoteMinAppVersion: version.minAppVersion,
+          remoteDataVersion: version.dataVersion,
           settingsRecoveredFrom: settingsRecoveredFrom,
         );
       });
@@ -113,8 +131,43 @@ class MasterRepository {
       guardRepository('master.ruleConfig', () => DeckDao(_db).ruleConfig());
 
   /// ★決定 D39: 記録するだけで誰も見ない状態にしない。
-  /// M1 では起動サマリに件数を出し、詳細の画面（R6）は M6 で作る。
+  /// M1 では起動サマリに件数を出し、詳細の画面（R6）は M6 で作った。
   Future<int> outstandingImportIssueCount() =>
       guardRepository('master.outstandingImportIssueCount',
           () => MasterStateDao(_db).outstandingImportIssueCount());
+
+  /// 未解消の取り込み失敗の一覧（R6 / P2）。
+  ///
+  /// ★★ `master_files` の現在ハッシュを一緒に引く ★★
+  /// `import_issues` の「未解消」は `(path, hash)` の突き合わせで決まるため、
+  /// **配信側が直してハッシュが変わると永久に未解消のまま残る**
+  /// （`ルール整合性チェック_v1.06.md` D-13）。
+  /// 現在ハッシュを添えて `ImportIssue.supersededByNewerFile` を立て、
+  /// 「いま壊れている」と「壊れた記録が残っている」を画面で区別できるようにする。
+  Future<List<ImportIssue>> outstandingImportIssues() =>
+      guardRepository('master.outstandingImportIssues', () async {
+        final dao = MasterStateDao(_db);
+        final rows = await dao.outstandingImportIssues();
+        final current = await dao.localFileHashes();
+        return [
+          for (final row in rows)
+            ImportIssue(
+              path: row.path,
+              hash: row.hash,
+              kind: row.kind,
+              message: row.message,
+              occurrenceCount: row.occurrenceCount,
+              firstSeenAt: row.firstSeenAt,
+              lastSeenAt: row.lastSeenAt,
+              currentHash: current[row.path],
+            ),
+        ];
+      });
+
+  /// バッジ用（R2 の設定アイコン）。
+  ///
+  /// ★`Stream<int>` は drift の型ではないので、そのまま通してよい
+  /// （`docs/UI設計メモ.md` §4-2）。
+  Stream<int> watchOutstandingImportIssueCount() =>
+      MasterStateDao(_db).watchOutstandingImportIssueCount();
 }

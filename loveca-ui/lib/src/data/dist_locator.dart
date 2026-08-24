@@ -18,20 +18,61 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+/// dist の出所（＝解決順の段）。
+///
+/// ★★ 「どの段で解決したか」を値として持つ（M6 / R6）★★
+/// 候補は条件つきで積まれる（環境変数も設定も空なら 1 件しか積まれない）ので、
+/// **[DistLocation.searched] の件数からは段を復元できない。**
+/// R6 が「いまどの段が効いているか」を出せるように、出所そのものを持たせる。
+enum DistSource {
+  /// 段 1: 環境変数 `LOVECA_DIST_DIR`。★開発と検証の口。
+  environment,
+
+  /// 段 2: `settings.json` の `distDir`。★R6 が書く本番の設定経路（決定 D60）。
+  settings,
+
+  /// 段 3: 実行ファイルの隣の `data/dist/`。★配布形態の既定。
+  bundled;
+
+  String get label => switch (this) {
+        DistSource.environment => '環境変数 LOVECA_DIST_DIR',
+        DistSource.settings => '設定（settings.json の distDir）',
+        DistSource.bundled => '実行ファイルの隣の data/dist',
+      };
+}
+
+/// 見に行った候補 1 件。
+class DistCandidate {
+  const DistCandidate({required this.source, required this.path});
+
+  final DistSource source;
+  final String path;
+}
+
 /// 探した結果。
 ///
 /// ★★ 見つからなかったときに「どこを見たか」を必ず返す ★★
 /// 3 段の解決順を持つ以上、**どこを見て無かったのかが出ないと利用者は直せない。**
 class DistLocation {
-  const DistLocation({required this.directory, required this.searched});
+  const DistLocation({
+    required this.directory,
+    required this.searched,
+    this.source,
+  });
 
   /// 使える dist。見つからなければ null。
   final Directory? directory;
 
   /// 実際に見た場所（順番どおり）。★見つかった場合も全部入れる。
-  final List<String> searched;
+  final List<DistCandidate> searched;
+
+  /// 採用した段。★見つからなければ null。
+  final DistSource? source;
 
   bool get found => directory != null;
+
+  /// 既存の表示（起動失敗画面・`MasterImportOutcome`）はパスの列だけを使う。
+  List<String> get searchedPaths => [for (final c in searched) c.path];
 }
 
 /// 探し方。★Phase 5 でモバイル実装を足す差し替え点。
@@ -58,20 +99,25 @@ class DesktopDistLocator implements DistLocator {
 
   @override
   Future<DistLocation> locate() async {
-    final candidates = <String>[
+    final candidates = <DistCandidate>[
       if (_environment[environmentKey] case final v? when v.trim().isNotEmpty)
-        v.trim(),
-      if (settingsDistDir case final v? when v.trim().isNotEmpty) v.trim(),
-      p.join(p.dirname(_executablePath), 'data', 'dist'),
+        DistCandidate(source: DistSource.environment, path: v.trim()),
+      if (settingsDistDir case final v? when v.trim().isNotEmpty)
+        DistCandidate(source: DistSource.settings, path: v.trim()),
+      DistCandidate(
+        source: DistSource.bundled,
+        path: p.join(p.dirname(_executablePath), 'data', 'dist'),
+      ),
     ];
 
-    final searched = <String>[];
+    final searched = <DistCandidate>[];
     for (final candidate in candidates) {
       searched.add(candidate);
-      if (isUsableDist(Directory(candidate))) {
+      if (isUsableDist(Directory(candidate.path))) {
         return DistLocation(
-          directory: Directory(candidate),
+          directory: Directory(candidate.path),
           searched: searched,
+          source: candidate.source,
         );
       }
     }

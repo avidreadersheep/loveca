@@ -83,7 +83,9 @@ void main() {
       expect(result.directory!.path, fromSettings.path);
       // ★見た場所は全部残る。
       expect(result.searched, hasLength(2));
-      expect(result.searched.first, contains('does_not_exist'));
+      expect(result.searchedPaths.first, contains('does_not_exist'));
+      // ★どの段で解決したか（M6 / R6 が出す）。
+      expect(result.source, DistSource.settings);
     });
   });
 
@@ -103,9 +105,15 @@ void main() {
 
       expect(result.found, isFalse);
       expect(result.searched, hasLength(3));
-      expect(result.searched[0], contains('no_env'));
-      expect(result.searched[1], contains('no_settings'));
-      expect(result.searched[2], contains('data'));
+      expect(result.searchedPaths[0], contains('no_env'));
+      expect(result.searchedPaths[1], contains('no_settings'));
+      expect(result.searchedPaths[2], contains('data'));
+      // ★段の名前も順番どおり残る。件数からは復元できない（空指定は積まれない）。
+      expect(
+        [for (final c in result.searched) c.source],
+        [DistSource.environment, DistSource.settings, DistSource.bundled],
+      );
+      expect(result.source, isNull, reason: '見つからなければ段も決まらない');
     });
 
     test('★ディレクトリがあっても version.json / manifest.json が無ければ使わない',
@@ -118,7 +126,7 @@ void main() {
       final result = await locator(env: empty.path).locate();
 
       expect(result.found, isFalse);
-      expect(result.searched.first, empty.path);
+      expect(result.searchedPaths.first, empty.path);
     });
 
     test('★manifest.json だけあっても使わない', () async {
@@ -143,5 +151,32 @@ void main() {
     );
     // 空指定は候補に入らないので、見たのは既定の 1 箇所だけ。
     expect(result.searched, hasLength(1));
+    // ★★ 件数から段は復元できない ★★
+    // 1 件しか見ていないが、それは段 1 ではなく段 3 である。
+    // R6 が「どの段が効いているか」を出すには、出所そのものが要る（M6）。
+    expect(result.source, DistSource.bundled);
+  });
+
+  group('★どの段で解決したか（M6 / R6）', () {
+    test('段1 なら environment', () async {
+      final fromEnv = _makeDist(tmp, 'from_env');
+      final result = await locator(env: fromEnv.path).locate();
+      expect(result.source, DistSource.environment);
+      expect(result.source!.label, contains('LOVECA_DIST_DIR'));
+    });
+
+    test('段2 なら settings', () async {
+      final fromSettings = _makeDist(tmp, 'from_settings');
+      final result = await locator(settings: fromSettings.path).locate();
+      expect(result.source, DistSource.settings);
+      expect(result.source!.label, contains('settings.json'));
+    });
+
+    test('段3 なら bundled', () async {
+      _makeDist(Directory(p.join(tmp.path, 'app')), 'data/dist');
+      final result = await locator().locate();
+      expect(result.source, DistSource.bundled);
+      expect(result.source!.label, contains('実行ファイル'));
+    });
   });
 }

@@ -13,16 +13,23 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:loveca_core/loveca_core.dart' hide Card;
+import 'package:loveca_db/loveca_db.dart';
 import 'package:loveca_ui/src/boot/boot_steps.dart';
+import 'package:loveca_ui/src/data/app_settings.dart';
 import 'package:loveca_ui/src/data/card_catalog_repository.dart';
 import 'package:loveca_ui/src/data/card_detail.dart';
 import 'package:loveca_ui/src/data/card_image_source.dart';
+import 'package:loveca_ui/src/data/dist_locator.dart';
 import 'package:loveca_ui/src/data/master_catalog.dart';
+import 'package:loveca_ui/src/data/master_repository.dart';
 import 'package:loveca_ui/src/data/search_limit.dart';
 import 'package:loveca_ui/src/state/app_scope.dart';
 
+import 'fake_app_settings_store.dart';
 import 'fake_card_catalog_repository.dart';
 import 'fake_deck_repository.dart';
+import 'fake_master_repository.dart';
 
 Future<void> pumpInAppScope(
   WidgetTester tester,
@@ -34,6 +41,12 @@ Future<void> pumpInAppScope(
   CardCatalogRepository? cardCatalog,
   MasterCatalog? catalog,
   SearchLimitSetting searchLimit = SearchLimitSetting.standard,
+  /// ★M6: R6（設定・診断）とバッジが読む材料。
+  FakeMasterRepository? master,
+  FakeAppSettingsStore? settingsStore,
+  AppSettings settings = AppSettings.defaults,
+  DistSource distSource = DistSource.environment,
+  List<String> searchedPaths = const [r'C:\dist'],
 }) async {
   // ★本番と同じく、カタログから 1 回だけ組んで配る（決定 D55 / M5）。
   final resolved = catalog ?? fakeCatalog();
@@ -48,6 +61,29 @@ Future<void> pumpInAppScope(
           cardDetail: CardDetailView(resolved),
           searchLimit: searchLimit,
           clock: fakeNow,
+          master: master ?? FakeMasterRepository(),
+          settingsStore: settingsStore ?? FakeAppSettingsStore(settings),
+          appVersion: '1.0.0',
+          importOutcome: MasterImportOutcome(
+            distMissing: false,
+            location: DistLocation(
+              directory: null,
+              searched: [
+                for (final path in searchedPaths)
+                  DistCandidate(source: distSource, path: path),
+              ],
+              source: distSource,
+            ),
+            appVersion: '1.0.0',
+            settings: settings,
+            remoteMinAppVersion: '1.0.0',
+            remoteDataVersion: 2,
+            result: const MasterImportResult(
+              decision: UpdateDecision.upToDate,
+              dataVersion: 2,
+              dataVersionAdvanced: false,
+            ),
+          ),
         ),
         notices: notices,
         timings: const BootTimings(

@@ -123,4 +123,20 @@ void main() {
       expect(nested.existsSync(), isTrue);
     });
   });
+
+  group('★ 設定を消せること（M6 / R6）', () {
+    test('★clearDistDir で null に戻る', () {
+      const set = AppSettings(distDir: r'C:\dist');
+      expect(set.copyWith(clearDistDir: true).distDir, isNull);
+      // ★消えたことが保存側にも通ること（toJson は null のキーを落とす）。
+      expect(set.copyWith(clearDistDir: true).toJson().containsKey('distDir'),
+          isFalse);
+    });
+
+    test('★渡さなければ残る（上の対）', () {
+      const set = AppSettings(distDir: r'C:\dist');
+      expect(set.copyWith(showParallel: false).distDir, r'C:\dist',
+          reason: '「消せる」だけを見ると、常に消す実装でも通ってしまう');
+    });
+  });
 }

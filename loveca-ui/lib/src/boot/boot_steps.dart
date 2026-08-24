@@ -133,6 +133,18 @@ abstract class BootSteps {
   ///
   /// ★段に依らないので getter にしてある。段 1 の前でも決まる。
   SearchLimitSetting get searchLimit;
+
+  /// マスタの状態を読む口（M6 / R6）。
+  ///
+  /// ★★ ここでも `LovecaDatabase` を返さない（決定 D55）★★
+  /// R6 が要るのは `import_issues` の件数と一覧だけで、DB ハンドルではない。
+  MasterRepository masterFor();
+
+  /// 設定の書き込み口（M6 / R6）。★`AppSettingsStore.save` の最初の呼び出し元。
+  AppSettingsStore settingsStoreFor();
+
+  /// アプリのファイル置き場（R6 の診断表示）。★テストでは null。
+  AppPaths? get paths;
 }
 
 /// カタログが空のまま起動しようとしたときの失敗（決定 D60 / 設計メモ §4-6(4)）。
@@ -228,17 +240,18 @@ class RealBootSteps implements BootSteps {
       // 呼ぶと読み取り例外になり、原因が「dist が無い」から「読めない」に化ける。
       return MasterImportOutcome(
         distMissing: true,
-        searchedPaths: located.searched,
+        location: located,
         appVersion: appVersion,
+        settings: settings.settings,
         settingsRecoveredFrom: settingsRecoveredFrom,
       );
     }
 
     _distDir = located.directory;
     return MasterRepository(handle.db).import(
-      distDir: located.directory!,
-      searchedPaths: located.searched,
+      location: located,
       appVersion: appVersion,
+      settings: settings.settings,
       now: clock(),
       settingsRecoveredFrom: settingsRecoveredFrom,
     );
@@ -278,6 +291,16 @@ class RealBootSteps implements BootSteps {
 
   @override
   CardCatalogRepository cardCatalogFor() => CardCatalogRepository(_db.db);
+
+  @override
+  MasterRepository masterFor() => MasterRepository(_db.db);
+
+  @override
+  AppSettingsStore settingsStoreFor() =>
+      AppSettingsStore(_db.paths.settingsFile);
+
+  @override
+  AppPaths? get paths => _handle?.paths;
 }
 
 /// カタログが空だった理由を段 3 の結末から決める（設計メモ §4-6(4)）。
@@ -333,6 +356,11 @@ class AppEnvironment {
     required this.cardDetail,
     required this.searchLimit,
     required this.clock,
+    required this.master,
+    required this.settingsStore,
+    required this.importOutcome,
+    required this.appVersion,
+    this.paths,
   });
 
   final MasterCatalog catalog;
@@ -355,6 +383,28 @@ class AppEnvironment {
   final SearchLimitSetting searchLimit;
 
   final Clock clock;
+
+  /// マスタの状態（R6 / M6）。★`import_issues` の出口（決定 D39）。
+  final MasterRepository master;
+
+  /// 設定の書き込み（R6 / M6）。
+  final AppSettingsStore settingsStore;
+
+  /// 段 3 の結末そのもの（R6 の診断表示）。
+  ///
+  /// ★★ M5 までは `BootController` の中で捨てていた ★★
+  /// 「どこの dist を どの段で 掴んで 何が起きたか」は**セッション中ずっと不変**で、
+  /// R6 が出す唯一の材料である。
+  final MasterImportOutcome importOutcome;
+
+  /// このアプリの版（`AppInfo.version`）。★`minAppVersion` と並べて出す。
+  final String appVersion;
+
+  /// DB と設定ファイルの置き場（R6 の診断表示）。★テストでは null。
+  final AppPaths? paths;
+
+  /// このセッションで効いている設定（R6 の初期値）。
+  AppSettings get settings => importOutcome.settings;
 
   List<CardListRow> get rows => catalog.rows;
 

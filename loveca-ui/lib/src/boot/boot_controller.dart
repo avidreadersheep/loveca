@@ -122,6 +122,12 @@ class BootController extends Store<BootState> {
           cardDetail: CardDetailView(catalog),
           searchLimit: _steps.searchLimit,
           clock: clock,
+          // ★M6: R6（設定・診断）が読む材料。段の中で捨てない。
+          master: _steps.masterFor(),
+          settingsStore: _steps.settingsStoreFor(),
+          importOutcome: outcome,
+          appVersion: outcome.appVersion,
+          paths: _steps.paths,
         ),
         notices: notices,
         timings: timings,

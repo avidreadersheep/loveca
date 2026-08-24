@@ -14,14 +14,19 @@ import 'package:loveca_core/loveca_core.dart';
 import 'package:loveca_db/loveca_db.dart';
 import 'package:loveca_ui/src/boot/boot_steps.dart';
 import 'package:loveca_ui/src/data/card_catalog_repository.dart';
+import 'package:loveca_ui/src/data/app_paths.dart';
+import 'package:loveca_ui/src/data/app_settings.dart';
 import 'package:loveca_ui/src/data/card_image_source.dart';
 import 'package:loveca_ui/src/data/deck_repository.dart';
+import 'package:loveca_ui/src/data/dist_locator.dart';
 import 'package:loveca_ui/src/data/master_catalog.dart';
 import 'package:loveca_ui/src/data/master_repository.dart';
 import 'package:loveca_ui/src/data/search_limit.dart';
 
+import 'fake_app_settings_store.dart';
 import 'fake_card_catalog_repository.dart';
 import 'fake_deck_repository.dart';
+import 'fake_master_repository.dart';
 
 /// 指定した段で投げる差し替え可能な段。
 class FakeBootSteps implements BootSteps {
@@ -35,10 +40,16 @@ class FakeBootSteps implements BootSteps {
     this.minAppVersion = '1.0.0',
     this.settingsRecoveredFrom,
     this.searchLimit = SearchLimitSetting.standard,
+    this.distSource = DistSource.environment,
+    this.settings = AppSettings.defaults,
     FakeDeckRepository? decks,
     FakeCardCatalogRepository? cardCatalog,
+    FakeMasterRepository? master,
+    FakeAppSettingsStore? settingsStore,
   })  : decks = decks ?? FakeDeckRepository(),
-        cardCatalog = cardCatalog ?? FakeCardCatalogRepository();
+        cardCatalog = cardCatalog ?? FakeCardCatalogRepository(),
+        master = master ?? FakeMasterRepository(),
+        settingsStore = settingsStore ?? FakeAppSettingsStore(settings);
 
   final BootStageId? failAt;
   final Object? error;
@@ -59,6 +70,18 @@ class FakeBootSteps implements BootSteps {
   /// M3。★同上。
   final FakeCardCatalogRepository cardCatalog;
 
+  /// M6。★`import_issues` の出口（決定 D39）。
+  final FakeMasterRepository master;
+
+  /// M6。★R6 が設定を書く先。
+  final FakeAppSettingsStore settingsStore;
+
+  /// M6。★dist をどの段で掴んだか（決定 D60）。
+  final DistSource distSource;
+
+  /// M6。★このセッションで効いている設定。
+  final AppSettings settings;
+
   /// 検索結果の上限（決定 D50 / D64）。★上書き・不正値の経路を試すため。
   @override
   final SearchLimitSetting searchLimit;
@@ -78,9 +101,18 @@ class FakeBootSteps implements BootSteps {
     _maybeFail(BootStageId.import);
     return MasterImportOutcome(
       distMissing: distMissing,
-      searchedPaths: searchedPaths,
+      location: DistLocation(
+        directory: null,
+        searched: [
+          for (final path in searchedPaths)
+            DistCandidate(source: distSource, path: path),
+        ],
+        source: distMissing ? null : distSource,
+      ),
       appVersion: '0.1.0',
+      settings: settings,
       remoteMinAppVersion: minAppVersion,
+      remoteDataVersion: 2,
       settingsRecoveredFrom: settingsRecoveredFrom,
       result: distMissing
           ? null
@@ -115,6 +147,15 @@ class FakeBootSteps implements BootSteps {
 
   @override
   CardCatalogRepository cardCatalogFor() => cardCatalog;
+
+  @override
+  MasterRepository masterFor() => master;
+
+  @override
+  AppSettingsStore settingsStoreFor() => settingsStore;
+
+  @override
+  AppPaths? get paths => null;
 }
 
 /// 起動が通る最小の構成（カードが 1 枚だけある）。
