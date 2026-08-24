@@ -15,6 +15,7 @@ export 'src/game/card_instance.dart';
 export 'src/game/card_move.dart';
 export 'src/game/energy_deck.dart';
 export 'src/game/game_action.dart';
+export 'src/game/game_setup.dart';
 export 'src/game/game_state.dart';
 export 'src/game/history.dart';
 export 'src/game/member_area.dart';
