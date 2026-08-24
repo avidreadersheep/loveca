@@ -90,6 +90,8 @@ class _CardDetailPaneState extends State<CardDetailPane> {
         _DetailImage(
           imageHash: detail.printing.imageHash,
           source: scope.environment.imageSource,
+          // ★ライブは横長（実測 200×143）。縦長の枠に入れると上下が大きく空く。
+          aspectRatio: cardAspectRatioOf(card.cardType),
         ),
         const SizedBox(height: 16),
 
@@ -224,10 +226,17 @@ String _typeLabel(CardType type) => switch (type) {
 
 /// 大きい絵。★`normal`（500px / 決定 D57）を使う唯一の場所。
 class _DetailImage extends StatelessWidget {
-  const _DetailImage({required this.imageHash, required this.source});
+  const _DetailImage({
+    required this.imageHash,
+    required this.source,
+    required this.aspectRatio,
+  });
 
   final String imageHash;
   final CardImageSource source;
+
+  /// 種別に合う枠の比（`cardAspectRatioOf`）。
+  final double aspectRatio;
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
@@ -240,7 +249,7 @@ class _DetailImage extends StatelessWidget {
               width: width,
               child: AspectRatio(
                 // ★比は `card_thumb.dart` に 1 つだけ置いてある。
-                aspectRatio: kCardAspectRatio,
+                aspectRatio: aspectRatio,
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(8),
                   child: CardThumb(
@@ -460,7 +469,8 @@ class _SiblingPrintings extends StatelessWidget {
                     ),
                     child: SizedBox(
                       width: _width,
-                      height: _width / kCardAspectRatio,
+                      // ★ほかの刷りは同じカード＝同じ種別なので同じ比。
+                      height: _width / cardAspectRatioOf(detail.card.cardType),
                       // ★一覧と同じ段（thumb）。詳細の大きい絵だけが normal。
                       child: CardThumb(
                         source: source,

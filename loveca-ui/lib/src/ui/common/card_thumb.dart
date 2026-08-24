@@ -24,15 +24,45 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:loveca_core/loveca_core.dart';
 
 import '../../data/card_image_source.dart';
 
 /// カードの縦横比（`docs/UI技術検証メモ.md` §3 / §1-2 の実測）。
 ///
-/// ★★ thumb の原寸は 200 × 279。**正**である ★★
-/// 一覧のセル（`CardGrid`）も詳細の大きい絵（R5 / M5）も同じ比で置く。
-/// 2 箇所に別々の数を書くと、片方だけ直されて食い違う。
+/// ★★ 縦長の札（メンバー / エネルギー）の比 ★★
+/// 一覧のセル（`CardGrid`）はこの比で固定してある（D42 の測定条件）。
 const double kCardAspectRatio = 200 / 279;
+
+/// ★★ ライブの札は**横長**である ★★
+///
+/// 実データの thumb 2,527 枚を全数計測した結果（2026-08-24）。
+///
+/// | 種別 | 寸法 | 比 |
+/// |---|---|---|
+/// | メンバー | 200×279（1,036 枚）/ 200×280（483 枚） | 縦長 **0.717** |
+/// | エネルギー | 200×279（484）/ 200×280（228）/ 200×273（5） | 縦長 **0.717** |
+/// | ★**ライブ** | **200×143（290 枚）/ 200×144（1 枚）** | **横長 1.399** |
+///
+/// ★1px の揺れ（279 / 280）は 0.4% なので 1 つの値に丸めてよい。
+/// **ライブとの差は丸められない。**
+const double kLiveCardAspectRatio = 200 / 143;
+
+/// 種別に合う枠の比。
+///
+/// ★★ カード詳細（R5）はこれを使う ★★
+/// 縦長の枠にライブを入れると、`BoxFit.contain` では**上下が大きく空き**、
+/// `BoxFit.cover` では**札の左右が切れる**。詳細は札を同定するための画面なので
+/// どちらも困る。
+///
+/// ★一覧（`CardGrid`）は全セルを [kCardAspectRatio] のままにしてある。
+/// セル幅 120 物理px という D42 の測定条件がその比で得られており、
+/// **セルごとに高さが変わるグリッドは別の設計判断**になるため
+/// （`docs/UI設計メモ.md` §10 の **U11**）。
+double cardAspectRatioOf(CardType cardType) => switch (cardType) {
+      CardType.live => kLiveCardAspectRatio,
+      CardType.member || CardType.energy => kCardAspectRatio,
+    };
 
 /// カードの絵。
 ///

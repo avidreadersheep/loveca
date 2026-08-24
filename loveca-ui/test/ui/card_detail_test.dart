@@ -353,6 +353,27 @@ void main() {
       expect(provider.width, 288);
     });
 
+    testWidgets('★★ ライブの枠は横長になる（実測 200×143）★★', (tester) async {
+      // ★★ 実データの thumb 2,527 枚を全数計測して分かったこと ★★
+      //   メンバー / エネルギーは 200×279 の縦長だが、**ライブは 200×143 の横長**。
+      //   縦長の枠に入れると contain では上下が大きく空き、cover では左右が切れる。
+      await openBrowse(tester);
+
+      await tester.tap(_cell(trioMemberPrinting));
+      await tester.pumpAndSettle();
+      final member = tester.getSize(find.byKey(const Key('cardDetailImage')));
+      expect(member.width, lessThan(member.height), reason: 'メンバーは縦長');
+
+      await tester.tap(find.byTooltip('詳細を閉じる'));
+      await tester.pumpAndSettle();
+      await tester.tap(_cell(drawLivePrinting));
+      await tester.pumpAndSettle();
+      final live = tester.getSize(find.byKey(const Key('cardDetailImage')));
+
+      expect(live.width, greaterThan(live.height), reason: 'ライブは横長');
+      expect(live.width / live.height, closeTo(200 / 143, 0.01));
+    });
+
     testWidgets('★★ imageHash が空ならプレースホルダのまま（§5-2(4)）★★',
         (tester) async {
       // `build --skip-images` で作った dist を模す。実データには 0 件。
