@@ -30,7 +30,10 @@ final _t0 = DateTime.utc(2026, 8, 24, 12, 0, 0);
 MasterCatalog _catalog() => MasterCatalog(
       cards: const {
         'M-1': Card(cardNumber: 'M-1', name: 'メンバー1', cardType: CardType.member),
+        'M-2': Card(cardNumber: 'M-2', name: 'メンバー2', cardType: CardType.member),
         'L-1': Card(cardNumber: 'L-1', name: 'ライブ1', cardType: CardType.live),
+        'E-1':
+            Card(cardNumber: 'E-1', name: 'エネルギー1', cardType: CardType.energy),
       },
       printings: const {
         'M-1-N': Printing(
@@ -43,6 +46,20 @@ MasterCatalog _catalog() => MasterCatalog(
         'L-1-N': Printing(
           printingId: 'L-1-N',
           cardNumber: 'L-1',
+          expansion: 'bp1',
+          rarity: 'N',
+          isParallel: false,
+        ),
+        'M-2-N': Printing(
+          printingId: 'M-2-N',
+          cardNumber: 'M-2',
+          expansion: 'bp1',
+          rarity: 'N',
+          isParallel: false,
+        ),
+        'E-1-N': Printing(
+          printingId: 'E-1-N',
+          cardNumber: 'E-1',
           expansion: 'bp1',
           rarity: 'N',
           isParallel: false,
@@ -117,7 +134,12 @@ void main() {
       );
       await repositoryOn(db).save(
         withEntries,
-        const DeckDraft(name: '改名後', memo: '書き換えたメモ'),
+        DeckDraft(
+          name: '改名後',
+          memo: '書き換えたメモ',
+          // ★entries は必須。名前だけ変えたつもりで中身を消す経路を作らない。
+          entries: withEntries.entries,
+        ),
       );
 
       // ★★ ここで本当に閉じる。プロセス内のキャッシュではなく DB を見る ★★
@@ -199,7 +221,7 @@ void main() {
       final later = _t0.add(const Duration(days: 3));
 
       final saved = await repositoryOn(db, now: later)
-          .save(deck, const DeckDraft(name: 'Y', memo: ''));
+          .save(deck, DeckDraft.of(deck).copyWith(name: 'Y'));
 
       // ★★ Deck.copyWith の既定値（DateTime.now()）を踏んでいたら一致しない ★★
       expect(saved.updatedAt, later);
@@ -306,6 +328,188 @@ void main() {
           isA<RepositoryException>().having((e) => e.op, 'op', 'deck.create'),
         ),
       );
+    });
+  });
+
+  group('★★ ドラフトの検証も DB へ行かない（決定 D55 / M4）★★', () {
+    test('DB を閉じたあとでも validateDraft が答える', () async {
+      final deck = await repositoryOn(db).create(name: 'X');
+      final repository = repositoryOn(db);
+      final draft = repository.draftOf(deck).addCopy('M-1-N').addCopy('M-1-N');
+
+      // ★★ D55 の機械的な証明。DeckDao.validate 経由ならここで落ちる ★★
+      await db.close();
+
+      final result = repository.validateDraft(deck, draft);
+      expect(result.memberCount, 2);
+      expect(result.liveCount, 0);
+    });
+
+    test('canAddToDraft も DB へ行かない', () async {
+      final deck = await repositoryOn(db).create(name: 'X');
+      final repository = repositoryOn(db);
+      final draft = repository.draftOf(deck);
+      await db.close();
+
+      expect(repository.canAddToDraft(deck, draft, 'M-1-N'), isTrue);
+      expect(repository.canAddToDraft(deck, draft, '存在しない刷り'), isFalse);
+    });
+
+    test('★★ validateDraft を何度呼んでも revision / updatedAt が動かない ★★',
+        () async {
+      // ★検証は編集のたびに走る。copyWith を通すとその回数だけ revision が跳ね、
+      //   保存もしていないのに Phase 4 の同期で「大量に更新された」ように見える。
+      final deck = await repositoryOn(db).create(name: 'X');
+      final repository = repositoryOn(db);
+
+      var draft = repository.draftOf(deck);
+      for (var i = 0; i < 20; i++) {
+        draft = draft.addCopy('M-1-N');
+        repository.validateDraft(deck, draft);
+      }
+
+      expect(deck.revision, 0);
+      expect(deck.updatedAt, _t0);
+      // DB 側も動いていない（保存していないのだから当然だが、そこを固定する）。
+      final stored = await repositoryOn(db).byId(deck.deckId);
+      expect(stored!.revision, 0);
+      expect(stored.entries, isEmpty);
+    });
+
+    test('★4 枚制限はメインデッキだけ（6.1.1.2）——エネルギーには効かない', () async {
+      final deck = await repositoryOn(db).create(name: 'X');
+      final repository = repositoryOn(db);
+
+      var main = repository.draftOf(deck);
+      var energy = repository.draftOf(deck);
+      for (var i = 0; i < 4; i++) {
+        main = main.addCopy('M-1-N');
+        energy = energy.addCopy('E-1-N');
+      }
+
+      // ★出る側と出ない側を対で見る。
+      expect(repository.canAddToDraft(deck, main, 'M-1-N'), isFalse);
+      expect(repository.canAddToDraft(deck, energy, 'E-1-N'), isTrue);
+
+      // エネルギーは 12 枚（6.1.1.3）で止まる。
+      for (var i = 0; i < 8; i++) {
+        energy = energy.addCopy('E-1-N');
+      }
+      expect(repository.canAddToDraft(deck, energy, 'E-1-N'), isFalse);
+    });
+  });
+
+  group('★★ カードの増減が層を通る（M4）★★', () {
+    test('ドラフトに入れたカードが DB を開き直しても戻る', () async {
+      final created = await repositoryOn(db).create(name: 'X');
+      final repository = repositoryOn(db);
+
+      final draft = repository
+          .draftOf(created)
+          .addCopy('M-1-N')
+          .addCopy('M-1-N')
+          .addCopy('L-1-N');
+      await repository.save(created, draft);
+
+      await db.close();
+      final reopened = await open();
+      final restored = await repositoryOn(reopened).byId(created.deckId);
+
+      expect(
+        {for (final e in restored!.entries) e.printingId: e.count},
+        {'M-1-N': 2, 'L-1-N': 1},
+      );
+      expect(restored.revision, 1, reason: '保存 1 回で +1');
+    });
+
+    test('★同じ刷りを 2 行にしない（deck_entries の主キーが {deckId, printingId}）',
+        () async {
+      final created = await repositoryOn(db).create(name: 'X');
+      final repository = repositoryOn(db);
+
+      final draft =
+          repository.draftOf(created).addCopy('M-1-N').addCopy('M-1-N');
+
+      // ★行は 1 つ・枚数が 2。行を増やすと保存時に主キー衝突で落ちる。
+      expect(draft.entries, hasLength(1));
+      expect(draft.entries.single.count, 2);
+
+      await repository.save(created, draft);
+      expect((await repository.byId(created.deckId))!.entries, hasLength(1));
+    });
+  });
+
+  group('★★ 並び順は保存されない（決定 D65）★★', () {
+    // ★deck_entries に順序列が無く、DeckDao.byId は ORDER BY printing_id。
+    //   直せる場所は loveca_db 側なので、M4 は**そうなることを固定して見せる**。
+    test('並べ替えて保存しても、開き直すとカード番号順に戻る', () async {
+      final created = await repositoryOn(db).create(name: 'X');
+      final repository = repositoryOn(db);
+
+      var draft = repository.draftOf(created).addCopy('M-1-N').addCopy('M-2-N');
+      expect(
+        draft.entries.map((e) => e.printingId),
+        ['M-1-N', 'M-2-N'],
+        reason: '開いた直後は正規化された並び',
+      );
+
+      draft = draft.moveEntry('M-2-N', 'M-1-N', after: false);
+      expect(draft.entries.map((e) => e.printingId), ['M-2-N', 'M-1-N']);
+      expect(repository.isReordered(draft), isTrue);
+
+      await repository.save(created, draft);
+      await db.close();
+      final reopened = await open();
+      final restored = await repositoryOn(reopened).byId(created.deckId);
+
+      // ★★ ここが決定 D65 の中身。画面はこれを先に予告している ★★
+      expect(restored!.entries.map((e) => e.printingId), ['M-1-N', 'M-2-N']);
+    });
+
+    test('★並べ替えていなければ isReordered は false（出ない側）', () async {
+      final created = await repositoryOn(db).create(name: 'X');
+      final repository = repositoryOn(db);
+
+      final draft =
+          repository.draftOf(created).addCopy('M-1-N').addCopy('L-1-N');
+
+      expect(repository.isReordered(draft), isFalse);
+    });
+
+    test('★区分順に正規化する（メンバー → ライブ → エネルギー → 未知）', () async {
+      final repository = repositoryOn(db);
+
+      final normalized = repository.normalizedEntries(const [
+        DeckEntry(printingId: '知らない刷り', count: 1),
+        DeckEntry(printingId: 'E-1-N', count: 1),
+        DeckEntry(printingId: 'L-1-N', count: 1),
+        DeckEntry(printingId: 'M-2-N', count: 1),
+        DeckEntry(printingId: 'M-1-N', count: 1),
+      ]);
+
+      expect(
+        normalized.map((e) => e.printingId),
+        ['M-1-N', 'M-2-N', 'L-1-N', 'E-1-N', '知らない刷り'],
+      );
+    });
+
+    test('★並べ替えただけなら保存ボタンを光らせない', () async {
+      // ★★ 光らせると「保存したのに戻る」という最悪の形になる ★★
+      //   並べ替えたこと自体は縮退として別に見せる。
+      final created = await repositoryOn(db).create(name: 'X');
+      final repository = repositoryOn(db);
+
+      final saved = await repository.save(
+        created,
+        repository.draftOf(created).addCopy('M-1-N').addCopy('M-2-N'),
+      );
+
+      final reordered =
+          repository.draftOf(saved).moveEntry('M-2-N', 'M-1-N', after: false);
+
+      expect(reordered.isDirtyAgainst(saved), isFalse);
+      // 枚数が変われば当然 true。
+      expect(reordered.addCopy('M-1-N').isDirtyAgainst(saved), isTrue);
     });
   });
 }
