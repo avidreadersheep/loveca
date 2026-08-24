@@ -12,6 +12,10 @@
 /// ★★ 内部語彙を出さない ★★
 /// 「孤児」「cardNumber」「trigram」「索引」は実装の言葉であって利用者の言葉ではない。
 /// 何が起きていて何をすればよいかが伝わる文にする。
+///
+/// ★★ M4: 1 行の描画は `ui/common/degradation_line.dart` へ移した ★★
+/// デッキペインにも縮退（保存されない並び順 / 未知の刷り）が出るため、
+/// **見た目だけ共有して型は分けた。**理由と振り分け規則は同ファイルの doc。
 library;
 
 import 'package:flutter/material.dart';
@@ -20,6 +24,7 @@ import '../../data/search_limit.dart';
 import '../../state/card_browse_store.dart';
 import '../../state/search_degradation.dart';
 import '../../state/store.dart';
+import '../common/degradation_line.dart';
 
 class SearchResultHeader extends StatelessWidget {
   const SearchResultHeader({super.key, required this.state});
@@ -82,15 +87,14 @@ class _DegradationLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     // ★原因の格が違うことを見た目で分ける。
     //   打ち切り・経路は「こう引いた」という報告、
     //   表示できないカードは**データ側の不整合**なので警戒色にする。
-    final (IconData icon, Color color, String text) = switch (degradation) {
+    final (IconData icon, DegradationSeverity severity, String text) =
+        switch (degradation) {
       SearchTruncated(:final shown, :final limit, :final limitOverridden) => (
           Icons.filter_list_off,
-          theme.colorScheme.onSecondaryContainer,
+          DegradationSeverity.report,
           '該当が多いため上限 $limit 件で打ち切りました（$shown 件を表示）。'
               '検索語を足すと絞り込めます。'
               '${limitOverridden ? ' ※上限は検証用の $searchLimitEnvironmentKey により'
@@ -100,33 +104,18 @@ class _DegradationLine extends StatelessWidget {
           // ★`Icons.search` にしない。検索欄の prefixIcon と同じになり、
           //   「経路の表示が出ているか」を見た目でも自動でも判別できなくなる。
           Icons.manage_search,
-          theme.colorScheme.onSecondaryContainer,
+          DegradationSeverity.report,
           '2 文字以下のため、部分一致で検索しました。'
               '3 文字以上にすると別の方法で検索し、並び順も変わります。',
         ),
       SearchMissingCards(:final count) => (
           Icons.report_problem_outlined,
-          theme.colorScheme.error,
+          DegradationSeverity.warning,
           '一致した $count 件のカードを表示できません。'
               'カードデータが古い可能性があります。データを更新してください。',
         ),
     };
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 16, color: color),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              text,
-              style: theme.textTheme.bodySmall?.copyWith(color: color),
-            ),
-          ),
-        ],
-      ),
-    );
+    return DegradationLine(icon: icon, severity: severity, text: text);
   }
 }
