@@ -20,10 +20,23 @@ import '../../data/card_list_row.dart';
 import '../common/card_thumb.dart';
 
 class CardGrid extends StatelessWidget {
-  const CardGrid({super.key, required this.rows, required this.imageSource});
+  const CardGrid({
+    super.key,
+    required this.rows,
+    required this.imageSource,
+    this.cellWrapper,
+  });
 
   final List<CardListRow> rows;
   final CardImageSource imageSource;
+
+  /// セルを包む口（M4）。
+  ///
+  /// ★★ R3（デッキ編集）と R4（カード閲覧）で**同じグリッド**を使う（§2-2）★★
+  /// R3 はセルを掴めるようにし「+」を重ねるが、そのためにグリッドを
+  /// もう 1 本作らない。ルートを増やして分岐させないのと同じ理由で、
+  /// **寸法（決定 D42 の前提）が 2 箇所に分かれるのを避ける。**
+  final Widget Function(CardListRow row, Widget cell)? cellWrapper;
 
   /// セルの最大論理幅（`spike/main_grid.dart:491`）。
   static const double maxCellExtent = 140;
@@ -61,11 +74,15 @@ class CardGrid extends StatelessWidget {
             childAspectRatio: aspectRatio,
           ),
           itemCount: rows.length,
-          itemBuilder: (context, index) => _CardCell(
-            row: rows[index],
-            imageSource: imageSource,
-            logicalWidth: cellWidth,
-          ),
+          itemBuilder: (context, index) {
+            final row = rows[index];
+            final cell = _CardCell(
+              row: row,
+              imageSource: imageSource,
+              logicalWidth: cellWidth,
+            );
+            return cellWrapper?.call(row, cell) ?? cell;
+          },
         );
       },
     );

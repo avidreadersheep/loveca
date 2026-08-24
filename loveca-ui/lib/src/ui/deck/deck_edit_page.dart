@@ -1,34 +1,37 @@
-/// R3 デッキ編集（★M2 最小版 / `docs/UI設計メモ.md` §2-2 / §2-4）.
+/// R3 デッキ編集（`docs/UI設計メモ.md` §2-2 / §2-4 / M4）.
 ///
-/// ★★★ この画面が「作りかけ」に見えるのは意図した状態である ★★★
-/// M2 の目的は「読み書きの両方が層を通る」ことの確認であって、
-/// デッキを組めるようにすることではない（§2-4）。
-/// 何を置き、何を置いていないかを明示する。**書いておかないと、後から見た人が
-/// 未完成のコードだと誤認して作り直す。**
+/// ★★ ここが「Release 1 の骨格が端から端まで通る」確認点である（§2-4）★★
+/// 探す（R4 と同じ一覧ペイン）→ 入れる（ドラッグ / 「+」）→ 検証を見る（P1）が
+/// 1 画面で繋がる。M2 の最小版が置いていた「M4 で足すもの」は 3 つとも入った。
 ///
-/// | M2 で置いてあるもの | M4 で足すもの |
+/// | M2 で置いてあったもの | M4 で足したもの |
 /// |---|---|
-/// | 名前・メモのドラフト編集と保存（保存で初めて `revision` +1 / §9-1） | 一覧ペイン（カードを探して足す） |
-/// | 枚数と検証サマリ（`DeckValidator` を実際に呼ぶ / 決定 D55） | デッキペイン（中身の増減。`PaneScaffold` の 2 ペイン） |
-/// | 論理削除（P3） | 検証パネル **P1** の常設（§2-3） |
+/// | 名前・メモのドラフト編集と保存 | ★一覧ペイン（R4 と**同じ Widget**） |
+/// | 枚数と検証サマリ | ★デッキペイン（中身の増減・並べ替え・ゴミ箱） |
+/// | 論理削除（P3） | ★検証パネル **P1** の常設 |
 ///
-/// ★M2 でも `DeckValidator` を実際に呼ぶことに意味がある。
-/// M1 で `MasterCatalog` の構築までは確かめたが、**そこから `DeckValidator` を
-/// 作って使う経路は一度も通っていなかった。** 表示は最小でよいが経路は通す。
+/// ★★ `PaneScaffold` の判断点は 1 箇所（§2-1）★★
+/// 2 ペイン: 一覧 ／ デッキ。1 ペイン: 一覧だけ出し、デッキは**同じ Widget**を
+/// モーダルで出す。絞り込みも同じ扱い。**器だけ替えてルートを増やさない。**
 ///
-/// ★★ ここで `PaneScaffold` を使っていないのは M2 の範囲に 2 つ目のペインが
-/// 無いからである（1 ペインしか無いのに器だけ被せると、切替が実際には
-/// 効いていない骨組みになり D51 の `spike/` と同じ性質で腐る）。
-/// M4 で一覧ペインを足すときに `PaneScaffold` を被せる。
+/// ★1 ペインではドラッグで一覧からデッキへ持ってこられない（モーダルが覆う）。
+/// **セルの「+」がその場合の追加手段**であり、だから「+」を必ず置いてある。
 library;
 
-import 'package:flutter/material.dart';
-// ★`Card` は loveca_core（ルール上のカード）と Material（ウィジェット）で衝突する。
-//   この画面で要るのは Material の Card なので、loveca_core 側を隠す。
+import 'package:flutter/material.dart' hide Card;
 import 'package:loveca_core/loveca_core.dart' hide Card;
 
+import '../../data/card_list_row.dart';
 import '../../state/app_scope.dart';
+import '../../state/card_browse_store.dart';
 import '../../state/deck_edit_store.dart';
+import '../browse/card_browse_pane.dart';
+import '../browse/filter_panel.dart';
+import '../common/card_drag.dart';
+import '../common/card_thumb.dart';
+import '../layout/pane_scaffold.dart';
+import 'deck_drag.dart';
+import 'deck_pane.dart';
 
 class DeckEditPage extends StatefulWidget {
   const DeckEditPage({super.key, required this.deck});
@@ -41,6 +44,9 @@ class DeckEditPage extends StatefulWidget {
 
 class _DeckEditPageState extends State<DeckEditPage> {
   DeckEditStore? _store;
+  CardBrowseStore? _browse;
+  late AppScope _scope;
+
   late final TextEditingController _nameController =
       TextEditingController(text: widget.deck.name);
   late final TextEditingController _memoController =
@@ -49,9 +55,16 @@ class _DeckEditPageState extends State<DeckEditPage> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _scope = AppScope.of(context);
     if (_store == null) {
-      _store = DeckEditStore(AppScope.of(context).environment.decks, widget.deck);
+      _store = DeckEditStore(_scope.environment.decks, widget.deck);
       _store!.addListener(_onStoreChanged);
+      // 環境は起動ゲートで 1 回だけ作られ以降不変（決定 D56）なので Store も 1 回だけ。
+      _browse = CardBrowseStore(
+        rows: _scope.environment.rows,
+        catalog: _scope.environment.cardCatalog,
+        searchLimit: _scope.environment.searchLimit,
+      );
     }
   }
 
@@ -59,6 +72,7 @@ class _DeckEditPageState extends State<DeckEditPage> {
   void dispose() {
     _store?.removeListener(_onStoreChanged);
     _store?.dispose();
+    _browse?.dispose();
     _nameController.dispose();
     _memoController.dispose();
     super.dispose();
@@ -111,162 +125,166 @@ class _DeckEditPageState extends State<DeckEditPage> {
     await _store!.softDelete();
   }
 
-  @override
-  Widget build(BuildContext context) => ValueListenableBuilder<DeckEditState>(
+  void _openSheet(Widget child) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => SizedBox(
+        height: MediaQuery.sizeOf(context).height * 0.8,
+        // ★2 ペインのときと同じ Widget を出す。器だけ替える。
+        child: child,
+      ),
+    );
+  }
+
+  Widget _deckPane() => DeckPane(
+        store: _store!,
+        imageSource: _scope.environment.imageSource,
+        // 総合ルール 6.1.2 により置換されうるので配信の値を使う。
+        config: _scope.environment.ruleConfig,
+        nameController: _nameController,
+        memoController: _memoController,
+        onSave: _save,
+      );
+
+  /// 一覧のセルを「掴めて + で足せる」形に包む（M4）。
+  ///
+  /// ★★ グリッドそのものは R4 と同じ（§2-2）★★
+  /// セルの外側だけを替える。グリッドを 2 本にすると、決定 D42 の寸法の前提が
+  /// 2 箇所に分かれる。
+  Widget _catalogCell(CardListRow row, Widget cell) =>
+      ValueListenableBuilder<DeckEditState>(
         valueListenable: _store!,
-        builder: (context, state, _) => Scaffold(
-          appBar: AppBar(
-            title: Text(state.saved.name),
-            actions: [
-              IconButton(
+        builder: (context, state, _) {
+          final theme = Theme.of(context);
+          final count = state.draft.countOf(row.printingId);
+          // ★総合ルール 6.1.1.2 / 6.1.1.3 の判定は DeckValidator が唯一の実装
+          //   （決定 D28）。UI 側で 4 や 12 を書かない。
+          final canAdd = _store!.canAdd(row.printingId);
+
+          return CardDragSource<DeckDrag>(
+            // ★テストから安定して掴むための Key（デッキ行と区別できる名前）。
+            key: ValueKey('catalogCell:${row.printingId}'),
+            data: CatalogCardDrag(row.printingId),
+            // ★決定 D46: 掴める矩形を作る。セルの余白でも掴める。
+            background: theme.colorScheme.surface,
+            feedback: SizedBox(
+              width: 60,
+              height: 84,
+              child: CardThumb(
+                source: _scope.environment.imageSource,
+                imageHash: row.imageHash,
+                logicalWidth: 60,
+              ),
+            ),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                cell,
+                if (count > 0)
+                  Positioned(
+                    left: 2,
+                    top: 2,
+                    child: _Badge(text: '$count', color: theme.colorScheme.primary),
+                  ),
+                Positioned(
+                  right: 0,
+                  bottom: 0,
+                  child: IconButton(
+                    tooltip: canAdd ? 'デッキに入れる' : 'これ以上は入れられません',
+                    icon: const Icon(Icons.add_circle),
+                    iconSize: 20,
+                    padding: EdgeInsets.zero,
+                    visualDensity: VisualDensity.compact,
+                    constraints:
+                        const BoxConstraints.tightFor(width: 28, height: 28),
+                    color: theme.colorScheme.primary,
+                    onPressed: canAdd
+                        ? () => addCardWithFeedback(
+                              context,
+                              _store!,
+                              row.printingId,
+                            )
+                        : null,
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      );
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(
+          title: ValueListenableBuilder<DeckEditState>(
+            valueListenable: _store!,
+            builder: (context, state, _) => Text(state.saved.name),
+          ),
+          actions: [
+            ValueListenableBuilder<DeckEditState>(
+              valueListenable: _store!,
+              builder: (context, state, _) => IconButton(
                 tooltip: '削除',
                 icon: const Icon(Icons.delete_outline),
                 onPressed: state.busy ? null : _delete,
               ),
-            ],
-          ),
-          body: ListView(
-            padding: const EdgeInsets.all(20),
-            children: [
-              TextField(
-                // ★テストから安定して掴むための Key。文字を入れると
-                //   ラベルや中身で探す方法は次の 1 打で外れる。
-                key: const Key('deckNameField'),
-                controller: _nameController,
-                decoration: const InputDecoration(labelText: 'デッキ名'),
-                // ★★ ここで保存しない ★★
-                // ドラフトを差し替えるだけ。保存するたびに revision が +1 されるので、
-                // キー入力ごとに保存すると Phase 4 の同期で
-                // 「大量に更新された」ように見える（§9-1）。
-                onChanged: _store!.setName,
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                key: const Key('deckMemoField'),
-                controller: _memoController,
-                decoration: const InputDecoration(labelText: 'メモ'),
-                minLines: 2,
-                maxLines: 4,
-                onChanged: _store!.setMemo,
-              ),
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  FilledButton.icon(
-                    onPressed: state.canSave ? _save : null,
-                    icon: const Icon(Icons.save_outlined),
-                    label: const Text('保存'),
+            ),
+          ],
+        ),
+        body: CardBrowsePane(
+          store: _browse!,
+          imageSource: _scope.environment.imageSource,
+          secondaryWidth: kDeckPaneMinWidth,
+          secondary: _deckPane(),
+          cellWrapper: _catalogCell,
+          // ★ここは `header` の中＝ `_PaneScope` の内側なので判定が実際に効く。
+          //   AppBar に置くと `isTwoPaneOf` は常に false になる。
+          headerTrailing: (context) {
+            final twoPane = PaneScaffold.isTwoPaneOf(context);
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  tooltip: '絞り込み',
+                  icon: const Icon(Icons.filter_alt_outlined),
+                  onPressed: () => _openSheet(FilterPanel(store: _browse!)),
+                ),
+                // ★1 ペインのときだけ。2 ペインでは横に出ている。
+                if (!twoPane)
+                  IconButton(
+                    tooltip: 'デッキを見る',
+                    icon: const Icon(Icons.list_alt),
+                    onPressed: () => _openSheet(_deckPane()),
                   ),
-                  const SizedBox(width: 12),
-                  if (state.isDirty)
-                    Text(
-                      '未保存の変更があります',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                ],
-              ),
-              const SizedBox(height: 28),
-              _ValidationSummary(validation: state.validation),
-              const SizedBox(height: 28),
-              _ScopeNote(revision: state.saved.revision),
-            ],
-          ),
+              ],
+            );
+          },
         ),
       );
 }
 
-/// 検証サマリ（★M2 は件数だけ。常設の検証パネル P1 は M4）.
-///
-/// ★★ 判定は `loveca_core` の `DeckValidator` が唯一の実装である（決定 D28）★★
-/// UI 側で 48 / 12 / 12 を再計算しない。別実装を作ると
-/// 「スマホでは合法、PC では不正」という事故が起きる。
-/// 数値は `DeckRepository.validate`（DB へ行かない / 決定 D55）から来ている。
-class _ValidationSummary extends StatelessWidget {
-  const _ValidationSummary({required this.validation});
+class _Badge extends StatelessWidget {
+  const _Badge({required this.text, required this.color});
 
-  final DeckValidationResult validation;
+  final String text;
+  final Color color;
 
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final config = RuleConfig.standard;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  validation.isValid ? Icons.check_circle : Icons.info_outline,
-                  size: 18,
-                  color: validation.isValid
-                      ? theme.colorScheme.primary
-                      : theme.colorScheme.onSurfaceVariant,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  validation.isValid ? '構築条件を満たしています' : '構築条件を満たしていません',
-                  style: theme.textTheme.titleSmall,
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            // 総合ルール 6.1.1.1: メンバー 48 / ライブ 12、6.1.1.3: エネルギー 12。
-            // ★期待値は RuleConfig から取る。配信で置換されうる（6.1.2）。
-            Text('メンバー ${validation.memberCount} / ${config.memberCount}'),
-            Text('ライブ ${validation.liveCount} / ${config.liveCount}'),
-            Text('エネルギー ${validation.energyCount} / ${config.energyDeckSize}'),
-            if (validation.issues.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text(
-                '未達 ${validation.issues.length} 件',
-                style: theme.textTheme.bodySmall,
-              ),
-            ],
-            // ★決定 D35: マスタに無い刷りを黙って落とさない。
-            if (validation.hasUnknownCards) ...[
-              const SizedBox(height: 8),
-              Text(
-                'カードデータが未取得の刷りが '
-                '${validation.unknownPrintingIds.length} 件あります',
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.error),
-              ),
-            ],
-          ],
+  Widget build(BuildContext context) => DecoratedBox(
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(4),
         ),
-      ),
-    );
-  }
-}
-
-/// ★★ 画面に「ここまでが M2」と書いておく ★★
-/// doc コメントは実行時には見えない。**触っている人が誤解するのはコードの前ではなく
-/// 画面の前**なので、範囲を画面にも出す。
-class _ScopeNote extends StatelessWidget {
-  const _ScopeNote({required this.revision});
-
-  final int revision;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(Icons.construction_outlined,
-            size: 16, color: theme.disabledColor),
-        const SizedBox(width: 8),
-        Expanded(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
           child: Text(
-            'カードの追加・削除はまだ実装されていません（M4 で入ります）。\n'
-            'いまは名前とメモの保存・検証の確認ができます。  revision: $revision',
-            style: theme.textTheme.bodySmall?.copyWith(color: theme.hintColor),
+            text,
+            style: Theme.of(context)
+                .textTheme
+                .labelSmall
+                ?.copyWith(color: Theme.of(context).colorScheme.onPrimary),
           ),
         ),
-      ],
-    );
-  }
+      );
 }
