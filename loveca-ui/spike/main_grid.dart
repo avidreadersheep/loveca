@@ -515,6 +515,14 @@ class _GridSpikePageState extends State<GridSpikePage> {
             padding: const EdgeInsets.all(spacing),
             // ★2,527 セルでも GridView.builder は可視分しか作らない（仮想化）。
             //   問題になるのはセルの中身、特に画像のデコード。
+            // ★★ 2026-08-24 注記（決定 D72）★★
+            //   本実装（`lib/src/ui/browse/card_grid.dart`）は、この**タイル**を
+            //   200:279 のまま残したうえで、**セルの中に種別ごとの枠**を作るように
+            //   変わった（ライブの thumb は 200×143 の横長）。
+            //   ★**この計測（02_grid.md）はなお有効である。**セル幅も `cacheWidth` も
+            //   デコード幅も同じで、変わったのは painting だけだから
+            //   （`docs/UI技術検証メモ.md` §3 の 2026-08-24 追記(2)）。
+            //   ★ここを本実装に合わせて書き換えないこと。D42 の再現条件が失われる。
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: crossAxisCount,
               mainAxisSpacing: spacing,
