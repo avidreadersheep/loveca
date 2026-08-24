@@ -33,6 +33,7 @@ import '../detail/card_detail_pane.dart';
 import '../detail/open_card_detail.dart';
 import '../layout/pane_scaffold.dart';
 import 'deck_drag.dart';
+import 'deck_meta_dialog.dart';
 import 'deck_pane.dart';
 
 class DeckEditPage extends StatefulWidget {
@@ -159,7 +160,30 @@ class _DeckEditPageState extends State<DeckEditPage> {
         nameController: _nameController,
         memoController: _memoController,
         onSave: _save,
+        onEditMeta: _editMeta,
       );
+
+  /// P3 メタ編集（M6）。★R2 と同じダイアログを器だけ替えて開く（§2-1）。
+  ///
+  /// ★★ ここでは保存しない ★★
+  /// R3 は「未保存」の器を持っているので、適用するのはドラフトまで。
+  /// 保存ボタンが 1 回だけ `Deck` に畳む（§9-1 / 決定 D70）。
+  Future<void> _editMeta() async {
+    final store = _store!;
+    final edited = await showDeckMetaDialog(
+      context,
+      draft: store.value.draft,
+      catalog: _scope.environment.decks.catalogView,
+      imageSource: _scope.environment.imageSource,
+    );
+    if (edited == null || !mounted) return;
+    store.applyMeta(edited);
+    // ★名前とメモは画面が自前の TextEditingController を持っている
+    //   （Store の値で駆動すると打鍵中にカーソルが飛ぶ / M3）ので、
+    //   ダイアログで変えたぶんはこちらから書き戻す。
+    _nameController.text = edited.name;
+    _memoController.text = edited.memo;
+  }
 
   /// 一覧のセルを「掴めて + で足せる」形に包む（M4）。
   ///

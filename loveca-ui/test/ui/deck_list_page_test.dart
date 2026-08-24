@@ -25,6 +25,15 @@ Deck _deck(String id, String name, {int totalCount = 0}) => Deck(
       updatedAt: fakeNow(),
     );
 
+/// R2 のデッキごとの操作はメニューになった（M6）。
+/// ★アイコン 1 つでは複製・共有・メタ編集が置けないため。
+Future<void> _openDeckMenu(WidgetTester tester) async {
+  await tester.tap(find.byTooltip('このデッキの操作'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('削除'));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets('一覧が出る', (tester) async {
     final decks = FakeDeckRepository(
@@ -72,6 +81,8 @@ void main() {
     expect(decks.createCalls, 1);
     // ★作ったら開く（R3 へ push）。M2 の「作る / 開く」がつながっていること。
     expect(find.text('未保存の変更があります'), findsNothing);
+    // ★ここは R3（作った直後に push された編集画面）を見ている。
+    //   R2 のメニューではない。
     expect(find.byTooltip('削除'), findsOneWidget);
 
     // 戻ると一覧に出ている。
@@ -101,7 +112,7 @@ void main() {
       final decks = FakeDeckRepository(decks: [_deck('a', '消すデッキ')]);
       await pumpInAppScope(tester, const DeckListPage(), decks: decks);
 
-      await tester.tap(find.byTooltip('削除'));
+      await _openDeckMenu(tester);
       await tester.pumpAndSettle();
 
       // ★★ M2 には戻す口が無い。誤操作の手当てとして確認を 1 枚挟む（未決 U9）★★
@@ -120,7 +131,7 @@ void main() {
       final decks = FakeDeckRepository(decks: [_deck('a', '消さないデッキ')]);
       await pumpInAppScope(tester, const DeckListPage(), decks: decks);
 
-      await tester.tap(find.byTooltip('削除'));
+      await _openDeckMenu(tester);
       await tester.pumpAndSettle();
       await tester.tap(find.text('やめる'));
       await tester.pumpAndSettle();
@@ -136,7 +147,7 @@ void main() {
         ..failSoftDelete = StateError('書き込めません');
       await pumpInAppScope(tester, const DeckListPage(), decks: decks);
 
-      await tester.tap(find.byTooltip('削除'));
+      await _openDeckMenu(tester);
       await tester.pumpAndSettle();
       await tester.tap(find.text('削除する'));
       await tester.pumpAndSettle();

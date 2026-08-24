@@ -75,6 +75,7 @@ class DeckPane extends StatelessWidget {
     required this.nameController,
     required this.memoController,
     required this.onSave,
+    required this.onEditMeta,
   });
 
   final DeckEditStore store;
@@ -86,6 +87,9 @@ class DeckPane extends StatelessWidget {
   final TextEditingController nameController;
   final TextEditingController memoController;
   final VoidCallback onSave;
+
+  /// P3 メタ編集を開く（M6）。★ダイアログは画面側が出す。
+  final VoidCallback onEditMeta;
 
   @override
   Widget build(BuildContext context) => ValueListenableBuilder<DeckEditState>(
@@ -100,6 +104,7 @@ class DeckPane extends StatelessWidget {
                 nameController: nameController,
                 memoController: memoController,
                 onSave: onSave,
+                onEditMeta: onEditMeta,
                 store: store,
               ),
               const Divider(height: 1),
@@ -138,6 +143,7 @@ class _Header extends StatelessWidget {
     required this.nameController,
     required this.memoController,
     required this.onSave,
+    required this.onEditMeta,
     required this.store,
   });
 
@@ -145,6 +151,9 @@ class _Header extends StatelessWidget {
   final TextEditingController nameController;
   final TextEditingController memoController;
   final VoidCallback onSave;
+
+  /// P3 メタ編集を開く（M6）。★ダイアログは画面側が出す。
+  final VoidCallback onEditMeta;
   final DeckEditStore store;
 
   @override
@@ -173,7 +182,16 @@ class _Header extends StatelessWidget {
                     onChanged: store.setName,
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 4),
+                // ★P3（M6）。R2 と同じダイアログを器だけ替えて開く（§2-1）。
+                //   ★R3 は「未保存」の器を持つので、ここでは保存しない——
+                //   ドラフトへ適用するだけで、保存ボタンが 1 回だけ畳む。
+                IconButton(
+                  tooltip: 'デッキの情報',
+                  icon: const Icon(Icons.info_outline),
+                  onPressed: onEditMeta,
+                ),
+                const SizedBox(width: 4),
                 FilledButton(
                   onPressed: state.canSave ? onSave : null,
                   child: const Text('保存'),

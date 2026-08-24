@@ -21,6 +21,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:loveca_core/loveca_core.dart';
 
+import '../../data/deck_repository.dart';
 import '../../state/app_scope.dart';
 import '../../state/deck_list_store.dart';
 import '../browse/card_browse_page.dart';
@@ -28,6 +29,7 @@ import '../common/loadable_view.dart';
 import '../common/notice_bar.dart';
 import '../settings/settings_page.dart';
 import 'deck_edit_page.dart';
+import 'deck_meta_dialog.dart';
 
 class DeckListPage extends StatefulWidget {
   const DeckListPage({super.key});
@@ -87,6 +89,34 @@ class _DeckListPageState extends State<DeckListPage> {
     );
     // ★名前が変わったかもしれないし、削除されたかもしれない。DB を正とする。
     if (mounted) await _store!.load();
+  }
+
+  /// P3 メタ編集（M6）。★R3 と同じダイアログを器だけ替えて使う（§2-1）。
+  ///
+  /// ★R2 には「未保存」の器が無いので、決定がそのまま保存 1 回に相当する。
+  Future<void> _editMeta(Deck deck) async {
+    final env = _scope.environment;
+    final edited = await showDeckMetaDialog(
+      context,
+      draft: DeckDraft.of(deck),
+      catalog: env.decks.catalogView,
+      imageSource: env.imageSource,
+    );
+    if (edited == null || !mounted) return;
+    await _store!.saveMeta(deck, edited);
+  }
+
+  /// 複製（決定 D71 / M6）。
+  ///
+  /// ★共有形式では同じ cardNumber の別の刷りが合算されて潰れる。
+  /// 刷りを保ったまま写せるのはこちらだけ。
+  Future<void> _duplicateDeck(Deck deck) async {
+    await _store!.duplicate(deck, name: '${deck.name} のコピー');
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('複製しました')),
+      );
+    }
   }
 
   Future<void> _deleteDeck(Deck deck) async {
@@ -161,6 +191,8 @@ class _DeckListPageState extends State<DeckListPage> {
                         decks: decks,
                         onOpen: _openDeck,
                         onDelete: _deleteDeck,
+                        onEditMeta: _editMeta,
+                        onDuplicate: _duplicateDeck,
                       ),
               ),
             ),
@@ -207,11 +239,15 @@ class _DeckList extends StatelessWidget {
     required this.decks,
     required this.onOpen,
     required this.onDelete,
+    required this.onEditMeta,
+    required this.onDuplicate,
   });
 
   final List<Deck> decks;
   final void Function(Deck) onOpen;
   final void Function(Deck) onDelete;
+  final void Function(Deck) onEditMeta;
+  final void Function(Deck) onDuplicate;
 
   @override
   Widget build(BuildContext context) => ListView.separated(
@@ -225,10 +261,19 @@ class _DeckList extends StatelessWidget {
               // ★合計枚数は Deck が持っている（区分の内訳は R3 で出す）。
               '${deck.totalCount} 枚 ・ 更新 ${_formatDate(deck.updatedAt)}',
             ),
-            trailing: IconButton(
-              tooltip: '削除',
-              icon: const Icon(Icons.delete_outline),
-              onPressed: () => onDelete(deck),
+            trailing: PopupMenuButton<String>(
+              tooltip: 'このデッキの操作',
+              onSelected: (v) => switch (v) {
+                'meta' => onEditMeta(deck),
+                'duplicate' => onDuplicate(deck),
+                _ => onDelete(deck),
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'meta', child: Text('情報を編集')),
+                PopupMenuItem(value: 'duplicate', child: Text('複製')),
+                PopupMenuDivider(),
+                PopupMenuItem(value: 'delete', child: Text('削除')),
+              ],
             ),
             onTap: () => onOpen(deck),
           );

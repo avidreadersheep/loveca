@@ -66,6 +66,7 @@ Widget _pane(DeckEditStore store, double width) => MaterialApp(
               nameController: TextEditingController(text: 'デッキ'),
               memoController: TextEditingController(),
               onSave: () {},
+      onEditMeta: () {},
             ),
           ),
         ),
