@@ -25,6 +25,7 @@ import '../data/deck_repository.dart';
 import '../data/dist_locator.dart';
 import '../data/master_catalog.dart';
 import '../data/master_repository.dart';
+import '../data/search_limit.dart';
 
 enum BootStageId {
   /// 1: ネイティブ sqlite3 の確認。
@@ -120,6 +121,17 @@ abstract class BootSteps {
   ///
   /// [catalog] は段 4 の結果。`DeckValidator` の材料になる（決定 D55）。
   DeckRepository decksFor(MasterCatalog catalog);
+
+  /// カードの読み出し（M3 の検索が使う）。
+  ///
+  /// ★[decksFor] と同じく**組み立て済みのリポジトリだけ**を出す。
+  /// `LovecaDatabase` を返さない理由も同じ（決定 D55）。
+  CardCatalogRepository cardCatalogFor();
+
+  /// 検索結果の上限と、その出所（決定 D50 / D64）。
+  ///
+  /// ★段に依らないので getter にしてある。段 1 の前でも決まる。
+  SearchLimitSetting get searchLimit;
 }
 
 /// カタログが空のまま起動しようとしたときの失敗（決定 D60 / 設計メモ §4-6(4)）。
@@ -156,10 +168,21 @@ class EmptyCatalogException implements Exception {
 
 /// 本番の 4 段。
 class RealBootSteps implements BootSteps {
-  RealBootSteps({required this.appVersion, this.clock = systemClockUtc});
+  RealBootSteps({
+    required this.appVersion,
+    this.clock = systemClockUtc,
+    Map<String, String>? environment,
+  }) : searchLimit = resolveSearchLimit(
+          (environment ?? Platform.environment)[searchLimitEnvironmentKey],
+        );
 
   final String appVersion;
   final Clock clock;
+
+  /// ★★ `LOVECA_SEARCH_LIMIT` を読むのはここ 1 箇所だけ（決定 D64）★★
+  /// 検証用の口であって本番の設定経路ではない（本番の設定経路は D60 の dist 解決だけ）。
+  @override
+  final SearchLimitSetting searchLimit;
 
   Directory? _distDir;
   _DatabaseHandle? _handle;
@@ -251,6 +274,9 @@ class RealBootSteps implements BootSteps {
   DeckRepository decksFor(MasterCatalog catalog) =>
       // ★時刻は Clock から供給する（設計メモ §9-1）。層の内側で DateTime.now() を呼ばない。
       DeckRepository(_db.db, catalog: catalog, clock: clock);
+
+  @override
+  CardCatalogRepository cardCatalogFor() => CardCatalogRepository(_db.db);
 }
 
 /// カタログが空だった理由を段 3 の結末から決める（設計メモ §4-6(4)）。
@@ -302,6 +328,8 @@ class AppEnvironment {
     required this.catalog,
     required this.imageSource,
     required this.decks,
+    required this.cardCatalog,
+    required this.searchLimit,
     required this.clock,
   });
 
@@ -310,6 +338,12 @@ class AppEnvironment {
 
   /// デッキの読み書き（M2）。★UI はこれより下（DAO / drift）を直接呼ばない（決定 D55）。
   final DeckRepository decks;
+
+  /// カードの読み出しと検索（M3）。★同上。
+  final CardCatalogRepository cardCatalog;
+
+  /// 検索結果の上限と、その出所（決定 D50 / D64）。
+  final SearchLimitSetting searchLimit;
 
   final Clock clock;
 

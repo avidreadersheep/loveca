@@ -13,11 +13,14 @@ library;
 import 'package:loveca_core/loveca_core.dart';
 import 'package:loveca_db/loveca_db.dart';
 import 'package:loveca_ui/src/boot/boot_steps.dart';
+import 'package:loveca_ui/src/data/card_catalog_repository.dart';
 import 'package:loveca_ui/src/data/card_image_source.dart';
 import 'package:loveca_ui/src/data/deck_repository.dart';
 import 'package:loveca_ui/src/data/master_catalog.dart';
 import 'package:loveca_ui/src/data/master_repository.dart';
+import 'package:loveca_ui/src/data/search_limit.dart';
 
+import 'fake_card_catalog_repository.dart';
 import 'fake_deck_repository.dart';
 
 /// 指定した段で投げる差し替え可能な段。
@@ -31,8 +34,11 @@ class FakeBootSteps implements BootSteps {
     this.decision = UpdateDecision.update,
     this.minAppVersion = '1.0.0',
     this.settingsRecoveredFrom,
+    this.searchLimit = SearchLimitSetting.standard,
     FakeDeckRepository? decks,
-  }) : decks = decks ?? FakeDeckRepository();
+    FakeCardCatalogRepository? cardCatalog,
+  })  : decks = decks ?? FakeDeckRepository(),
+        cardCatalog = cardCatalog ?? FakeCardCatalogRepository();
 
   final BootStageId? failAt;
   final Object? error;
@@ -49,6 +55,13 @@ class FakeBootSteps implements BootSteps {
 
   /// M2。★drift ではなく組み立て済みのリポジトリを配る（決定 D55）。
   final FakeDeckRepository decks;
+
+  /// M3。★同上。
+  final FakeCardCatalogRepository cardCatalog;
+
+  /// 検索結果の上限（決定 D50 / D64）。★上書き・不正値の経路を試すため。
+  @override
+  final SearchLimitSetting searchLimit;
 
   void _maybeFail(BootStageId stage) {
     if (failAt == stage) throw error ?? StateError('${stage.name} で失敗');
@@ -99,6 +112,9 @@ class FakeBootSteps implements BootSteps {
 
   @override
   DeckRepository decksFor(MasterCatalog catalog) => decks;
+
+  @override
+  CardCatalogRepository cardCatalogFor() => cardCatalog;
 }
 
 /// 起動が通る最小の構成（カードが 1 枚だけある）。

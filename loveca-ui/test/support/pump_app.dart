@@ -14,9 +14,13 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loveca_ui/src/boot/boot_steps.dart';
+import 'package:loveca_ui/src/data/card_catalog_repository.dart';
 import 'package:loveca_ui/src/data/card_image_source.dart';
+import 'package:loveca_ui/src/data/master_catalog.dart';
+import 'package:loveca_ui/src/data/search_limit.dart';
 import 'package:loveca_ui/src/state/app_scope.dart';
 
+import 'fake_card_catalog_repository.dart';
 import 'fake_deck_repository.dart';
 
 Future<void> pumpInAppScope(
@@ -24,14 +28,19 @@ Future<void> pumpInAppScope(
   Widget child, {
   required FakeDeckRepository decks,
   List<BootNotice> notices = const [],
+  CardCatalogRepository? cardCatalog,
+  MasterCatalog? catalog,
+  SearchLimitSetting searchLimit = SearchLimitSetting.standard,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
       builder: (context, navigator) => AppScope(
         environment: AppEnvironment(
-          catalog: fakeCatalog(),
+          catalog: catalog ?? fakeCatalog(),
           imageSource: const LocalDirectoryCardImageSource(null),
           decks: decks,
+          cardCatalog: cardCatalog ?? FakeCardCatalogRepository(),
+          searchLimit: searchLimit,
           clock: fakeNow,
         ),
         notices: notices,

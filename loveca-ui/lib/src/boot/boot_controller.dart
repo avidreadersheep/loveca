@@ -7,10 +7,12 @@ library;
 
 import 'package:flutter/foundation.dart';
 import 'package:loveca_core/loveca_core.dart';
+import 'package:loveca_db/loveca_db.dart';
 
 import '../data/clock.dart';
 import '../data/master_catalog.dart';
 import '../data/master_repository.dart';
+import '../data/search_limit.dart';
 import '../state/store.dart';
 import 'boot_steps.dart';
 
@@ -79,6 +81,10 @@ class BootController extends Store<BootState> {
       return delta;
     }
 
+    // ★段に依らない設定なので最初に見る（決定 D64）。
+    //   上書きも不正値も**黙って通さない**。
+    _collectSearchLimitNotices(_steps.searchLimit, notices);
+
     try {
       state = const BootRunning(BootStageId.sqlite);
       await _steps.checkSqlite();
@@ -109,13 +115,15 @@ class BootController extends Store<BootState> {
           catalog: catalog,
           imageSource: _steps.imageSourceFor(outcome),
           decks: _steps.decksFor(catalog),
+          cardCatalog: _steps.cardCatalogFor(),
+          searchLimit: _steps.searchLimit,
           clock: clock,
         ),
         notices: notices,
         timings: timings,
       );
 
-      _printSummary(catalog, timings, notices);
+      _printSummary(catalog, timings, notices, _steps.searchLimit);
     } on Object catch (error, stackTrace) {
       final current = value;
       final failed = BootFailed(
@@ -132,6 +140,48 @@ class BootController extends Store<BootState> {
       // 画面にしか出さないと、ログしか見られない状況（CI・遠隔・自動確認）で
       // 「起動しなかった」以上のことが分からない。成功時だけ出すのは片手落ち。
       _printFailure(failed);
+    }
+  }
+
+  /// 検索上限の上書き（決定 D64）。
+  ///
+  /// ★★ 上書きされていることを見える形にする ★★
+  /// 気づかずに使い続けると「打ち切りが頻発するアプリ」だと誤認する。
+  /// 出す先を Notice にしたのは、これが**セッション中ずっと続く状態**だから
+  /// （`docs/UI設計メモ.md` §2-6: その瞬間の状態は検索画面、永続する状態は Notice）。
+  /// ★打ち切りの文面にも実効上限を出す（誤認が起きるまさにその瞬間に出る）。
+  ///
+  /// ★★ 不正値を黙って既定に戻さない ★★
+  /// 黙って戻すのは A-3 と同じ型で、「下げたはずなのに打ち切られない」が
+  /// 原因不明のまま残る。**起動は止めない** ——
+  /// 検証用の変数が本番起動を壊せる状態にしないため
+  /// （設定ファイルが壊れていたときと同じ扱い / 設計メモ §4-6(5)）。
+  static void _collectSearchLimitNotices(
+    SearchLimitSetting setting,
+    List<BootNotice> notices,
+  ) {
+    if (setting.rejectedValue case final bad?) {
+      notices.add(BootNotice(
+        '$searchLimitEnvironmentKey の値を解釈できないため既定に戻しました',
+        // ★実値を出す。これが無いと利用者はどこを直せばよいか分からない。
+        details: [
+          '指定された値: $bad',
+          '使う上限: ${setting.limit} 件（既定）',
+          '1 以上の整数を指定してください。',
+        ],
+      ));
+      return;
+    }
+
+    if (setting.overriddenValue case final value?) {
+      notices.add(BootNotice(
+        '検索結果の上限が ${setting.limit} 件に変更されています（検証用）',
+        details: [
+          '$searchLimitEnvironmentKey = $value',
+          '既定は ${CardSearchDao.defaultLimit} 件（決定 D50）',
+          'この状態では実データでも打ち切りが起こりえます。',
+        ],
+      ));
     }
   }
 
@@ -209,6 +259,7 @@ class BootController extends Store<BootState> {
     MasterCatalog catalog,
     BootTimings timings,
     List<BootNotice> notices,
+    SearchLimitSetting searchLimit,
   ) {
     String ms(Duration d) => '${d.inMicroseconds / 1000}ms';
     debugPrint(
@@ -221,6 +272,12 @@ class BootController extends Store<BootState> {
       'cards=${catalog.cardCount} printings=${catalog.printingCount} '
       'dataVersion=${catalog.dataVersion} '
       'imageHashが空の刷り=${catalog.rowsWithoutImage}',
+    );
+    // ★上書きされているかをログにも出す（決定 D64）。
+    //   画面にしか出さないと、ログしか見られない状況で追えない。
+    debugPrint(
+      '[boot] searchLimit=${searchLimit.limit}'
+      '${searchLimit.isOverridden ? ' (★$searchLimitEnvironmentKey で上書き)' : ''}',
     );
     for (final notice in notices) {
       debugPrint('[boot] notice: ${notice.message}');

@@ -65,6 +65,26 @@ class CardCatalogRepository {
         return [for (final r in rows) r.read<String>('expansion')];
       });
 
+  /// 検索（決定 D40 / D50 / M3）。
+  ///
+  /// ★★ 戻り値は cardNumber であって刷りではない ★★
+  /// 刷りへの展開は呼び出し側の責務（`card_search_dao.dart:212-215`）。
+  /// パラレル表示の ON/OFF は刷り単位の判断なので検索の責務ではない。
+  /// 展開の実測は 0.00〜0.13ms（`docs/UI技術検証メモ.md` §4-2）で、設計上の考慮は要らない。
+  ///
+  /// ★★ 縮退（`truncated` / `mode`）をそのまま通す ★★
+  /// ここで畳むと「成功したが不完全」が「成功」と区別できなくなる
+  /// （`docs/UI設計メモ.md` §3-4(3)）。`CardSearchResult` は drift の型ではない値型なので
+  /// UI へ出してよい（`MasterRepository` が `MasterImportResult` を出しているのと同じ扱い）。
+  ///
+  /// ★[limit] に既定値を持たせない。既定 2000（決定 D50）が 2 箇所に散ると、
+  /// どちらが効いているのか追えなくなる。供給元は `AppEnvironment.searchLimit` 1 つ。
+  Future<CardSearchResult> search(String query, {required int limit}) =>
+      guardRepository(
+        'cardCatalog.search',
+        () => CardSearchDao(_db).search(query, limit: limit),
+      );
+
   /// `DeckValidator` に渡す材料（決定 D55）。**起動ゲートで 1 回だけ呼ぶ。**
   Future<Map<String, Card>> cardsByNumber() =>
       guardRepository('cardCatalog.cardsByNumber', () => CardDao(_db).cardsByNumber());
