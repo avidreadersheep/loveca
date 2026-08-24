@@ -294,7 +294,9 @@ void main() {
       );
 
       expect(export.text, 'LL-bp1-001 x1\n');
-      expect(export.droppedUnknownPrintingIds, ['UNKNOWN-1']);
+      expect(export.droppedUnknownPrintingIds, [('UNKNOWN-1', 3)]);
+      expect(export.droppedCopies, 3,
+          reason: '★「1 種類」と「3 枚」を取り違えない');
       expect(export.isComplete, isFalse);
     });
 

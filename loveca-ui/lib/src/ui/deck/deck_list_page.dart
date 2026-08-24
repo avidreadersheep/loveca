@@ -30,6 +30,7 @@ import '../common/notice_bar.dart';
 import '../settings/settings_page.dart';
 import 'deck_edit_page.dart';
 import 'deck_meta_dialog.dart';
+import 'deck_share_export_dialog.dart';
 
 class DeckListPage extends StatefulWidget {
   const DeckListPage({super.key});
@@ -119,6 +120,13 @@ class _DeckListPageState extends State<DeckListPage> {
     }
   }
 
+  /// 共有形式をコピーする（決定 D67 / D35）。
+  Future<void> _shareDeck(Deck deck) => showDeckShareExportDialog(
+        context,
+        deck: deck,
+        printings: _scope.environment.printings,
+      );
+
   Future<void> _deleteDeck(Deck deck) async {
     // ★★ 戻す口が無いので確認を 1 枚挟む（未決 U9）★★
     final ok = await showDialog<bool>(
@@ -193,6 +201,7 @@ class _DeckListPageState extends State<DeckListPage> {
                         onDelete: _deleteDeck,
                         onEditMeta: _editMeta,
                         onDuplicate: _duplicateDeck,
+                        onShare: _shareDeck,
                       ),
               ),
             ),
@@ -241,6 +250,7 @@ class _DeckList extends StatelessWidget {
     required this.onDelete,
     required this.onEditMeta,
     required this.onDuplicate,
+    required this.onShare,
   });
 
   final List<Deck> decks;
@@ -248,6 +258,7 @@ class _DeckList extends StatelessWidget {
   final void Function(Deck) onDelete;
   final void Function(Deck) onEditMeta;
   final void Function(Deck) onDuplicate;
+  final void Function(Deck) onShare;
 
   @override
   Widget build(BuildContext context) => ListView.separated(
@@ -266,11 +277,13 @@ class _DeckList extends StatelessWidget {
               onSelected: (v) => switch (v) {
                 'meta' => onEditMeta(deck),
                 'duplicate' => onDuplicate(deck),
+                'share' => onShare(deck),
                 _ => onDelete(deck),
               },
               itemBuilder: (_) => const [
                 PopupMenuItem(value: 'meta', child: Text('情報を編集')),
                 PopupMenuItem(value: 'duplicate', child: Text('複製')),
+                PopupMenuItem(value: 'share', child: Text('共有形式をコピー')),
                 PopupMenuDivider(),
                 PopupMenuItem(value: 'delete', child: Text('削除')),
               ],

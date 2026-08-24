@@ -103,7 +103,11 @@ class DeckShareExport {
   /// （`loveca-core/lib/src/entities/deck.dart:145`）で
   /// **マスタに無い刷りを無言で落とす。** cardNumber が引けないので
   /// 落とすこと自体は正しいが、**落としたことを言わないのは A-3 と同じ型**。
-  final List<String> droppedUnknownPrintingIds;
+  final List<(String printingId, int count)> droppedUnknownPrintingIds;
+
+  /// 落ちた枚数の合計。★「1 種類」と「3 枚」を取り違えないため。
+  int get droppedCopies =>
+      droppedUnknownPrintingIds.fold(0, (sum, e) => sum + e.$2);
 
   /// ★この書式で表せなかった cardNumber（実データでは 0 件）。
   final List<String> unencodableCardNumbers;
@@ -129,7 +133,8 @@ DeckShareExport encodeDeckShare(
   // ★落ちた刷りを自分で数える。toShareFormat は教えてくれない。
   final dropped = [
     for (final entry in deck.entries)
-      if (!printings.containsKey(entry.printingId)) entry.printingId,
+      if (!printings.containsKey(entry.printingId))
+        (entry.printingId, entry.count),
   ];
 
   final unencodable = [

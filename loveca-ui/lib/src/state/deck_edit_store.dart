@@ -161,6 +161,16 @@ class DeckEditStore extends Store<DeckEditState> {
 
   void setMemo(String memo) => _apply(value.draft.copyWith(memo: memo));
 
+  /// 共有形式から取り込んだ中身で置き換える（M6 / 決定 D67）。
+  ///
+  /// ★★ 保存しない ★★
+  /// ドラフトを差し替えるだけなので、**保存しなければ元に戻せる。**
+  /// だからダイアログで「置き換えます」と言い切れる。
+  ///
+  /// ★合算しない。合算すると 4 枚超過が起きやすく、しかも戻せない。
+  void replaceEntries(List<DeckEntry> entries) =>
+      _apply(value.draft.copyWith(entries: entries));
+
   /// P3 のメタ編集（M6）。★`_apply` を通すので `revision` は動かない。
   void applyMeta(DeckDraft meta) => _apply(
         value.draft.copyWith(

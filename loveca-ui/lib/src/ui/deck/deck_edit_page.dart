@@ -34,6 +34,7 @@ import '../detail/open_card_detail.dart';
 import '../layout/pane_scaffold.dart';
 import 'deck_drag.dart';
 import 'deck_meta_dialog.dart';
+import 'deck_share_import_dialog.dart';
 import 'deck_pane.dart';
 
 class DeckEditPage extends StatefulWidget {
@@ -163,6 +164,26 @@ class _DeckEditPageState extends State<DeckEditPage> {
         onEditMeta: _editMeta,
       );
 
+  /// 共有形式から取り込む（M6 / 決定 D67 / D68 / D69）。
+  ///
+  /// ★★ ここでも保存しない ★★
+  /// ドラフトを置き換えるだけ。保存ボタンを押すまで DB は変わらない。
+  Future<void> _importShare() async {
+    final entries = await showDeckShareImportDialog(
+      context,
+      catalog: _scope.environment.cardDetail,
+      // ★総合ルール 6.1.2 により置換されうるので配信の値を使う。
+      maxCopies: _scope.environment.ruleConfig.maxCopiesPerCardNumber,
+    );
+    if (entries == null || !mounted) return;
+    _store!.replaceEntries(entries);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('${entries.length} 種類を取り込みました（未保存）'),
+      ),
+    );
+  }
+
   /// P3 メタ編集（M6）。★R2 と同じダイアログを器だけ替えて開く（§2-1）。
   ///
   /// ★★ ここでは保存しない ★★
@@ -260,6 +281,14 @@ class _DeckEditPageState extends State<DeckEditPage> {
             builder: (context, state, _) => Text(state.saved.name),
           ),
           actions: [
+            // ★★ 取り込みの入口はここ 1 本だけ（§2-2）★★
+            //   R2 からは「新規デッキ → 開く → 取り込む」で届く。
+            //   ルートを増やして分岐させない。
+            IconButton(
+              tooltip: '共有形式から取り込む',
+              icon: const Icon(Icons.download_outlined),
+              onPressed: _importShare,
+            ),
             ValueListenableBuilder<DeckEditState>(
               valueListenable: _store!,
               builder: (context, state, _) => IconButton(
