@@ -139,6 +139,9 @@ void main() {
           memo: '書き換えたメモ',
           // ★entries は必須。名前だけ変えたつもりで中身を消す経路を作らない。
           entries: withEntries.entries,
+          // ★メタもドラフトが持つ（M6 / 決定 D70）。渡さなければ消える。
+          tags: withEntries.tags,
+          coverPrintingId: withEntries.coverPrintingId,
         ),
       );
 
@@ -538,6 +541,261 @@ void main() {
       expect(reordered.isDirtyAgainst(saved), isFalse);
       // 枚数が変われば当然 true。
       expect(reordered.addCopy('M-1-N').isDirtyAgainst(saved), isTrue);
+    });
+  });
+
+  group('★★ save が明示コンストラクタである代償の受け（決定 D70）★★', () {
+    // ★★ copyWith は書かなかったフィールドを自動で引き継ぐが、
+    //    コンストラクタは書き忘れると既定値になる。
+    //    上の「1 バイトも欠けずに戻る」は**フィールドを手で列挙している**ので、
+    //    Deck にフィールドが増えても落ちない。それでは受けにならない。★★
+    test('★Deck のフィールドが増えたら落ちる（toJson のキーを凍結する）', () {
+      final deck = Deck(
+        deckId: 'x',
+        name: 'n',
+        createdAt: _t0,
+        updatedAt: _t0,
+      );
+
+      expect(
+        deck.toJson().keys.toSet(),
+        {
+          'deckId',
+          'name',
+          'entries',
+          'memo',
+          'tags',
+          'coverPrintingId',
+          'createdAt',
+          'updatedAt',
+          'deletedAt',
+          'revision',
+          'lastDeviceId',
+          'masterDataVersion',
+        },
+        reason: '★DeckRepository.save は明示コンストラクタなので、'
+            'Deck にフィールドが増えたら save にも足すこと（決定 D70）。'
+            '★このテストは Deck.toJson 自体の更新漏れまでは捉えられない——'
+            'そちらは loveca-core の JSON 往復テストが受けになる。',
+      );
+    });
+
+    test('★★ 保存 → 開き直すと toJson が丸ごと一致する（手で列挙しない）★★',
+        () async {
+      final created = await repositoryOn(db).create(name: '元の名前');
+      final base = Deck(
+        deckId: created.deckId,
+        name: created.name,
+        entries: const [DeckEntry(printingId: 'M-1-N', count: 2)],
+        memo: 'めも',
+        tags: const ['a', 'b'],
+        coverPrintingId: 'M-1-N',
+        createdAt: created.createdAt,
+        updatedAt: created.updatedAt,
+        revision: created.revision,
+        lastDeviceId: created.lastDeviceId,
+        masterDataVersion: created.masterDataVersion,
+      );
+
+      final saved = await repositoryOn(db).save(base, DeckDraft.of(base));
+
+      await db.close();
+      final reopened = await open();
+      final restored = await repositoryOn(reopened).byId(created.deckId);
+
+      // ★1 フィールドでも書き漏らせばここで落ちる。列挙していないので腐らない。
+      expect(restored!.toJson(), saved.toJson());
+    });
+
+    test('★カバーを外して保存すると null になる（copyWith では書けなかった）',
+        () async {
+      final created = await repositoryOn(db).create(name: 'カバーつき');
+      final withCover = await repositoryOn(db).save(
+        created,
+        DeckDraft.of(created).copyWith(coverPrintingId: 'M-1-N'),
+      );
+      expect(withCover.coverPrintingId, 'M-1-N', reason: '前提');
+
+      final cleared = await repositoryOn(db).save(
+        withCover,
+        DeckDraft.of(withCover).copyWith(clearCover: true),
+      );
+
+      await db.close();
+      final reopened = await open();
+      final restored = await repositoryOn(reopened).byId(created.deckId);
+
+      expect(cleared.coverPrintingId, isNull);
+      expect(restored!.coverPrintingId, isNull, reason: 'DB からも消えている');
+    });
+
+    test('★clearCover を渡さなければ残る（上の対）', () async {
+      final created = await repositoryOn(db).create(name: 'カバーつき');
+      final withCover = await repositoryOn(db).save(
+        created,
+        DeckDraft.of(created).copyWith(coverPrintingId: 'M-1-N'),
+      );
+
+      final renamed = await repositoryOn(db).save(
+        withCover,
+        DeckDraft.of(withCover).copyWith(name: '別の名前'),
+      );
+
+      expect(renamed.coverPrintingId, 'M-1-N',
+          reason: '「外せる」だけを見ると、常に外す実装でも通ってしまう');
+    });
+
+    test('★タグは往復し、空リストで消せる', () async {
+      final created = await repositoryOn(db).create(name: 'タグ');
+      final tagged = await repositoryOn(db).save(
+        created,
+        DeckDraft.of(created).copyWith(tags: const ['青', '青赤']),
+      );
+      expect(tagged.tags, ['青', '青赤']);
+
+      final cleared = await repositoryOn(db).save(
+        tagged,
+        DeckDraft.of(tagged).copyWith(tags: const []),
+      );
+
+      await db.close();
+      final reopened = await open();
+      final restored = await repositoryOn(reopened).byId(created.deckId);
+      expect(cleared.tags, isEmpty);
+      expect(restored!.tags, isEmpty);
+    });
+
+    test('★メタを変えても revision は保存 1 回につき +1 のまま', () async {
+      final created = await repositoryOn(db).create(name: 'r');
+      expect(created.revision, 0);
+
+      final a = await repositoryOn(db).save(
+        created,
+        DeckDraft.of(created).copyWith(memo: 'm', tags: const ['t']),
+      );
+      expect(a.revision, 1);
+
+      final b = await repositoryOn(db).save(
+        a,
+        DeckDraft.of(a).copyWith(coverPrintingId: 'M-1-N'),
+      );
+      expect(b.revision, 2);
+      expect(b.createdAt, created.createdAt, reason: 'createdAt は動かない');
+    });
+
+    test('★メタの編集はドラフトの上で起きるので保存前は dirty になる', () async {
+      final created = await repositoryOn(db).create(name: 'd');
+      final draft = DeckDraft.of(created);
+
+      expect(draft.isDirtyAgainst(created), isFalse, reason: '前提');
+      expect(draft.copyWith(tags: const ['x']).isDirtyAgainst(created), isTrue);
+      expect(
+        draft.copyWith(coverPrintingId: 'M-1-N').isDirtyAgainst(created),
+        isTrue,
+      );
+    });
+  });
+
+  group('★★ 複製（決定 D71 / M6）★★', () {
+    test('★★ 刷りの違いが保たれる（共有形式では潰れる）★★', () async {
+      final created = await repositoryOn(db, deckId: 'src').create(name: '元');
+      final source = await repositoryOn(db).save(
+        created,
+        DeckDraft.of(created).copyWith(
+          entries: const [
+            DeckEntry(printingId: 'M-1-N', count: 2),
+            DeckEntry(printingId: 'M-1-P', count: 1),
+          ],
+        ),
+      );
+
+      final copy = await repositoryOn(db, deckId: 'dup')
+          .duplicate(source, name: '元 のコピー');
+
+      // ★同じ cardNumber の別の刷りが別々のまま残ること。
+      //   共有形式（Map<cardNumber, 枚数>）ではここが 1 行に潰れる。
+      expect(
+        {for (final e in copy.entries) e.printingId: e.count},
+        {'M-1-N': 2, 'M-1-P': 1},
+      );
+    });
+
+    test('★deckId は新しく、revision は 0、時刻は Clock から', () async {
+      final created = await repositoryOn(db, deckId: 'src').create(name: '元');
+      final source = await repositoryOn(db).save(created, DeckDraft.of(created));
+      expect(source.revision, 1, reason: '前提: 元は 1 回保存してある');
+
+      final copy = await repositoryOn(db, deckId: 'dup')
+          .duplicate(source, name: 'コピー');
+
+      expect(copy.deckId, 'dup');
+      expect(copy.deckId, isNot(source.deckId));
+      expect(copy.revision, 0, reason: '新しく作ったデッキ。create と揃える');
+      expect(copy.createdAt, _t0);
+      expect(copy.updatedAt, _t0);
+      expect(copy.deletedAt, isNull);
+    });
+
+    test('★★ masterDataVersion（P5）は元の値を引き継ぐ ★★', () async {
+      final created = await repositoryOn(db, deckId: 'src').create(name: '元');
+      expect(created.masterDataVersion, 7, reason: '前提: 作成時の版');
+
+      final copy = await repositoryOn(db, deckId: 'dup')
+          .duplicate(created, name: 'コピー');
+
+      // ★現在版を打つと、元デッキが持つ未知の刷りが
+      //   「今の版で作ったのに未知」という説明不能な状態になる。
+      expect(copy.masterDataVersion, 7);
+    });
+
+    test('★★ 未知の刷りもそのまま写す（決定 D35）★★', () async {
+      final created = await repositoryOn(db, deckId: 'src').create(name: '元');
+      final source = await repositoryOn(db).save(
+        created,
+        DeckDraft.of(created).copyWith(
+          entries: const [
+            DeckEntry(printingId: 'M-1-N', count: 1),
+            // ★カタログに無い刷り。落とすと、元を消したときに消える。
+            DeckEntry(printingId: 'UNKNOWN-1', count: 3),
+          ],
+        ),
+      );
+
+      final copy = await repositoryOn(db, deckId: 'dup')
+          .duplicate(source, name: 'コピー');
+
+      expect(
+        copy.entries.map((e) => e.printingId),
+        containsAll(<String>['M-1-N', 'UNKNOWN-1']),
+      );
+    });
+
+    test('メタも写る', () async {
+      final created = await repositoryOn(db, deckId: 'src').create(name: '元');
+      final source = await repositoryOn(db).save(
+        created,
+        DeckDraft.of(created)
+            .copyWith(memo: 'めも', tags: const ['青'], coverPrintingId: 'M-1-N'),
+      );
+
+      final copy = await repositoryOn(db, deckId: 'dup')
+          .duplicate(source, name: 'コピー');
+
+      expect(copy.memo, 'めも');
+      expect(copy.tags, ['青']);
+      expect(copy.coverPrintingId, 'M-1-N');
+    });
+
+    test('複製は DB に残り、開き直しても両方ある', () async {
+      final created = await repositoryOn(db, deckId: 'src').create(name: '元');
+      await repositoryOn(db, deckId: 'dup')
+          .duplicate(created, name: '元 のコピー');
+
+      await db.close();
+      final reopened = await open();
+      final all = await repositoryOn(reopened).all();
+
+      expect(all.map((d) => d.name), containsAll(<String>['元', '元 のコピー']));
     });
   });
 }

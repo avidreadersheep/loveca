@@ -43,16 +43,27 @@ class DeckDraft {
   /// **名前だけ変えたつもりで中身を空にして保存する**経路ができる。
   /// 保存は `entries` をそのまま書き戻すので、これは痕跡を残さないデータ消失になる。
   /// 既存のデッキから作るときは [DeckDraft.of] か `DeckRepository.draftOf` を使う。
+  ///
+  /// ★★ [tags] / [coverPrintingId] も「書き戻される」側である（M6 / 決定 D70）★★
+  /// `DeckRepository.save` は `copyWith` ではなく明示コンストラクタで畳むので、
+  /// **ドラフトが持っていないメタは消える。**
+  /// 既定値を許してあるのは、メタの欠落は画面で見えるからであって
+  /// 「保存に関係しない」からではない。
+  /// ★既存のデッキを編集するときは必ず [DeckDraft.of] / `draftOf` から作ること。
   const DeckDraft({
     required this.name,
     required this.memo,
     required this.entries,
+    this.tags = const [],
+    this.coverPrintingId,
   });
 
   DeckDraft.of(Deck deck)
       : name = deck.name,
         memo = deck.memo,
-        entries = deck.entries;
+        entries = deck.entries,
+        tags = deck.tags,
+        coverPrintingId = deck.coverPrintingId;
 
   final String name;
   final String memo;
@@ -60,11 +71,30 @@ class DeckDraft {
   /// ★保持は printingId 単位（決定 D11）。**並び順はこのリストが持つ。**
   final List<DeckEntry> entries;
 
-  DeckDraft copyWith({String? name, String? memo, List<DeckEntry>? entries}) =>
+  /// P3 のメタ編集（M6）。★`deck_tags` に `ord` つきで保存される。
+  final List<String> tags;
+
+  /// P3 のメタ編集（M6）。★デッキの中のカードから選ぶ。無ければ null。
+  final String? coverPrintingId;
+
+  /// ★★ [clearCover] が要る理由 ★★
+  /// `coverPrintingId ?? this.coverPrintingId` だけだと**外す手段が無い。**
+  /// カバーに選んだカードをデッキから抜いても宙に浮いたまま残る。
+  DeckDraft copyWith({
+    String? name,
+    String? memo,
+    List<DeckEntry>? entries,
+    List<String>? tags,
+    String? coverPrintingId,
+    bool clearCover = false,
+  }) =>
       DeckDraft(
         name: name ?? this.name,
         memo: memo ?? this.memo,
         entries: entries ?? this.entries,
+        tags: tags ?? this.tags,
+        coverPrintingId:
+            clearCover ? null : (coverPrintingId ?? this.coverPrintingId),
       );
 
   /// printingId -> 枚数。★保存されるのはこの形であって、並び順ではない（決定 D65）。
@@ -87,6 +117,8 @@ class DeckDraft {
   bool isDirtyAgainst(Deck deck) =>
       name != deck.name ||
       memo != deck.memo ||
+      coverPrintingId != deck.coverPrintingId ||
+      !listEquals(tags, deck.tags) ||
       !mapEquals(countsByPrintingId, DeckDraft.of(deck).countsByPrintingId);
 
   /// 名前が空白だけなら保存させない（`decks.name` は NOT NULL だが空は入る）。
@@ -219,8 +251,8 @@ class DeckCatalogView {
         name: draft.name,
         entries: draft.entries,
         memo: draft.memo,
-        tags: base.tags,
-        coverPrintingId: base.coverPrintingId,
+        tags: draft.tags,
+        coverPrintingId: draft.coverPrintingId,
         createdAt: base.createdAt,
         // ★動かさない。時刻も版も編集では変わらない。
         updatedAt: base.updatedAt,
@@ -310,6 +342,8 @@ class DeckCatalogView {
         name: deck.name,
         memo: deck.memo,
         entries: normalizedEntries(deck.entries),
+        tags: deck.tags,
+        coverPrintingId: deck.coverPrintingId,
       );
 
   /// ドラフトの**画面に見えている並び**が「開き直したときの並び」と違うか（決定 D65）。
@@ -398,8 +432,29 @@ class DeckRepository {
   /// ドラフトを 1 回だけ `Deck` に畳んで保存する。
   ///
   /// ★★ `revision` が +1 されるのは保存 1 回につき 1 度だけである ★★
-  /// `Deck.copyWith` の `revision: revision ?? this.revision + 1` を
-  /// **ここでしか踏まない**。編集操作の回数では増えない。
+  /// 編集操作の回数では増えない。ドラフトは `Deck` を持たないので、
+  /// **編集のたびに版が跳ねる経路が構造的に存在しない**（§9-1）。
+  ///
+  /// ★★ `copyWith` を使わない（決定 D70 / M6）★★
+  /// `Deck.copyWith` は `coverPrintingId ?? this.coverPrintingId`
+  /// （`loveca-core/lib/src/entities/deck.dart:94`）なので
+  /// **カバーを外せない。** P3（M6）でカバーの編集口を作る以上、外す口が要る。
+  ///
+  /// 明示コンストラクタにしても §9-1 の性質は全部残る——
+  /// 保存 1 回 = `revision` +1 / `updatedAt` は [Clock] から /
+  /// 畳む場所はここ 1 箇所。★副次的に **`Deck.copyWith` の呼び出し元が
+  /// UI から 0 件になり**、CLAUDE.md §1 の既知違反（既定値の
+  /// `DateTime.now().toUtc()`）に**触れる経路そのものが消える。**
+  ///
+  /// ★★ ただし違反は `loveca_core` に残っている ★★
+  /// Phase 6 のサーバや将来の呼び出し元は踏みうる。**解消済みではない**
+  /// （`ルール整合性チェック_v1.06.md` D-14 / D-9・D-5 と同じ扱い）。
+  ///
+  /// ★★ コンストラクタの代償は「フィールドの書き漏らし」である ★★
+  /// `copyWith` は書かなかったフィールドを自動で引き継ぐが、
+  /// コンストラクタは書き忘れると既定値になる。
+  /// → `test/data/deck_repository_test.dart` が **`Deck.toJson()` の
+  /// キー集合を凍結**しており、`Deck` にフィールドが増えると落ちる。
   ///
   /// ★★ 並び順は保存されない（決定 D65）★★
   /// `deck.entries` の順で書き込むが、`deck_entries` に順序列が無く
@@ -407,15 +462,60 @@ class DeckRepository {
   /// **画面がそれを予告している**（`DeckOrderNotPersisted`）。
   Future<Deck> save(Deck base, DeckDraft draft) =>
       guardRepository('deck.save', () async {
-        final next = base.copyWith(
+        final next = Deck(
+          deckId: base.deckId,
           name: draft.name,
-          memo: draft.memo,
           entries: draft.entries,
+          memo: draft.memo,
+          tags: draft.tags,
+          coverPrintingId: draft.coverPrintingId,
+          createdAt: base.createdAt,
           // ★Clock から供給する（§9-1）。既定値の DateTime.now() を踏まない。
           updatedAt: _clock(),
+          deletedAt: base.deletedAt,
+          // ★保存 1 回につき 1 度だけ。ここが唯一の +1 である（P2）。
+          revision: base.revision + 1,
+          lastDeviceId: base.lastDeviceId,
+          masterDataVersion: base.masterDataVersion,
         );
         await DeckDao(_db).save(next);
         return next;
+      });
+
+  /// デッキを複製する（決定 D71 / M6）。
+  ///
+  /// ★★ 共有形式の代わりにはならない ★★
+  /// 共有形式は `Map<cardNumber, 枚数>` なので**刷りの違いが潰れる**
+  /// （同じ cardNumber の `-SD` と `-SD2` が合算される / 決定 D67）。
+  /// 複製は**刷りを保ったまま写せる唯一の手段**である。
+  ///
+  /// ★★ `masterDataVersion`（P5）は元の値を引き継ぐ ★★
+  /// P5 は「作成時のカードマスタ版。未知カード検出に使う」。
+  /// 現在版を打つと、元デッキが持つ**未知の刷り**が
+  /// 「今の版で作ったのに未知」という説明不能な状態になり、P5 の用途を壊す。
+  /// ★[create] が現在版を打つのは**中身が空だから**であって、矛盾しない。
+  ///
+  /// ★★ 未知の刷りもそのまま写す（決定 D35）★★
+  /// 落とすと、元デッキを消したときに未知カードが消える。
+  Future<Deck> duplicate(Deck source, {required String name}) =>
+      guardRepository('deck.duplicate', () async {
+        final now = _clock();
+        final copy = Deck(
+          deckId: _newDeckId(),
+          name: name,
+          entries: source.entries,
+          memo: source.memo,
+          tags: source.tags,
+          coverPrintingId: source.coverPrintingId,
+          createdAt: now,
+          updatedAt: now,
+          // ★新しく作ったデッキ。create と揃える。
+          revision: 0,
+          lastDeviceId: source.lastDeviceId,
+          masterDataVersion: source.masterDataVersion,
+        );
+        await DeckDao(_db).save(copy);
+        return copy;
       });
 
   /// 論理削除（P3）。物理削除すると削除が同期で伝播しない。

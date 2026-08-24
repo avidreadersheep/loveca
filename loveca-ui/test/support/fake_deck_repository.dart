@@ -151,6 +151,8 @@ class FakeDeckRepository implements DeckRepository {
 
   /// ★呼ばれた回数。画面が「編集のたびに保存していない」ことの確認に使う。
   int saveCalls = 0;
+  int duplicateCalls = 0;
+  Deck? lastDuplicated;
   int createCalls = 0;
   int softDeleteCalls = 0;
 
@@ -191,17 +193,49 @@ class FakeDeckRepository implements DeckRepository {
   Future<Deck> save(Deck base, DeckDraft draft) async {
     saveCalls++;
     if (failSave case final error?) throw error;
-    final next = base.copyWith(
+    // ★本実装と同じく明示コンストラクタで畳む（決定 D70）。
+    //   `copyWith` のままにすると、フェイクだけカバーを外せず、
+    //   **本実装と黙って食い違う。**
+    final next = Deck(
+      deckId: base.deckId,
       name: draft.name,
-      memo: draft.memo,
       entries: draft.entries,
+      memo: draft.memo,
+      tags: draft.tags,
+      coverPrintingId: draft.coverPrintingId,
+      createdAt: base.createdAt,
       updatedAt: fakeNow(),
+      deletedAt: base.deletedAt,
+      revision: base.revision + 1,
+      lastDeviceId: base.lastDeviceId,
+      masterDataVersion: base.masterDataVersion,
     );
     _decks
       ..removeWhere((d) => d.deckId == base.deckId)
       ..add(next);
     lastSaved = next;
     return next;
+  }
+
+  @override
+  Future<Deck> duplicate(Deck source, {required String name}) async {
+    duplicateCalls++;
+    final copy = Deck(
+      deckId: 'copy-$duplicateCalls',
+      name: name,
+      entries: source.entries,
+      memo: source.memo,
+      tags: source.tags,
+      coverPrintingId: source.coverPrintingId,
+      createdAt: fakeNow(),
+      updatedAt: fakeNow(),
+      revision: 0,
+      lastDeviceId: source.lastDeviceId,
+      masterDataVersion: source.masterDataVersion,
+    );
+    _decks.add(copy);
+    lastDuplicated = copy;
+    return copy;
   }
 
   @override

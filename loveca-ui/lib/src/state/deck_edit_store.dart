@@ -161,6 +161,18 @@ class DeckEditStore extends Store<DeckEditState> {
 
   void setMemo(String memo) => _apply(value.draft.copyWith(memo: memo));
 
+  /// P3 のメタ編集（M6）。★`_apply` を通すので `revision` は動かない。
+  void applyMeta(DeckDraft meta) => _apply(
+        value.draft.copyWith(
+          name: meta.name,
+          memo: meta.memo,
+          tags: meta.tags,
+          coverPrintingId: meta.coverPrintingId,
+          // ★外すのも編集のうち。渡さないと片道になる。
+          clearCover: meta.coverPrintingId == null,
+        ),
+      );
+
   // ---------------------------------------------------------------------------
   // カードの増減（M4）
   // ---------------------------------------------------------------------------

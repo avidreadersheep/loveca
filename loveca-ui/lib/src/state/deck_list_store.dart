@@ -61,6 +61,18 @@ class DeckListStore extends Store<DeckListState> {
   Future<void> softDelete(String deckId) =>
       _act(() => _repository.softDelete(deckId));
 
+  /// P3 のメタ編集を R2 から行う（M6）。
+  ///
+  /// ★★ R3 と違って「未保存」の器が無い ★★
+  /// R3 はドラフトを持ち、保存ボタンで畳む。R2 にはその器が無いので、
+  /// ダイアログの OK が保存 1 回に相当する。**どちらも畳むのは 1 回だけ**。
+  Future<Deck?> saveMeta(Deck deck, DeckDraft draft) =>
+      _act(() => _repository.save(deck, draft));
+
+  /// 複製（決定 D71 / M6）。★刷りを保ったまま写せる唯一の手段。
+  Future<Deck?> duplicate(Deck deck, {required String name}) =>
+      _act(() => _repository.duplicate(deck, name: name));
+
   Future<T?> _act<T>(Future<T> Function() body) async {
     if (value.busy) return null;
     state = value.copyWith(busy: true, clearActionError: true);
