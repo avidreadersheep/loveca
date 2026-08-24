@@ -186,7 +186,16 @@ flutter analyze
 flutter run -d windows -t spike/main_probe.dart      # sqlite3 経路の疎通確認
 flutter build windows --profile -t spike/main_grid.dart
 SPIKE_AUTOEXIT=1 ./build/windows/x64/runner/Profile/loveca_ui.exe  # 計測して自己終了
+
+LOVECA_DIST_DIR=/path/to/dist flutter run -d windows          # 実データで起動（D60 段1・本番の設定経路）
+LOVECA_SEARCH_LIMIT=50 flutter run -d windows                 # ★検証用。検索の打ち切り（D50）を実データで再現する
 ```
+
+★`LOVECA_SEARCH_LIMIT` は **`LOVECA_DIST_DIR` と同格ではない**（決定 D64）。
+前者は検証用の口、後者は D60 が定めた本番の設定経路である。
+実データの最大ヒットは `ー` の 1,034 種で、**既定 2000 では打ち切りが起こらない**ため、
+上限を下げないと `truncated` の表示を実データで確かめられない。
+不正値（0 / 負数 / 非数値）は既定に戻したうえで起動時に警告する。
 
 ★`loveca_ui` は `sqlite3_flutter_libs` を採らない（決定 D45 の詳細・
 `docs/UI技術検証メモ.md` §1-2）。`sqlite3` のビルドフックがそのまま Flutter でも働き、
@@ -235,7 +244,7 @@ git ls-files --others --ignored --exclude-standard \
 | `loveca-data`（Python） | 33 | `python tests/run_all.py` |
 | `loveca-core`（Dart） | 255 | `dart test` |
 | `loveca-db`（Dart） | 127（★skip 0） | `dart test` |
-| `loveca-ui`（Flutter） | 97（★skip 0） | `flutter test` |
+| `loveca-ui`（Flutter） | 151（★skip 0） | `flutter test` |
 
 （`loveca-core` は 2026-08-23 時点、`loveca-db` / `loveca-ui` は 2026-08-24 時点）
 
@@ -251,6 +260,18 @@ pubspec の突き合わせ・**起動ゲートの段ごとの失敗の区別**�
 `revision` が**保存回数**で増えること・`updatedAt` が `Clock` 由来であること・
 論理削除が一覧から消えて DB には残ること・**検証が DB へ行かないこと**（DB を閉じたあとでも
 `validate` が答える = 決定 D55 の機械的な証明）・ホームが R2 であること。
+★★**M3 で足したのは「縮退が実際に起きる入力で、表示に使う値が立つこと」である。**★★
+D-10 の教訓（「検知手段を書いたら『見つかるはずのもの』を仕込んで動かす。
+0 件は『無い』と『見えていない』の区別がつかない」）を、
+**縮退を見せる仕組み自体に適用した。**
+`test/data/card_search_degradation_test.dart` は**実 DB**に対して
+`limit` を下げて**本当に打ち切り**（D50）・2 文字の語で**本当に `likeFallback` へ落とし**（D40）・
+`deleteExpansion` で**本当に孤児を作る**（D-8 / D63）。
+★★**「起きない入力で出ないこと」も必ず対で固定してある。**★★
+出る側だけ見ると、**常に出す実装**でも通ってしまう。
+フェイクを使うのは画面側（デバウンス回数・3 つの縮退が別々の行として読めること・
+失敗が 0 件表示にすり替わらないこと）だけで、**役割を混ぜない。**
+
 ★**フレーム統計は測らない。** profile ビルドでしか出ず、それは `spike/` の資産（D51）。
 
 ★`loveca-db` のテスト結果を報告するときは **skip 件数も併記すること。**
@@ -409,7 +430,7 @@ card_number = printing_id.rsplit("-", 1)[0]
 |---|---|
 | Phase 1-A データパイプライン（Python） | **完了**（1,708 種 / 2,527 刷り / 検証エラー 0。Python テストで担保） |
 | Phase 1-B `loveca_core` エンティティ・DeckValidator | **完了**（`loveca-core` の **Dart** テストで担保。件数は §3 の表） |
-| Phase 2 PC ローカル DB・カードリスト・デッキ構築 | **着手中**（第一段階: drift スキーマ + マスタ取り込み層 = 完了。UI 着手前の技術検証 = 完了 / `docs/UI技術検証メモ.md`。検索の改善と移行機構 = 完了 / D49・D50。UI 本実装の設計 = 完了 / `docs/UI設計メモ.md`・D52〜D61。**M1 土台 + R1 + R4 = 完了。M2 R2/R3 最小版 + デッキの書き込み = 完了 / D62・`docs/UI設計メモ.md` §9-4**） |
+| Phase 2 PC ローカル DB・カードリスト・デッキ構築 | **着手中**（第一段階: drift スキーマ + マスタ取り込み層 = 完了。UI 着手前の技術検証 = 完了 / `docs/UI技術検証メモ.md`。検索の改善と移行機構 = 完了 / D49・D50。UI 本実装の設計 = 完了 / `docs/UI設計メモ.md`・D52〜D61。**M1 土台 + R1 + R4 = 完了。M2 R2/R3 最小版 + デッキの書き込み = 完了 / D62・`docs/UI設計メモ.md` §9-4。M3 検索 = 完了 / D63・D64・`docs/UI設計メモ.md` §9-5**） |
 | Phase 3a GameState / 集計 / 進行 / 巻き戻し / reduce・redact | **完了**（`loveca-core` の Dart テストで担保。件数は §3 の表） |
 | Phase 3b PC 盤面 UI | 未着手（★転用可否は検証済み。`docs/UI技術検証メモ.md` §7） |
 | Phase 4 認証・同期 / Phase 5 スマホ / Phase 6 対戦サーバ | 未着手 |
@@ -418,14 +439,15 @@ Dart SDK は導入済み（3.11.1 stable / Flutter 3.41.4）。
 Python は **`loveca-data/.venv/Scripts/python.exe`（3.13.12）を使う**。
 Git Bash の `python` は MSYS2 の 3.14.3 を掴むため使わない。
 
-**次の一手**: Phase 2 後半の **M3（検索）**。`loveca-ui/lib/` に書く。
-M3 では **D-8（`deleteOrphanCards` の呼び出し元が 0）** の判断が要る（下表）。
-設計は `docs/UI設計メモ.md`（決定 D52〜D61）、描画の実測は `docs/UI技術検証メモ.md`（決定 D42〜D48）。
+**次の一手**: Phase 2 後半の **M4（R3 デッキ編集 + P1 検証パネル）**。`loveca-ui/lib/` に書く。
+★**M4 は「Release 1 の骨格が端から端まで通る」確認点である**（`docs/UI設計メモ.md` §2-4）。
+M4 では **U8（ペインの切替しきい値 840 論理px の検算）** の判断が要る（下表）。
+設計は `docs/UI設計メモ.md`（決定 D52〜D64）、描画の実測は `docs/UI技術検証メモ.md`（決定 D42〜D48）。
 そこから外れる場合は理由を示すこと。
 `loveca-ui/spike/` は検証用であり、**本実装から参照しない。**
 
 決定事項の参照先は `docs/決定事項一覧.md`（`決定 DNN` / `決定 D-X` の実体）。
-**新しい決定は D63 以降を使う（D36〜D62 は使用済み）。** 未記録番号を再利用しないこと。
+**新しい決定は D65 以降を使う（D36〜D64 は使用済み）。** 未記録番号を再利用しないこと。
 
 ### ★ 未決項目（着手フェイズから辿るための索引）
 
@@ -447,7 +469,7 @@ M3 では **D-8（`deleteOrphanCards` の呼び出し元が 0）** の判断が�
 | **Phase 4** | **D-4** | ★**`imageHash` は原本 PNG のハッシュで配信 WebP のハッシュではない。**画像を差分で配る経路を作った瞬間に、古い画質が**無言で**残る | 同 D-4（= `docs/UI設計メモ.md` U2） |
 | **Phase 4** | **D-7** | ★**`min_app_version` が CLI に露出せず 1.0.0 固定。**既存の dist はすべてアプリ 1.0.0 以上を要求する。M1 は**アプリ版を上げて**回避した——★**データに合わせてアプリを変える本来と逆の向き** | `ルール整合性チェック_v1.06.md` D-7 |
 | **Phase 4** | **U1** | モバイルの画像供給経路（同梱 / 初回取得）。**D43「UI にネットワーク取得の口を作らない」に触れる** | `docs/UI設計メモ.md` §5-5 |
-| **M3**（検索の実装時） | **D-8** | ★**`deleteOrphanCards` の本番呼び出し元が 0。**配信から商品が消えると孤児 `cards` と**索引エントリ**が残り、**検索が存在しない刷りの cardNumber を返しうる** | `ルール整合性チェック_v1.06.md` D-8 |
+| **`loveca_db` を次に触るとき** | **D-8** | ★**方式は決定済み（D63: `filesToDelete` が空でないときだけ掃除する）。残るのは実装だけ。**M3 は UI 側で「表示できないカードがある」と出すところまでを引き受けた。★**この経路が実在することは実 DB のテストで確認済み** | `ルール整合性チェック_v1.06.md` D-8 / 決定 D63 |
 | **Phase 4**（D-5 と同時に） | **D-9** | ★**`DeckDao.softDelete` が `revision` を上げない。**P2「更新のたびに +1。同期の差分検出に使う」と食い違う。**「更新したのに revision が動かない唯一の経路」** | `ルール整合性チェック_v1.06.md` D-9 |
 | **M6 か、それ以降** | **U9** | ★**論理削除したデッキを戻す口が無い。**DB には残る（P3）が UI から復元できない。M2 は確認ダイアログ 1 枚で誤操作を防いでいるだけ | `docs/UI設計メモ.md` §10 の U9 |
 | **Phase 5 着手時** | **§7 の 5 項目** | `thumb` 200px がモバイルの物理セル幅を下回る / タッチのジェスチャ競合 / **sqlite3 の Android・iOS 経路で FTS5・trigram を未確認** / iOS は macOS が無いと検証不可 / 画像供給経路 | `docs/UI設計メモ.md` §7 |
