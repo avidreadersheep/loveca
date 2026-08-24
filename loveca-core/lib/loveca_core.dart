@@ -13,6 +13,7 @@ export 'src/rules/deck_validator.dart';
 export 'src/game/aggregation.dart';
 export 'src/game/card_instance.dart';
 export 'src/game/card_move.dart';
+export 'src/game/energy_deck.dart';
 export 'src/game/game_action.dart';
 export 'src/game/game_state.dart';
 export 'src/game/history.dart';

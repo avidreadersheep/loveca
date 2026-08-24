@@ -24,6 +24,7 @@ import '../entities/card.dart';
 import 'aggregation.dart';
 import 'card_instance.dart';
 import 'card_move.dart';
+import 'energy_deck.dart';
 import 'game_state.dart';
 import 'member_area.dart';
 import 'refresh.dart';
@@ -241,30 +242,16 @@ class StepEngine {
     return _withMemberAreas(next, playerId, areas);
   }
 
-  /// 7.5.2: エネルギーデッキ置き場の一番上をエネルギー置き場へ。
+  /// 7.5.2: エネルギーデッキ置き場から 1 枚をエネルギー置き場へ。
   ///
-  /// ★4.9.2 はエネルギーデッキ置き場を「カードの順番は管理されません」と定めるが、
-  ///   7.5.2 は「一番上のカード」と書く（整合性チェック B-2 の論点）。
-  ///   非公開領域 (4.9.2) なので観測上の差は出ない。index 0 を採る。
-  GameState _drawEnergy(GameState state, String playerId) {
-    final deck = cardsIn(state, playerId, Zone.energyDeck);
-    if (deck.isEmpty) return state;
-
-    // 4.7.3: エネルギー置き場のカードは向きを示す配置状態を持つ。
-    // 4.3.2.3: 特に指定がないかぎりアクティブ状態で置かれる。
-    final moved = deck.first.copyWith(
-      orientation: CardOrientation.active,
-      face: FaceState.faceUp,
-    );
-    final next = replaceZone(state, playerId, Zone.energyDeck, deck.sublist(1));
-    return replaceZone(
-      next,
-      playerId,
-      Zone.energyField,
-      insertInto(
-          cardsIn(next, playerId, Zone.energyField), [moved], ZonePosition.top),
-    );
-  }
+  /// ★★ 「一番上」ではなく**無作為に 1 枚**（決定 D73 / 整合性チェック B-2 の解消）★★
+  ///   4.9.2 がエネルギーデッキ置き場を「カードの順番は管理されません」と定めており、
+  ///   6.2.1.3 がシャッフルを指示しない以上、index 0 は
+  ///   **プレイヤーが構築時に決めた順**になってしまう。根拠は `energy_deck.dart`。
+  ///
+  /// ★実装は `drawEnergyRandomly` 1 つ。ここと `DrawEnergy` と 6.2.1.7 が同じものを通る。
+  GameState _drawEnergy(GameState state, String playerId) =>
+      drawEnergyRandomly(state, playerId, 1, rng);
 
   /// カードを [count] 枚引く (5.6.1 / 5.6.2)。
   ///

@@ -174,12 +174,14 @@ final class SetOrientation extends GameAction {
 
 /// シャッフル。総合ルール 5.5.1。
 ///
-/// ★★ 乱数を消費するアクションは 4 つある ★★
+/// ★★ 乱数を消費するアクションは 5 つある ★★
 ///   [ShuffleZone] … 5.5.1 のシャッフル（直接）
 ///   [DrawCards]   … 10.2.1 の割り込みリフレッシュ（10.2.3 のシャッフル）
 ///   [Refresh]     … 同上
 ///   [AdvanceStep] … ★同上。7.6.2 (`_draw`) と 8.3.11 (`_yell`) が
 ///                   `Refresher.takeFromMainDeck` を通るため
+///   [DrawEnergy]  … ★4.9.2 の無作為抽出（決定 D73）。7.5.2 は [AdvanceStep] 経由で
+///                   同じ抽出を通るので、この列挙では [AdvanceStep] に含まれる
 ///
 ///   ★★ ここは「このアクションだけが乱数を消費する」と書かれていた ★★
 ///     書かれた時点で既に誤っていた。[AdvanceStep] の消費経路
@@ -200,6 +202,29 @@ final class ShuffleZone extends GameAction {
 /// ★途中でメインデッキが尽きたらリフレッシュして続行する (10.2.1)。
 final class DrawCards extends GameAction {
   const DrawCards({required this.playerId, this.count = 1});
+
+  final String playerId;
+  final int count;
+}
+
+/// エネルギーデッキ置き場から**無作為に** [count] 枚をエネルギー置き場へ移す。
+///
+/// 総合ルール 4.9.2（順番は管理されない）/ 4.9.3（複数枚なら 1 枚ずつ）。
+/// 決定 D73（整合性チェック B-2 の解消）。根拠は `energy_deck.dart`。
+///
+/// ★★ [MoveCard]（instanceId 指定）と畳まない ★★
+///   効果が「エネルギーデッキを**見て** 1 枚選ぶ」場合は [MoveCard] を使う。
+///   **無作為と指定は別の操作**である（決定 D73 の変更 #3）。
+///
+/// ★★ このアクションが要る理由 ★★
+///   UI で組もうとすると [MoveCard] に instanceId を渡すことになり、
+///   **どれを選ぶかを UI が決める＝乱数が UI へ漏れる**。
+///   乱数は `reduce` の外から注入する設計（このファイル冒頭）に触れる。
+///
+/// ★6.2.1.7（開始時の 3 枚）もこれと同じ抽出を通る（`GameSetup`）。
+/// ★エネルギーデッキが尽きたら**引けた分で止まる**。UI がボタンを無効にして理由を出す。
+final class DrawEnergy extends GameAction {
+  const DrawEnergy({required this.playerId, this.count = 1});
 
   final String playerId;
   final int count;

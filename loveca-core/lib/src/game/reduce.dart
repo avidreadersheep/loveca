@@ -21,12 +21,13 @@
 ///   「乱数を [GameAction] の外から注入する」という設計の必然であり、
 ///   リプレイは `SeededRng(seed)` を張り直して同じアクション列を流すことで再現する。
 ///
-///   ★参照透過でないのは乱数を消費する 4 つだけ。
+///   ★参照透過でないのは乱数を消費する 5 つだけ。
 ///     [ShuffleZone] … 5.5.1 のシャッフル
 ///     [Refresh]     … 10.2.3 のシャッフル
 ///     [DrawCards]   … 10.2.1 の割り込みリフレッシュが起きた場合のみ
 ///     [AdvanceStep] … ★同上。7.6.2 (`_draw`) と 8.3.11 (`_yell`) が
 ///                     `Refresher.takeFromMainDeck` を通るため
+///     [DrawEnergy]  … ★4.9.2 の無作為抽出（決定 D73 / `energy_deck.dart`）
 ///   他のアクションはすべて完全に純粋。
 ///
 ///   ★★ この列挙は 3 つと書かれていた。書かれた時点で既に誤っていた ★★
@@ -49,6 +50,7 @@ library;
 import '../entities/card.dart';
 import 'card_instance.dart';
 import 'card_move.dart';
+import 'energy_deck.dart';
 import 'game_action.dart';
 import 'game_state.dart';
 import 'history.dart';
@@ -129,6 +131,11 @@ ReduceReport reduceWithReport(
     SetOrientation() => ReduceReport(state: _setOrientation(state, action)),
     ShuffleZone() => ReduceReport(state: _shuffle(state, action, context)),
     DrawCards() => _draw(state, action, context),
+    // ★4.9.2 / 4.9.3 の無作為抽出（決定 D73）。実装は `energy_deck.dart` 1 つ。
+    DrawEnergy() => ReduceReport(
+        state: drawEnergyRandomly(
+            state, action.playerId, action.count, context.rng),
+      ),
     LookAtTop() => _lookAtTop(state, action, context),
 
     // ---- A-2. メンバーエリアの操作 ----
