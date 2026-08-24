@@ -282,4 +282,33 @@ void main() {
     expect(find.textContaining('の検索結果'), findsNothing);
     expect(repository.searchedQueries.last, '');
   });
+
+  group('★★ 絞り込みボタンは 1 ペインのときだけ出る（M4 で直した不具合）★★', () {
+    // ★★ 出る側だけ見ると、常に出す実装でも通る ★★
+    // M3 までは AppBar に置いていて `isTwoPaneOf` が常に false になり、
+    // **2 ペインで絞り込みパネルが見えているのに同じものを開くボタンも出ていた。**
+    // 出ない側を対で固定しないと、同じ退行に気づけない。
+    Future<void> openAt(WidgetTester tester, double logicalWidth) async {
+      tester.view.devicePixelRatio = 1.0;
+      tester.view.physicalSize = Size(logicalWidth, 900);
+      addTearDown(tester.view.reset);
+      await _open(tester, FakeCardCatalogRepository());
+    }
+
+    testWidgets('1 ペイン（狭い）では出る', (tester) async {
+      await openAt(tester, 700);
+
+      expect(find.byTooltip('絞り込み'), findsOneWidget);
+      // 横のパネルは無いので「絞り込み」の見出しも無い。
+      expect(find.text('絞り込み'), findsNothing);
+    });
+
+    testWidgets('★2 ペイン（広い）では出ない（横に同じものが見えている）', (tester) async {
+      await openAt(tester, 1280);
+
+      expect(find.byTooltip('絞り込み'), findsNothing);
+      // 代わりに FilterPanel の見出しが横に出ている。
+      expect(find.text('絞り込み'), findsOneWidget);
+    });
+  });
 }

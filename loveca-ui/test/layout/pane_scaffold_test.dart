@@ -86,6 +86,60 @@ void main() {
     });
   });
 
+  group('★ header は全幅で載り、判定結果が読める（M4 で追加）', () {
+    // ★★ これが無いと「1 ペインのときだけ出す」が黙って効かない ★★
+    // M3 までは `Scaffold.appBar` の中から isTwoPaneOf を呼んでいたが、
+    // _PaneScope は body の中で作られるので AppBar からは辿れず、
+    // **常に false** になっていた（下の「外では false」がその性質そのもの）。
+    Future<void> pumpWithHeader(WidgetTester tester, double width) async {
+      tester.view.devicePixelRatio = 1.0;
+      tester.view.physicalSize = Size(width, 800);
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: PaneScaffold(
+              header: Builder(
+                builder: (context) => Text(
+                  PaneScaffold.isTwoPaneOf(context)
+                      ? 'header:two'
+                      : 'header:one',
+                ),
+              ),
+              primary: const Text('primary'),
+              secondary: const Text('secondary'),
+            ),
+          ),
+        ),
+      );
+    }
+
+    testWidgets('2 ペインのとき header から two が読める', (tester) async {
+      await pumpWithHeader(tester, 1280);
+
+      expect(find.text('header:two'), findsOneWidget);
+      expect(find.text('secondary'), findsOneWidget);
+    });
+
+    testWidgets('1 ペインのとき header から one が読める', (tester) async {
+      await pumpWithHeader(tester, 400);
+
+      expect(find.text('header:one'), findsOneWidget);
+      expect(find.text('secondary'), findsNothing);
+    });
+
+    testWidgets('★header は両ペインの上に全幅で載る', (tester) async {
+      await pumpWithHeader(tester, 1280);
+
+      // 全幅 = ウィンドウ幅。secondary の幅に切り詰められていないこと。
+      expect(tester.getSize(find.text('header:two')).width, lessThanOrEqualTo(1280));
+      expect(
+        tester.getTopLeft(find.text('header:two')).dy,
+        lessThan(tester.getTopLeft(find.text('primary')).dy),
+      );
+    });
+  });
+
   testWidgets('PaneScaffold の外では isTwoPaneOf が false', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
