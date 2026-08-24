@@ -19,6 +19,7 @@
 /// | `PL!HS-bp1-019-{L,SECL}` | **`bladeHeartEffects {SCORE:1}`** + 2 刷り（片方パラレル） | SCORE 37 種 |
 /// | `PL!HS-bp1-020-L` | **`bladeHearts {ALL:1}`**（2.1.1.3） | 126 種 |
 /// | `PL!-bp1-000-LLE` | ★**エネルギーは全フィールドが空**（groupNames すら空） | 567 種すべて |
+/// | `PL!N-sd1-001-{SD,SD2,P}` | ★★**非パラレル刷りが 2 つある**（`-SD` NSD01 / `-SD2` NSD02）★★ 共有形式の取り込みで「既定の刷り」を選ぶしかない形（決定 D68 / U7） | ★**19 種しかない** |
 ///
 /// ## 実データで確かめた分布（fixture の形の根拠）
 ///
@@ -55,6 +56,15 @@ const String allBladeLivePrinting = 'PL!HS-bp1-020-L';
 
 /// ★全フィールドが空のエネルギー。
 const String energyPrinting = 'PL!-bp1-000-LLE';
+
+/// ★★ 非パラレル刷りが 2 つある cardNumber（実データで 19 種だけ）★★
+/// 共有形式は `Map<cardNumber, 枚数>` なので、取り込みでは
+/// **どちらの刷りを既定にするかを選ぶしかない**（決定 D68 / 未決 U7）。
+/// `-SD`（NSD01）と `-SD2`（NSD02）はどちらも `isParallel == false`。
+const String multiNormalCardNumber = 'PL!N-sd1-001';
+const String multiNormalFirst = 'PL!N-sd1-001-SD';
+const String multiNormalSecond = 'PL!N-sd1-001-SD2';
+const String multiNormalParallel = 'PL!N-sd1-001-P';
 
 const _cards = <String, Card>{
   'LL-bp1-001': Card(
@@ -148,9 +158,51 @@ const _cards = <String, Card>{
     cardType: CardType.energy,
     characterNames: ['高坂穂乃果'],
   ),
+  // ★★ 非パラレル刷りが 2 つある形（実データで 19 種 / 決定 D68）★★
+  multiNormalCardNumber: Card(
+    cardNumber: multiNormalCardNumber,
+    name: '上原歩夢',
+    cardType: CardType.member,
+    characterNames: ['上原歩夢'],
+    groupNames: ['虹ヶ咲'],
+    unitNames: ['A・ZU・NA'],
+    keywords: ['ENTER', 'LIVE_START'],
+    cost: 13,
+    bladeCount: 4,
+    hearts: {HeartColor.pink: 3, HeartColor.red: 1, HeartColor.green: 1},
+    bladeHearts: {HeartColor.pink: 1},
+    heartTotal: 5,
+    stats: 9,
+  ),
 };
 
 const _printings = <String, Printing>{
+  // ★★ 同じ cardNumber に非パラレルが 2 つ（決定 D68 / U7）★★
+  //   `-SD`（NSD01）と `-SD2`（NSD02）。商品をまたぐ再録で通常刷りが増える形。
+  multiNormalFirst: Printing(
+    printingId: multiNormalFirst,
+    cardNumber: multiNormalCardNumber,
+    expansion: 'NSD01',
+    rarity: 'SD',
+    isParallel: false,
+    imageHash: 'b8349a351efff5026a37e1601f9d40d0',
+  ),
+  multiNormalSecond: Printing(
+    printingId: multiNormalSecond,
+    cardNumber: multiNormalCardNumber,
+    expansion: 'NSD02',
+    rarity: 'SD2',
+    isParallel: false,
+    imageHash: 'c65d5c4793ffd2ebaf6f19a301c576d2',
+  ),
+  multiNormalParallel: Printing(
+    printingId: multiNormalParallel,
+    cardNumber: multiNormalCardNumber,
+    expansion: 'NSD02',
+    rarity: 'P',
+    isParallel: true,
+    imageHash: 'ca23a894599c68fed024f6aaef70bd57',
+  ),
   trioMemberPrinting: Printing(
     printingId: trioMemberPrinting,
     cardNumber: 'LL-bp1-001',

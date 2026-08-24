@@ -95,4 +95,23 @@ class CardDetailView {
       siblings: _byCardNumber[printing.cardNumber] ?? [printing],
     );
   }
+
+  /// ある cardNumber の刷りを全部返す（`printingId` 昇順）。無ければ空。
+  ///
+  /// ★★ 共有形式の取り込み（M6 / §2-5）が要る逆写像である ★★
+  /// 共有形式は `Map<cardNumber, 枚数>` だが `DeckEntry` は printingId しか
+  /// 持てない。**この写像は一意でない**——同じ cardNumber に複数の刷りがあり、
+  /// **非パラレル刷りが複数ありうる**（実データで 19 件 / CLAUDE.md §5-(4)）。
+  ///
+  /// ★どれを既定にするかは `deck_share.dart` の `defaultPrintingOf`（決定 D68）。
+  /// ここは材料を返すだけで、選び方を持たない。
+  List<Printing> printingsOf(String cardNumber) =>
+      _byCardNumber[cardNumber] ?? const [];
+
+  /// この cardNumber をカタログが知っているか。
+  bool knowsCardNumber(String cardNumber) =>
+      _cards.containsKey(cardNumber) && _byCardNumber.containsKey(cardNumber);
+
+  /// 表示に使うカード。無ければ null。
+  Card? cardOf(String cardNumber) => _cards[cardNumber];
 }
