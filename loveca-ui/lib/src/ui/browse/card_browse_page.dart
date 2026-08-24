@@ -22,6 +22,7 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../../data/card_list_row.dart';
 import '../../state/app_scope.dart';
 import '../../state/card_browse_store.dart';
 import '../detail/card_detail_pane.dart';
@@ -58,6 +59,13 @@ class _CardBrowsePageState extends State<CardBrowsePage> {
       rows: _scope.environment.rows,
       catalog: _scope.environment.cardCatalog,
       searchLimit: _scope.environment.searchLimit,
+      // ★★ 設定を読む（M6）★★
+      //   `AppSettings.showParallel` は M5 まで**保存されるだけで
+      //   読まれていなかった。** 設定項目が死んでいる状態であり、
+      //   「設定したのに効かない」が原因不明のまま残る形そのもの。
+      filter: CardListFilter(
+        showParallel: _scope.environment.settings.showParallel,
+      ),
     );
   }
 

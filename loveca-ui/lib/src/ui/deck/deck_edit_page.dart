@@ -69,6 +69,13 @@ class _DeckEditPageState extends State<DeckEditPage> {
         rows: _scope.environment.rows,
         catalog: _scope.environment.cardCatalog,
         searchLimit: _scope.environment.searchLimit,
+        // ★★ 設定を読む（M6）★★
+        //   `AppSettings.showParallel` は M5 まで**保存されるだけで
+        //   読まれていなかった。** 設定項目が死んでいる状態であり、
+        //   「設定したのに効かない」が原因不明のまま残る形そのもの。
+        filter: CardListFilter(
+          showParallel: _scope.environment.settings.showParallel,
+        ),
       );
     }
   }

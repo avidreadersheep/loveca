@@ -5,13 +5,17 @@
 /// R4（カード閲覧）を暫定のホームにしていたが、M2 で本来の構成に戻す。
 ///
 /// ★M2 の範囲は「作る / 開く / 一覧 / 論理削除」。
-/// 複製と共有形式の入出力は R2 の役割だが M6（§2-4）。
+/// M6 で複製・共有形式の書き出し・メタ編集・R6 への導線を足した（§2-2）。
 ///
 /// ★★ 論理削除には戻す口が無い ★★
 /// `deletedAt` を立てるだけなので DB には行が残る（P3。物理削除すると
-/// 削除が同期で伝播しない）が、**M2 にはそれを戻す操作が存在しない。**
+/// 削除が同期で伝播しない）が、**それを戻す操作が存在しない。**
 /// 誤操作の手当てとして確認ダイアログを 1 枚挟んである。
-/// 復元 UI を出すかどうかは未決（`docs/UI設計メモ.md` §10 の **U9**。判断は M6 以降）。
+/// ★★ M6 でも入れなかった（未決 **U9**）★★
+/// `DeckDao.softDelete` が `revision` を上げない（**D-9**）のが未解決で、
+/// 復元時に `revision` をどう扱うかはその判断が先に要る。
+/// 決めないまま復元を作ると、Phase 4 の同期で**削除と復元の差分検出が
+/// 両方壊れる。** → 判断は **D-9 を決めたとき（Phase 4）**。
 library;
 
 import 'package:flutter/material.dart';
@@ -22,6 +26,7 @@ import '../../state/deck_list_store.dart';
 import '../browse/card_browse_page.dart';
 import '../common/loadable_view.dart';
 import '../common/notice_bar.dart';
+import '../settings/settings_page.dart';
 import 'deck_edit_page.dart';
 
 class DeckListPage extends StatefulWidget {
@@ -127,6 +132,10 @@ class _DeckListPageState extends State<DeckListPage> {
               MaterialPageRoute(builder: (_) => const CardBrowsePage()),
             ),
           ),
+          // ★★ R6 の入口は R2 だけにしてある ★★
+          //   R3（未保存の編集がありうる）の上に積むと、
+          //   R6 の「アプリを終了する」が編集を巻き添えにする。
+          _SettingsAction(scope: _scope),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
@@ -158,6 +167,37 @@ class _DeckListPageState extends State<DeckListPage> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// R6 への導線と、取り込み失敗のバッジ（決定 D39 / §2-3 の P2）。
+///
+/// ★★ 0 件のときはバッジを出さない ★★
+/// 常に丸が付いていると、それは「何も言っていない」のと同じになる。
+class _SettingsAction extends StatelessWidget {
+  const _SettingsAction({required this.scope});
+
+  final AppScope scope;
+
+  @override
+  Widget build(BuildContext context) {
+    final button = IconButton(
+      tooltip: '設定・診断',
+      icon: const Icon(Icons.settings_outlined),
+      onPressed: () => Navigator.of(context).push<void>(
+        MaterialPageRoute(builder: (_) => const SettingsPage()),
+      ),
+    );
+
+    // ★`Stream<int>` は drift の型ではないのでそのまま通してよい（§4-2）。
+    return StreamBuilder<int>(
+      stream: scope.environment.master.watchOutstandingImportIssueCount(),
+      builder: (context, snapshot) {
+        final count = snapshot.data ?? 0;
+        if (count == 0) return button;
+        return Badge.count(count: count, child: button);
+      },
     );
   }
 }
