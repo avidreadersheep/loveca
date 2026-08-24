@@ -24,6 +24,8 @@ import 'package:loveca_core/loveca_core.dart';
 import '../../data/deck_repository.dart';
 import '../../state/app_scope.dart';
 import '../../state/deck_list_store.dart';
+import '../../state/store.dart';
+import '../board/start_board.dart';
 import '../browse/card_browse_page.dart';
 import '../common/loadable_view.dart';
 import '../common/notice_bar.dart';
@@ -120,6 +122,22 @@ class _DeckListPageState extends State<DeckListPage> {
     }
   }
 
+  /// R7 一人回し（決定 D81 / 盤面設計メモ §11）。
+  ///
+  /// ★★ 入口はここ 1 本だけ ★★
+  /// 押したデッキが自分側になるので `viewerId` の既定が自明になる（決定 D75）。
+  /// ★R3 からは開かない —— 未保存の編集の上に R7 を積むと
+  /// 「保存していない構築で回っている」状態が生まれる（R6 の入口と同じ理由）。
+  Future<void> _playSolo(Deck deck) async {
+    final decks = _store!.value.decks;
+    await startSoloBoard(
+      context,
+      deck: deck,
+      // ★相手デッキの候補。★同じデッキも選べる（既定 / 決定 D81）。
+      candidates: decks is Ready<List<Deck>> ? decks.value : [deck],
+    );
+  }
+
   /// 共有形式をコピーする（決定 D67 / D35）。
   Future<void> _shareDeck(Deck deck) => showDeckShareExportDialog(
         context,
@@ -202,6 +220,7 @@ class _DeckListPageState extends State<DeckListPage> {
                         onEditMeta: _editMeta,
                         onDuplicate: _duplicateDeck,
                         onShare: _shareDeck,
+                        onPlaySolo: _playSolo,
                       ),
               ),
             ),
@@ -251,6 +270,7 @@ class _DeckList extends StatelessWidget {
     required this.onEditMeta,
     required this.onDuplicate,
     required this.onShare,
+    required this.onPlaySolo,
   });
 
   final List<Deck> decks;
@@ -259,6 +279,7 @@ class _DeckList extends StatelessWidget {
   final void Function(Deck) onEditMeta;
   final void Function(Deck) onDuplicate;
   final void Function(Deck) onShare;
+  final void Function(Deck) onPlaySolo;
 
   @override
   Widget build(BuildContext context) => ListView.separated(
@@ -278,12 +299,16 @@ class _DeckList extends StatelessWidget {
                 'meta' => onEditMeta(deck),
                 'duplicate' => onDuplicate(deck),
                 'share' => onShare(deck),
+                'solo' => onPlaySolo(deck),
                 _ => onDelete(deck),
               },
               itemBuilder: (_) => const [
                 PopupMenuItem(value: 'meta', child: Text('情報を編集')),
                 PopupMenuItem(value: 'duplicate', child: Text('複製')),
                 PopupMenuItem(value: 'share', child: Text('共有形式をコピー')),
+                PopupMenuDivider(),
+                // ★R7 への唯一の入口（決定 D81）。
+                PopupMenuItem(value: 'solo', child: Text('一人回し')),
                 PopupMenuDivider(),
                 PopupMenuItem(value: 'delete', child: Text('削除')),
               ],
