@@ -138,9 +138,11 @@ const List<CardListRow> fakeRows = [
 DateTime fakeNow() => DateTime.utc(2026, 8, 24, 12);
 
 class FakeDeckRepository implements DeckRepository {
-  FakeDeckRepository({List<Deck> decks = const []})
+  /// [catalog] を渡すと導出（検証・区分・行）の材料が差し替わる。
+  /// ★M5 は実データから写した `realShapedCatalog()` を渡す。
+  FakeDeckRepository({List<Deck> decks = const [], MasterCatalog? catalog})
       : _decks = [...decks],
-        _view = DeckCatalogView(fakeCatalog());
+        _view = DeckCatalogView(catalog ?? fakeCatalog());
 
   final List<Deck> _decks;
 

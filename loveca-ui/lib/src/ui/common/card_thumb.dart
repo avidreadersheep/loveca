@@ -27,6 +27,18 @@ import 'package:flutter/material.dart';
 
 import '../../data/card_image_source.dart';
 
+/// カードの縦横比（`docs/UI技術検証メモ.md` §3 / §1-2 の実測）。
+///
+/// ★★ thumb の原寸は 200 × 279。**正**である ★★
+/// 一覧のセル（`CardGrid`）も詳細の大きい絵（R5 / M5）も同じ比で置く。
+/// 2 箇所に別々の数を書くと、片方だけ直されて食い違う。
+const double kCardAspectRatio = 200 / 279;
+
+/// カードの絵。
+///
+/// ★★ 名前は thumb だが `normal`（500px）も出す ★★
+/// 段は [size] で選ぶ。**`Image` を作る場所を 2 つにしないため**、
+/// M5 のカード詳細もこのウィジェットを通す（`docs/UI設計メモ.md` §5-2(2)）。
 class CardThumb extends StatelessWidget {
   const CardThumb({
     super.key,
@@ -34,6 +46,7 @@ class CardThumb extends StatelessWidget {
     required this.imageHash,
     required this.logicalWidth,
     this.size = CardImageSize.thumb,
+    this.fit = BoxFit.cover,
   });
 
   final CardImageSource source;
@@ -45,6 +58,11 @@ class CardThumb extends StatelessWidget {
   final double logicalWidth;
 
   final CardImageSize size;
+
+  /// 一覧のセルは [BoxFit.cover]（枠を埋める）。
+  /// ★カード詳細は [BoxFit.contain]——**札の端まで見せるのが目的**なので、
+  /// 切り落とすと同定の役に立たない。
+  final BoxFit fit;
 
   @override
   Widget build(BuildContext context) {
@@ -66,7 +84,7 @@ class CardThumb extends StatelessWidget {
         if (provider != null)
           Image(
             image: provider,
-            fit: BoxFit.cover,
+            fit: fit,
             filterQuality: FilterQuality.medium,
             // ★出るまでは下地のまま。空白を挟まない。
             frameBuilder: (context, child, frame, wasSynchronouslyLoaded) =>

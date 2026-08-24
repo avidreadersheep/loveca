@@ -30,6 +30,7 @@ class CardBrowsePane extends StatefulWidget {
     required this.secondary,
     this.secondaryWidth = 320,
     this.cellWrapper,
+    this.onCardTap,
     this.headerTrailing,
   });
 
@@ -43,6 +44,9 @@ class CardBrowsePane extends StatefulWidget {
 
   /// セルを包む口。R3 が掴めるセルにするために使う（M4）。
   final Widget Function(CardListRow row, Widget cell)? cellWrapper;
+
+  /// セルを叩いたとき（M5 / R5）。★R3 / R4 が同じ `openCardDetail` を呼ぶ。
+  final void Function(BuildContext context, CardListRow row)? onCardTap;
 
   /// 検索欄の右に置くボタン。
   ///
@@ -124,6 +128,7 @@ class _CardBrowsePaneState extends State<CardBrowsePane> {
               rows: rows,
               imageSource: widget.imageSource,
               cellWrapper: widget.cellWrapper,
+              onCardTap: widget.onCardTap,
             ),
           ),
           secondary: widget.secondary,

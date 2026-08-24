@@ -25,6 +25,7 @@ class CardGrid extends StatelessWidget {
     required this.rows,
     required this.imageSource,
     this.cellWrapper,
+    this.onCardTap,
   });
 
   final List<CardListRow> rows;
@@ -38,6 +39,13 @@ class CardGrid extends StatelessWidget {
   /// **寸法（決定 D42 の前提）が 2 箇所に分かれるのを避ける。**
   final Widget Function(CardListRow row, Widget cell)? cellWrapper;
 
+  /// セルを叩いたとき（M5 / R5 カード詳細）。
+  ///
+  /// ★★ 渡す [BuildContext] はセルのもの＝ `PaneScaffold` の**内側** ★★
+  /// 呼ばれた側は `PaneScaffold.isTwoPaneOf` でペインかルートかを決める
+  /// （`ui/detail/open_card_detail.dart`）。外から呼ぶと常に 1 ペイン扱いになる。
+  final void Function(BuildContext context, CardListRow row)? onCardTap;
+
   /// セルの最大論理幅（`spike/main_grid.dart:491`）。
   static const double maxCellExtent = 140;
 
@@ -45,7 +53,10 @@ class CardGrid extends StatelessWidget {
   static const double spacing = 6;
 
   /// thumb の原寸比（同 :522 / `docs/UI技術検証メモ.md` §3）。
-  static const double aspectRatio = 200 / 279;
+  ///
+  /// ★実体は `ui/common/card_thumb.dart` の [kCardAspectRatio]。
+  /// 詳細（R5）も同じ比で置くので、数を 2 箇所に書かない。
+  static const double aspectRatio = kCardAspectRatio;
 
   @override
   Widget build(BuildContext context) {
@@ -77,9 +88,15 @@ class CardGrid extends StatelessWidget {
           itemBuilder: (context, index) {
             final row = rows[index];
             final cell = _CardCell(
+              // ★テストから安定して掴むための Key。R3 のラッパが付ける
+              //   `catalogCell:` とは別物（あちらは掴む側の矩形）。
+              key: ValueKey('cardCell:${row.printingId}'),
               row: row,
               imageSource: imageSource,
               logicalWidth: cellWidth,
+              onTap: onCardTap == null
+                  ? null
+                  : () => onCardTap!(context, row),
             );
             return cellWrapper?.call(row, cell) ?? cell;
           },
@@ -91,26 +108,44 @@ class CardGrid extends StatelessWidget {
 
 class _CardCell extends StatelessWidget {
   const _CardCell({
+    super.key,
     required this.row,
     required this.imageSource,
     required this.logicalWidth,
+    required this.onTap,
   });
 
   final CardListRow row;
   final CardImageSource imageSource;
   final double logicalWidth;
+  final VoidCallback? onTap;
 
   @override
-  Widget build(BuildContext context) => Tooltip(
-        message: '${row.name}\n${row.printingId}',
-        waitDuration: const Duration(milliseconds: 600),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(4),
-          child: CardThumb(
-            source: imageSource,
-            imageHash: row.imageHash,
-            logicalWidth: logicalWidth,
-          ),
-        ),
-      );
+  Widget build(BuildContext context) {
+    final thumb = ClipRRect(
+      borderRadius: BorderRadius.circular(4),
+      child: CardThumb(
+        source: imageSource,
+        imageHash: row.imageHash,
+        logicalWidth: logicalWidth,
+      ),
+    );
+
+    return Tooltip(
+      message: onTap == null
+          ? '${row.name}\n${row.printingId}'
+          : '${row.name}\n${row.printingId}\nクリックで詳細',
+      waitDuration: const Duration(milliseconds: 600),
+      child: onTap == null
+          ? thumb
+          : GestureDetector(
+              // ★決定 D46 と同じ理屈で、押せる範囲を矩形全体にする。
+              //   `CardThumb` は下地に `ColoredBox` を持つので実際には
+              //   これが無くても当たるが、**当たり判定を描画物に頼らない**。
+              behavior: HitTestBehavior.opaque,
+              onTap: onTap,
+              child: thumb,
+            ),
+    );
+  }
 }

@@ -29,6 +29,8 @@ import '../browse/card_browse_pane.dart';
 import '../browse/filter_panel.dart';
 import '../common/card_drag.dart';
 import '../common/card_thumb.dart';
+import '../detail/card_detail_pane.dart';
+import '../detail/open_card_detail.dart';
 import '../layout/pane_scaffold.dart';
 import 'deck_drag.dart';
 import 'deck_pane.dart';
@@ -46,6 +48,9 @@ class _DeckEditPageState extends State<DeckEditPage> {
   DeckEditStore? _store;
   CardBrowseStore? _browse;
   late AppScope _scope;
+
+  /// 2 ペインで詳細を出しているカード（決定 D66）。1 ペインでは常に null。
+  String? _detailPrintingId;
 
   late final TextEditingController _nameController =
       TextEditingController(text: widget.deck.name);
@@ -124,6 +129,8 @@ class _DeckEditPageState extends State<DeckEditPage> {
     if (ok != true) return;
     await _store!.softDelete();
   }
+
+  void _closeDetail() => setState(() => _detailPrintingId = null);
 
   void _openSheet(Widget child) {
     showModalBottomSheet<void>(
@@ -236,8 +243,22 @@ class _DeckEditPageState extends State<DeckEditPage> {
           store: _browse!,
           imageSource: _scope.environment.imageSource,
           secondaryWidth: kDeckPaneMinWidth,
-          secondary: _deckPane(),
+          // ★★ 詳細は secondary を差し替える（決定 D66）★★
+          //   デッキペインが一時的に隠れる。**編集は失われていない**ので、
+          //   そのことを帯で出す（下の `_DeckReturnBanner`）。
+          secondary: _detailPrintingId == null
+              ? _deckPane()
+              : _DetailWithDeckReturn(
+                  store: _store!,
+                  printingId: _detailPrintingId!,
+                  onReturn: _closeDetail,
+                ),
           cellWrapper: _catalogCell,
+          onCardTap: (context, row) => openCardDetail(
+            context,
+            row.printingId,
+            showInPane: (id) => setState(() => _detailPrintingId = id),
+          ),
           // ★ここは `header` の中＝ `_PaneScope` の内側なので判定が実際に効く。
           //   AppBar に置くと `isTwoPaneOf` は常に false になる。
           headerTrailing: (context) {
@@ -262,6 +283,82 @@ class _DeckEditPageState extends State<DeckEditPage> {
           },
         ),
       );
+}
+
+/// ★★ デッキペインが隠れていることを画面で分かるようにする（決定 D66）★★
+///
+/// デッキを編集している最中に詳細を開くとデッキペインが消えるので、
+/// **保存していない編集が失われたように見える。**
+/// 帯で 3 つを同時に出す。
+///
+/// 1. いまデッキを編集中であること
+/// 2. ★**未保存の変更があるか**（デッキペインと同じ文言。M2 から出しているもの）
+/// 3. ★**閉じれば戻ること**と、目立つ戻るボタン
+///
+/// ★2 の文言をデッキペインと揃えてあるのが要点。別の言い方にすると
+/// 「さっき見ていたあれ」と結びつかない。
+class _DetailWithDeckReturn extends StatelessWidget {
+  const _DetailWithDeckReturn({
+    required this.store,
+    required this.printingId,
+    required this.onReturn,
+  });
+
+  final DeckEditStore store;
+  final String printingId;
+  final VoidCallback onReturn;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      children: [
+        ValueListenableBuilder<DeckEditState>(
+          valueListenable: store,
+          builder: (context, state, _) => ColoredBox(
+            color: theme.colorScheme.surfaceContainerHigh,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+              child: Row(
+                children: [
+                  Icon(Icons.edit_note,
+                      size: 18, color: theme.colorScheme.onSurfaceVariant),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('デッキ編集中', style: theme.textTheme.labelMedium),
+                        Text(
+                          // ★★ 未保存を隠さない ★★
+                          //   隠すと「消えた＝失われた」と読まれる。
+                          state.isDirty
+                              ? '未保存の変更があります（戻れば残っています）'
+                              : '閉じるとデッキに戻ります',
+                          style: theme.textTheme.labelSmall
+                              ?.copyWith(color: theme.hintColor),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton.tonal(
+                    onPressed: onReturn,
+                    child: const Text('デッキに戻る'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          // ★中身は R4 と同じ Widget（§2-2）。器が違うだけ。
+          child: CardDetailPane(printingId: printingId, onClose: onReturn),
+        ),
+      ],
+    );
+  }
 }
 
 class _Badge extends StatelessWidget {

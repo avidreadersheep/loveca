@@ -24,6 +24,8 @@ import 'package:flutter/material.dart';
 
 import '../../state/app_scope.dart';
 import '../../state/card_browse_store.dart';
+import '../detail/card_detail_pane.dart';
+import '../detail/open_card_detail.dart';
 import '../layout/pane_scaffold.dart';
 import 'card_browse_pane.dart';
 import 'filter_panel.dart';
@@ -38,6 +40,13 @@ class CardBrowsePage extends StatefulWidget {
 class _CardBrowsePageState extends State<CardBrowsePage> {
   CardBrowseStore? _store;
   late AppScope _scope;
+
+  /// 2 ペインで詳細を出しているカード（決定 D66）。
+  ///
+  /// ★★ 1 ペインでは常に null ★★
+  /// 1 ペインは R5 ルートを push するので、ここに値が入る経路が無い
+  /// （`openCardDetail` が分ける / §2-1 の判断点 1 箇所）。
+  String? _detailPrintingId;
 
   @override
   void didChangeDependencies() {
@@ -58,6 +67,8 @@ class _CardBrowsePageState extends State<CardBrowsePage> {
     super.dispose();
   }
 
+  void _closeDetail() => setState(() => _detailPrintingId = null);
+
   void _openFilterSheet() {
     showModalBottomSheet<void>(
       context: context,
@@ -76,16 +87,31 @@ class _CardBrowsePageState extends State<CardBrowsePage> {
         body: CardBrowsePane(
           store: _store!,
           imageSource: _scope.environment.imageSource,
-          secondary: FilterPanel(store: _store!),
-          // ★1 ペインのときだけ出す。判定は PaneScaffold に任せる。
-          //   ここは `header` の中＝ `_PaneScope` の内側なので判定が実際に効く。
-          headerTrailing: (context) => PaneScaffold.isTwoPaneOf(context)
-              ? const SizedBox.shrink()
-              : IconButton(
-                  tooltip: '絞り込み',
-                  icon: const Icon(Icons.filter_alt_outlined),
-                  onPressed: _openFilterSheet,
+          // ★★ 詳細は secondary を差し替える（決定 D66）★★
+          //   一覧（primary）を残すのが目的。閲覧の主目的は見比べることなので、
+          //   一覧を潰すと詳細を見ながら次を選べない。
+          secondary: _detailPrintingId == null
+              ? FilterPanel(store: _store!)
+              : CardDetailPane(
+                  printingId: _detailPrintingId!,
+                  onClose: _closeDetail,
                 ),
+          onCardTap: (context, row) => openCardDetail(
+            context,
+            row.printingId,
+            showInPane: (id) => setState(() => _detailPrintingId = id),
+          ),
+          // ★横に絞り込みが「見えていないとき」だけ出す。
+          //   2 ペインでも詳細を出している間は絞り込みが隠れているので出す。
+          //   ここは `header` の中＝ `_PaneScope` の内側なので判定が実際に効く。
+          headerTrailing: (context) =>
+              PaneScaffold.isTwoPaneOf(context) && _detailPrintingId == null
+                  ? const SizedBox.shrink()
+                  : IconButton(
+                      tooltip: '絞り込み',
+                      icon: const Icon(Icons.filter_alt_outlined),
+                      onPressed: _openFilterSheet,
+                    ),
         ),
       );
 }
