@@ -363,7 +363,7 @@ void main() {
   });
 
   group('★ 最小幅を下回ったら盤面ごとスクロールする（決定 D75 / 未決 U16）', () {
-    testWidgets('狭い窓でも落ちず、横スクロールになる', (tester) async {
+    testWidgets('狭い窓でも落ちず、置き場はすべて残る', (tester) async {
       await pumpBoard(tester, size: const Size(900, 900));
 
       expect(find.byType(BoardPage), findsOneWidget);
@@ -372,6 +372,32 @@ void main() {
       expect(memberSlot(kSelfPlayerId, MemberAreaSlot.center), findsOneWidget);
       expect(memberSlot(kOpponentPlayerId, MemberAreaSlot.center),
           findsOneWidget);
+    });
+
+    testWidgets('★★ kBoardMinWidth で溢れない（U16 の暫定値の裏づけ）★★',
+        (tester) async {
+      // ★★ 暫定値は「置いただけ」にしない ★★
+      //   U8 / D61 と同じ手順で、暫定値を置いた時点で**その値で成立すること**を
+      //   固定しておく。実測（物理px と可読性）は M-B2 の U16。
+      //
+      //   ★溢れ（RenderFlex overflow）は `pumpAndSettle` の中で例外になるので、
+      //   このテストが通ること自体が「溢れていない」の検査になっている。
+      await pumpBoard(tester, size: const Size(kBoardMinWidth, 1200));
+
+      // ★11 の置き場 + 共有 1 がすべて存在する（4.4 は実体を持たないので数えない）。
+      for (final playerId in [kSelfPlayerId, kOpponentPlayerId]) {
+        for (final slot in MemberAreaSlot.values) {
+          expect(memberSlot(playerId, slot), findsOneWidget);
+        }
+        for (final zone in ['liveStage', 'successLive', 'energyField',
+            'waitingRoom', 'exile']) {
+          expect(find.byKey(ValueKey('zone-$zone-$playerId')), findsOneWidget);
+        }
+        expect(find.byKey(ValueKey('pile-main-$playerId')), findsOneWidget);
+        expect(find.byKey(ValueKey('pile-energy-$playerId')), findsOneWidget);
+        expect(find.byKey(ValueKey('hand-$playerId')), findsOneWidget);
+      }
+      expect(find.byKey(const ValueKey('resolution-shared')), findsOneWidget);
     });
   });
 }
