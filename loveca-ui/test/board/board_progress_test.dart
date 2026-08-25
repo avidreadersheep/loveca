@@ -154,6 +154,51 @@ void main() {
     });
   });
 
+  group('★ 揃えてはいけない 2 つ（7.4 と 7.7）が通しでも崩れていない', () {
+    // ★★ どちらも `loveca_core` の性質だが、UI が独自に順序を持ったときに
+    //   最初に壊れる場所なので、通しの列に対しても名指しで見る ★★
+    test('★7.4 だけ誘発（7.4.2）より前にアクティブ化（7.4.1）が来る', () {
+      final store = _storeFor(_oneTurnBoard());
+      addTearDown(store.dispose);
+
+      final executed = _walkOneTurn(store);
+      final active = executed.indexOf(
+          const StepCursor(PhaseId.firstActive, StepId.s7_4_1));
+      final trigger = executed.indexOf(
+          const StepCursor(PhaseId.firstActive, StepId.s7_4_2));
+
+      expect(active, isNonNegative);
+      expect(active, lessThan(trigger));
+      // ★対: 7.5 / 7.6 / 7.7 は誘発が先頭（同じ形に揃えると 7.4 で順序が狂う）。
+      expect(executed.indexOf(const StepCursor(PhaseId.firstEnergy, StepId.s7_5_1)),
+          lessThan(executed
+              .indexOf(const StepCursor(PhaseId.firstEnergy, StepId.s7_5_2))));
+    });
+
+    test('★★ 7.7.3 では整理が走らない（9.5.4.3 で閉じる）★★', () {
+      // ★7.4.3 / 7.5.3 / 7.6.3 と非対称。★ここに CT を足すと画面にも
+      //   「整理しました」が出てしまうので、UI 側からも見ておく。
+      final store = _storeFor(handcraftedBoard(
+        cursor: const StepCursor(PhaseId.firstMain, StepId.s7_7_3),
+      ));
+      addTearDown(store.dispose);
+
+      store.dispatch(const AdvanceStep());
+      expect(store.value.tidy, isNull, reason: '★7.7.3 に終了時チェックタイミングは無い');
+    });
+
+    test('★対: 7.6.3 では整理が走る', () {
+      final store = _storeFor(handcraftedBoard(
+        cursor: const StepCursor(PhaseId.firstDraw, StepId.s7_6_3),
+      ));
+      addTearDown(store.dispose);
+
+      store.dispatch(const AdvanceStep());
+      expect(store.value.tidy, isNotNull);
+      expect(store.value.tidy!.cursor.step, StepId.s7_6_3);
+    });
+  });
+
   group('★ 8.3.6 の早期終了（automatic / 盤面の観測のみ）', () {
     test('空なら選ばせずフェイズが終わり、どちらへ行ったかが読める', () {
       final store = _storeFor(handcraftedBoard(
