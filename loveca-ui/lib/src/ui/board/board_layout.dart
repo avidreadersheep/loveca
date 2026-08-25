@@ -645,6 +645,14 @@ class _ZonePile extends StatelessWidget {
 /// この帯は上段でも下段でも同じものを出す。**視点は向きだけを決める**（D75 / D77）。
 /// `test/board/board_secrecy_test.dart` が、視点を切り替えても
 /// どちらの手札も隠れないこと・4.8 / 4.9 は隠れたままであることを固定している。
+///
+/// ★★ 「Phase 6 で分岐が要らない」が成立する条件（未決 **U18**）★★
+/// 対戦ではサーバが `redact` を掛けた `GameState` を配るので、
+/// 相手の手札は **`isRedacted == true` の [CardInstance]** として届く。
+/// `HiddenPile` は枚数しか受け取らない設計（D77）だが、**この帯は
+/// [CardInstance] のリストを受け取る。**秘匿された札が混ざったときに
+/// 何を描くかは**まだ決めていない**（判断時期は Phase 6 / 盤面設計メモ §13）。
+/// ★決めていないことを書いておかないと、Phase 6 で「話が違う」になる。
 class _HandStrip extends StatelessWidget {
   const _HandStrip({required this.playerId});
 

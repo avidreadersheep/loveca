@@ -270,4 +270,104 @@ void main() {
       );
     });
   });
+
+  group('★★ 秘匿は領域で決まる。視点では決まらない（決定 D77 / D84）★★', () {
+    /// ★★ この群は U17 の確定（D84）が何に依存しているかを固定する ★★
+    /// 「相手の手札を常時出す」が成り立つのは
+    /// **一人回しでは `redact` を掛けない**からであって、
+    /// `viewerId` が秘匿に関わっていないからである。
+    /// D77 が「描画の視点と `redact` の視点を同じ変数にしない」と定めた形が
+    /// 実際に守られていることを、**視点を切り替えて**確かめる。
+    ///
+    /// ★M-B1 の秘匿テストで「キー検査が**裏向きだから**通っていた」という
+    /// 発見があった以上、依存関係は明示的に検証する。
+
+    /// 隠す側と出す側で**別の刷り**を置いた盤面。
+    GameState split() => handcraftedState(
+          hand: const [drawLivePrinting],
+          mainDeck: const [trioMemberPrinting],
+          energyDeck: const [energyPrinting],
+        );
+
+    testWidgets('★視点を切り替えても、どちらの手札も隠れない', (tester) async {
+      final state = await pumpBoard(tester, state: split());
+
+      Future<void> expectBothHandsVisible(String label) async {
+        for (final playerId in [kSelfPlayerId, kOpponentPlayerId]) {
+          final hand = cardsIn(state, playerId, Zone.hand);
+          expect(hand, isNotEmpty, reason: '★前提');
+          expect(
+            find.byKey(ValueKey('board-card-${hand.first.instanceId}')),
+            findsOneWidget,
+            reason: '★$label で $playerId の手札が消えた = viewerId が秘匿に使われている',
+          );
+        }
+      }
+
+      await expectBothHandsVisible('切替前');
+
+      await tester.tap(find.byKey(const ValueKey('swap-viewer')));
+      await tester.pumpAndSettle();
+
+      await expectBothHandsVisible('切替後');
+    });
+
+    testWidgets('★★ 対: 視点を切り替えても 4.8 / 4.9 は隠れたまま ★★',
+        (tester) async {
+      // ★★ 秘匿が「視点で決まっていない」ことの対である ★★
+      //   手札が両方見えるだけなら「何でも見える実装」でも通る。
+      //   同じ切替で山が**出てこない**ことまで見て、はじめて
+      //   「秘匿は領域で決まる」と言える。
+      final state = await pumpBoard(tester, state: split());
+
+      Future<void> expectPilesHidden(String label) async {
+        for (final playerId in [kSelfPlayerId, kOpponentPlayerId]) {
+          for (final zone in [Zone.mainDeck, Zone.energyDeck]) {
+            for (final card in cardsIn(state, playerId, zone)) {
+              expect(
+                find.byKey(ValueKey('board-card-${card.instanceId}')),
+                findsNothing,
+                reason: '★$label で ${zone.ruleRef} が見えた',
+              );
+            }
+          }
+        }
+      }
+
+      await expectPilesHidden('切替前');
+
+      await tester.tap(find.byKey(const ValueKey('swap-viewer')));
+      await tester.pumpAndSettle();
+
+      await expectPilesHidden('切替後');
+
+      final catalog = realShapedCatalog();
+      expect(
+        images.requested,
+        isNot(contains(catalog.printings[trioMemberPrinting]!.imageHash)),
+        reason: '★切替後にメインデッキの絵が要求されている',
+      );
+      expect(
+        images.requested,
+        isNot(contains(catalog.printings[energyPrinting]!.imageHash)),
+      );
+    });
+
+    testWidgets('★★ 対: 切替後も手札の絵は要求される（検査が生きている）★★',
+        (tester) async {
+      // ★上の 2 件が「何も描かれていないから通った」ではないことを見る。
+      await pumpBoard(tester, state: split());
+
+      images.requested.clear();
+      await tester.tap(find.byKey(const ValueKey('swap-viewer')));
+      await tester.pumpAndSettle();
+
+      expect(images.requested, isNotEmpty,
+          reason: '★切替後に 1 度も要求が来ないなら「来ない」は何も証明しない');
+      expect(
+        images.requested,
+        contains(realShapedCatalog().printings[drawLivePrinting]!.imageHash),
+      );
+    });
+  });
 }
