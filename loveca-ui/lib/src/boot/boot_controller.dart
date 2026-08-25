@@ -209,9 +209,18 @@ class BootController extends Store<BootState> {
     }
 
     if (outcome.distMissing) {
+      // ★★ 内部語彙 `dist` を出さない。症状と、次にすべきことを書く（決定 D89）★★
+      //   以前は「データを更新できませんでした」としか言わず、
+      //   実際に起きること（**カード画像が 1 枚も出ない**）に触れていなかった。
+      //   画像は dist からしか読まない（D43）ので、これは必ず起きる。
       notices.add(BootNotice(
-        'カードデータを更新できませんでした（前回取り込んだ内容で動いています）',
-        details: outcome.searchedPaths,
+        'カードデータの置き場所が見つかりません。カード画像は 1 枚も表示されません',
+        details: [
+          'カードの一覧とデッキは、前回取り込んだ内容で動いています。',
+          '設定画面で「カードデータの場所」を指定してください。',
+          // ★探した場所を省かない（決定 D60）。
+          ...outcome.searchedPaths,
+        ],
       ));
       return;
     }

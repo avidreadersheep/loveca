@@ -3,18 +3,34 @@
 /// ★★ どの段で失敗したかを必ず出す ★★
 /// 4 段を明示的に順に実行しているのは、失敗の原因を段で切り分けるためである。
 /// 「エラーが出た」だけでは、続行できる状態か否かを利用者が判断できない。
+///
+/// ★★ 起動時の警告の置き場もここである（決定 D89 / `docs/UI設計メモ.md` §11-3）★★
+/// `BootReady.notices` を持っているのはここだけで、**`child`（= Navigator）の
+/// 上に置けば全ルートで読める。**各ルートに配ると、忘れても何も壊れないので必ず落ちる。
 library;
 
 import 'package:flutter/material.dart';
 
 import '../state/app_scope.dart';
+import '../ui/common/boot_notice_host.dart';
 import 'boot_controller.dart';
 import 'boot_steps.dart';
 
 class BootGate extends StatefulWidget {
-  const BootGate({super.key, required this.steps, required this.child});
+  const BootGate({
+    super.key,
+    required this.steps,
+    required this.navigator,
+    required this.child,
+  });
 
   final BootSteps steps;
+
+  /// アプリの `Navigator` の鍵（決定 D89）。
+  ///
+  /// ★起動時の警告の帯は Navigator の**上**に出るので、
+  /// 「詳細」ダイアログと R6 への遷移にこれが要る。
+  final GlobalKey<NavigatorState> navigator;
 
   /// 起動が通ったあとに出すもの。
   ///
@@ -52,7 +68,13 @@ class _BootGateState extends State<BootGate> {
               environment: state.environment,
               notices: state.notices,
               timings: state.timings,
-              child: widget.child,
+              // ★★ 帯はここ 1 箇所（決定 D89）★★
+              //   ルートを足した人が忘れられない形にする。
+              child: BootNoticeHost(
+                notices: state.notices,
+                navigator: widget.navigator,
+                child: widget.child,
+              ),
             ),
         },
       );

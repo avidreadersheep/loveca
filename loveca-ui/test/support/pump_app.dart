@@ -9,6 +9,13 @@
 /// `MaterialApp(home: AppScope(...))` にすると `push` した画面から
 /// `AppScope.of` が届かず、**テストだけ通って実機で落ちる**（逆もある）。
 /// 器の組み方を本番と揃えておかないと、遷移の不具合をテストが捕まえられない。
+///
+/// ★★ 起動時の警告の帯も本番と同じ部品を通す（決定 D89）★★
+/// `BootGate` は 4 段を走らせるのでここでは通せないが、**帯の組み立ては
+/// [BootNoticeHost] 1 か所**なので、そこだけを本番と同じ形で置く。
+/// ★ハーネスだけが帯を出す形にしない —— それだと「全ルートで読める」が
+/// テストの中だけの性質になる。`BootGate` が実際に置いていることは
+/// `test/boot/boot_notice_bar_test.dart` が実物で確かめている。
 library;
 
 import 'package:flutter/material.dart';
@@ -25,6 +32,7 @@ import 'package:loveca_ui/src/data/master_catalog.dart';
 import 'package:loveca_ui/src/data/master_repository.dart';
 import 'package:loveca_ui/src/data/search_limit.dart';
 import 'package:loveca_ui/src/state/app_scope.dart';
+import 'package:loveca_ui/src/ui/common/boot_notice_host.dart';
 
 import 'fake_app_settings_store.dart';
 import 'fake_card_catalog_repository.dart';
@@ -50,8 +58,10 @@ Future<void> pumpInAppScope(
 }) async {
   // ★本番と同じく、カタログから 1 回だけ組んで配る（決定 D55 / M5）。
   final resolved = catalog ?? fakeCatalog();
+  final navigatorKey = GlobalKey<NavigatorState>();
   await tester.pumpWidget(
     MaterialApp(
+      navigatorKey: navigatorKey,
       builder: (context, navigator) => AppScope(
         environment: AppEnvironment(
           catalog: resolved,
@@ -92,7 +102,11 @@ Future<void> pumpInAppScope(
           import: Duration.zero,
           catalog: Duration.zero,
         ),
-        child: navigator ?? const SizedBox.shrink(),
+        child: BootNoticeHost(
+          notices: notices,
+          navigator: navigatorKey,
+          child: navigator ?? const SizedBox.shrink(),
+        ),
       ),
       home: child,
     ),

@@ -29,7 +29,6 @@ import '../../state/store.dart';
 import '../board/start_board.dart';
 import '../browse/card_browse_page.dart';
 import '../common/loadable_view.dart';
-import '../common/notice_bar.dart';
 import '../settings/settings_page.dart';
 import 'deck_edit_page.dart';
 import 'deck_meta_dialog.dart';
@@ -204,11 +203,11 @@ class _DeckListPageState extends State<DeckListPage> {
         icon: const Icon(Icons.add),
         label: const Text('新規デッキ'),
       ),
+      // ★★ 起動時の警告の帯はここに置かない（決定 D89）★★
+      //   `BootGate` が全ルートの上に 1 箇所だけ出す。
+      //   ★これは「R2 から消した」ではなく「R2 だけに出ていたものを全画面に出した」。
       body: Column(
         children: [
-          // ★決定 D39 / D60: 起動時の警告を黙って捨てない。
-          //   ホームに出さないと誰も読まない。
-          NoticeBar(notices: _scope.notices),
           Expanded(
             child: ValueListenableBuilder<DeckListState>(
               valueListenable: store,

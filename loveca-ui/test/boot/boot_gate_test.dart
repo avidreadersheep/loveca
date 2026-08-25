@@ -20,26 +20,32 @@ import 'package:loveca_ui/src/state/app_scope.dart';
 // ★段の差し替えは test/support/ に出してある（app_home_test.dart と共有する）。
 import '../support/fake_boot_steps.dart';
 
-/// ★起動後の画面は `AppScope` の Notice を描く。
-///
 /// ★★ 「Notice が作られたこと」ではなく「画面まで届くこと」を見る ★★
 /// 作られただけで誰も読まない状態を通してしまうのは、
 /// このタスクで潰している D-6 とまったく同じ型の穴である。
+///
+/// ★★ M-B4: 描くのは `BootGate` の帯である（決定 D89）★★
+/// 以前はこのハーネスが `AppScope.of(context).notices` を `Text` に並べていたが、
+/// **本番の `BootGate` が Navigator の上に帯を出すようになった**ので、
+/// ハーネスで描き直すと同じ文字が 2 つ出る。
+/// → ★**本番の経路だけを見る。**ハーネスが描いていた頃と違い、
+/// これは「実物が出していること」の確認になっている。
+/// ★どのルートからでも読めることは `test/boot/boot_notice_bar_test.dart`。
 Future<void> _pump(WidgetTester tester, BootSteps steps) async {
+  final navigator = GlobalKey<NavigatorState>();
   await tester.pumpWidget(
     MaterialApp(
+      navigatorKey: navigator,
       home: BootGate(
         steps: steps,
+        // ★決定 D89: 帯から Navigator を辿るための鍵（本番の app.dart と同じ）。
+        navigator: navigator,
         // ★AppScope は BootGate が内側に置く。Builder で読み直す。
         child: Builder(
           builder: (context) => Scaffold(
-            body: Column(
-              children: [
-                const Text('READY'),
-                for (final notice in AppScope.of(context).notices)
-                  Text(notice.message),
-              ],
-            ),
+            // ★AppScope が届いていること自体は of() が assert する。
+            //   ★件数だけ出す（文面は本番の帯が出す）。
+            body: Text('READY notices=${AppScope.of(context).notices.length}'),
           ),
         ),
       ),
@@ -65,7 +71,7 @@ void main() {
       expect(find.textContaining(BootStageId.database.label), findsNothing);
       expect(find.textContaining(BootStageId.import.label), findsNothing);
       expect(find.textContaining(BootStageId.catalog.label), findsNothing);
-      expect(find.text('READY'), findsNothing);
+      expect(find.textContaining('READY'), findsNothing);
     });
 
     testWidgets('段2 database', (tester) async {
@@ -142,7 +148,7 @@ void main() {
       expect(find.textContaining(r'C:\app\data\dist'), findsOneWidget);
       expect(find.textContaining('LOVECA_DIST_DIR'), findsOneWidget);
 
-      expect(find.text('READY'), findsNothing);
+      expect(find.textContaining('READY'), findsNothing);
     });
 
     testWidgets('dist 不在 でも cards があれば続行する', (tester) async {
@@ -162,11 +168,13 @@ void main() {
       );
 
       // ★止めない。前回取り込んだ内容で動く（決定 D39 と同じ考え方）。
-      expect(find.text('READY'), findsOneWidget);
+      expect(find.textContaining('READY'), findsOneWidget);
       expect(find.textContaining('起動できませんでした'), findsNothing);
-      // ★更新できなかった事実は画面に出す。
+      // ★★ 症状（絵が出ない）と原因（置き場が無い）を結びつける（決定 D89）★★
+      //   以前は「データを更新できませんでした」としか言わず、
+      //   実際に起きること（カード画像が 1 枚も出ない）に触れていなかった。
       expect(
-        find.text('カードデータを更新できませんでした（前回取り込んだ内容で動いています）'),
+        find.text('カードデータの置き場所が見つかりません。カード画像は 1 枚も表示されません'),
         findsOneWidget,
       );
     });
@@ -190,7 +198,7 @@ void main() {
       // ★★ 実値が出ること。これが無いとどちらを直せばよいか分からない ★★
       expect(find.textContaining('0.1.0'), findsOneWidget);
       expect(find.textContaining('1.0.0'), findsOneWidget);
-      expect(find.text('READY'), findsNothing);
+      expect(find.textContaining('READY'), findsNothing);
     });
 
     testWidgets('dist はあるが upToDate で 0 件 → 停止する', (tester) async {
@@ -200,7 +208,7 @@ void main() {
         find.textContaining('取り込み済みのはずですがカードがありません'),
         findsOneWidget,
       );
-      expect(find.text('READY'), findsNothing);
+      expect(find.textContaining('READY'), findsNothing);
     });
 
     testWidgets('★appTooOld でも cards があれば続行し、警告を出す', (tester) async {
@@ -219,7 +227,7 @@ void main() {
       );
 
       // ★止めない。ただし取り込まれなかった事実は必ず出す。
-      expect(find.text('READY'), findsOneWidget);
+      expect(find.textContaining('READY'), findsOneWidget);
       expect(
         find.text('アプリが古いため配信データを取り込めませんでした'),
         findsOneWidget,
@@ -246,7 +254,7 @@ void main() {
     );
 
     // 起動は続く（設定は既定に戻せば動く）。
-    expect(find.text('READY'), findsOneWidget);
+    expect(find.textContaining('READY'), findsOneWidget);
     // ★★ 警告が画面まで届くこと ★★
     expect(
       find.text('設定ファイルを読めなかったため既定に戻しました'),
@@ -268,6 +276,6 @@ void main() {
       ),
     );
 
-    expect(find.text('READY'), findsOneWidget);
+    expect(find.textContaining('READY'), findsOneWidget);
   });
 }

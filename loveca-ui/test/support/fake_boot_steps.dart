@@ -39,6 +39,9 @@ class FakeBootSteps implements BootSteps {
     this.decision = UpdateDecision.update,
     this.minAppVersion = '1.0.0',
     this.settingsRecoveredFrom,
+    this.failedPaths = const [],
+    this.unhandledPaths = const [],
+    this.dataVersionAdvanced,
     this.searchLimit = SearchLimitSetting.standard,
     this.distSource = DistSource.environment,
     this.settings = AppSettings.defaults,
@@ -63,6 +66,16 @@ class FakeBootSteps implements BootSteps {
 
   /// ★設定ファイルが壊れて既定に戻った経路（設計メモ §4-6(5)）。
   final Object? settingsRecoveredFrom;
+
+  /// ★取り込めなかった商品ファイル（決定 D39）。
+  final List<String> failedPaths;
+
+  /// ★未対応のファイル（同上）。
+  final List<String> unhandledPaths;
+
+  /// ★データ版が進んだか。null なら decision から導く。
+  ///   **失敗があって進まなかった**経路（据え置きの警告）を作るために要る。
+  final bool? dataVersionAdvanced;
 
   /// M2。★drift ではなく組み立て済みのリポジトリを配る（決定 D55）。
   final FakeDeckRepository decks;
@@ -119,7 +132,10 @@ class FakeBootSteps implements BootSteps {
           : MasterImportResult(
               decision: decision,
               dataVersion: 2,
-              dataVersionAdvanced: decision == UpdateDecision.update,
+              dataVersionAdvanced:
+                  dataVersionAdvanced ?? decision == UpdateDecision.update,
+              failedPaths: failedPaths,
+              unhandledPaths: unhandledPaths,
             ),
     );
   }
