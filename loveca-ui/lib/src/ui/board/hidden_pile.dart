@@ -31,6 +31,12 @@
 /// 手で戻す口が無いとサンドボックスとして成立しない。
 /// ★4.8 は順番が管理される（4.8.2）ので上下の帯が出る。4.9 は出ない（4.9.2）。
 /// **どちらも `board_drag.dart` の写像から自動的に決まる**（`board_drop.dart`）。
+///
+/// ★★ 押せる（M-B3）★★
+/// 引く（5.6）/ シャッフル（5.5）/ 上から見る（5.7）の口。
+/// **中身は [onTap] の先でも出さない** —— 5.7.1 の一時的な開示だけが例外で、
+/// それは `board_look_at_top.dart` がダイアログで出して閉じたら消す。
+/// ★4.8 と 4.9 で出すものが違う理由は `board_deck_menu.dart` に書いてある。
 library;
 
 import 'package:flutter/material.dart';
@@ -47,6 +53,7 @@ class HiddenPile extends StatelessWidget {
     required this.zone,
     required this.title,
     required this.count,
+    required this.onTap,
     this.width = kBoardSlotWidth,
   });
 
@@ -63,6 +70,13 @@ class HiddenPile extends StatelessWidget {
   /// ★[CardInstance] を 1 つも受け取らない。**出したくても材料が無い。**
   final int count;
 
+  /// 押したときに開くメニュー（M-B3）。
+  ///
+  /// ★★ この山が何をできるかは呼び出し側が決める ★★
+  /// 4.8 と 4.9 で中身が違うので、**このウィジェットに条番号の分岐を持たせない**。
+  /// 持たせると「同じ見た目の山」に 2 つの振る舞いが埋まり、増えたときに気づけない。
+  final Future<void> Function(BuildContext context) onTap;
+
   final double width;
 
   @override
@@ -77,20 +91,25 @@ class HiddenPile extends StatelessWidget {
           width: width,
           resolve: (drag, edge) =>
               moveToZone(drag, toPlayerId: playerId, to: zone, edge: edge),
-          child: Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.layers_outlined,
-                    size: width * 0.28, color: theme.colorScheme.outline),
-                const SizedBox(height: 2),
-                // ★4.1.2.2: 枚数は隠さない。★秘匿と混同して消さないこと。
-                Text(
-                  '$count',
-                  style: theme.textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.bold),
-                ),
-              ],
+          child: GestureDetector(
+            // ★決定 D46: 押す側も矩形を作る（絵の外・箱の中を叩いても開く）。
+            behavior: HitTestBehavior.opaque,
+            onTap: () => onTap(context),
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.layers_outlined,
+                      size: width * 0.28, color: theme.colorScheme.outline),
+                  const SizedBox(height: 2),
+                  // ★4.1.2.2: 枚数は隠さない。★秘匿と混同して消さないこと。
+                  Text(
+                    '$count',
+                    style: theme.textTheme.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

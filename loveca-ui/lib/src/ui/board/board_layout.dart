@@ -55,6 +55,7 @@ import 'package:loveca_core/loveca_core.dart' hide Card;
 import '../common/card_drag.dart';
 import '../common/card_thumb.dart';
 import 'board_card_menu.dart';
+import 'board_deck_menu.dart';
 import 'board_drag.dart';
 import 'board_drop.dart';
 import 'board_piece.dart';
@@ -215,6 +216,9 @@ class _Sleeve extends StatelessWidget {
             zone: Zone.mainDeck,
             title: 'メインデッキ',
             count: player.mainDeck.length,
+            // ★★ 引く / シャッフル / 上から見るは 4.8 の規定（M-B3）★★
+            //   ★両プレイヤーの袖に出す。一人回しは 1 人が両方を操作する（D77 / D84）。
+            onTap: (context) => showMainDeckMenu(context, playerId: playerId),
           ),
           const SizedBox(height: 8),
           HiddenPile(
@@ -223,6 +227,10 @@ class _Sleeve extends StatelessWidget {
             zone: Zone.energyDeck,
             title: 'エネルギーデッキ',
             count: player.energyDeck.length,
+            // ★★ 4.9 には「上から見る」も「シャッフル」も出さない ★★
+            //   理由の格が違う（条文が定めていない / 実装の判断）。
+            //   両方を `board_deck_menu.dart` が説明する。**空メニューにしない。**
+            onTap: showEnergyDeckMenu,
           ),
 
           if (onDrawEnergy != null || player.energyDeck.isEmpty) ...[
