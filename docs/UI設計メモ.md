@@ -1835,8 +1835,9 @@ LOVECA_DIST_DIR 無しで起動
 各ルートの `AppBar` にバッジを配る案は、**忘れても何も壊れない**ので採らない
 （D66 が「どちらに出すかを決めるのは 1 行だけ」と定めたのと同じ理由）。
 
-★★**事実の確認: `MulliganNotImplemented` / `DeckNotValid` は `BoardNotice`（盤面の帯）であって
-`BootNotice` ではない。**★★ R2 の `NoticeBar` には**出ていない**ので、一本化の影響を受けない。
+★★**事実の確認: `MulliganNotImplemented`（★2026-08-26 に廃止 / D93-4）と `DeckNotValid` は
+`BoardNotice`（盤面の帯）であって `BootNotice` ではない。**★★
+R2 の `NoticeBar` には**出ていない**ので、一本化の影響を受けない。
 一本化の対象は **`BootNotice` を出す 7 経路**（`boot_controller.dart`）——
 検索上限の不正値 / 検索上限の上書き（**D64**）/ 設定ファイルの復旧 / `distMissing` /
 `appTooOld` / `failedPaths` と `unhandledPaths` / データ版据え置き。
