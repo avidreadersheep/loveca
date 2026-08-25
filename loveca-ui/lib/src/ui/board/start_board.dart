@@ -81,7 +81,7 @@ Future<void> startBoard(
   if (!context.mounted) return;
 
   // ★★ 6.2.1.6（決定 D93 / M-B6）★★
-  //   ★手札は `handsForMulligan` で**受け取る**。`pendingState` から引き直さない
+  //   ★手札は `handsForMulligan` で**受け取る**。`GameSetup` の途中の盤面を読まない
   //   （`test/board/board_player_access_test.dart` が走査で塞いでいる）。
   final choices = await showMulliganDialog(
     context,

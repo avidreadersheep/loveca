@@ -129,7 +129,7 @@ Future<void> showPositionChange(
       .firstOrNull;
 
   // ★★ 1 押下 = 履歴 1 件（M-B5 の合成 / §8-2）★★
-  //   `GameSession.apply` を 2 回呼ぶと undo が 2 回要る。
+  //   1 件ずつ適用すると undo が 2 回要る。
   //   ★間に `Tidy` を挟まないこと（10.4 が走って中間状態が壊れる / §3-3）。
   view.store.dispatchAll([
     MoveMemberBetweenAreas(

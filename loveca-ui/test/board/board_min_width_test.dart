@@ -496,18 +496,27 @@ void main() {
     print('  ★内訳 (4): AppBar = '
         '${tester.getSize(find.byType(AppBar)).height} 論理px');
 
-    // ★★ M-B5 の段が本当にこの測定に入っていること ★★
+    // ★★ M-B5 / M-B6 の段が本当にこの測定に入っていること ★★
     //   ★「増えなかった」は「入っていなかった」と見分けがつかない（D-10）。
-    //   巻き戻しのボタンは進行バーの `Wrap` に入るので、**入っていて 48 のまま**
-    //   であることを確かめてから「変わらなかった」と書く。
+    //   ★★ 入っていることを確かめてから「変わった / 変わらなかった」を書く ★★
     expect(find.byKey(const ValueKey('undo-controls')), findsOneWidget,
-        reason: '★M-B5 の段が測定に入っていない');
-    //   ★U19 が動かなかった理由もここで読める —— 巻き戻しのボタンは
-    //     「次へ」と同じ高さなので、`Wrap` が 1 行のままなら段は伸びない。
+        reason: '★M-B5 の段（巻き戻し）が測定に入っていない');
+    expect(find.byKey(const ValueKey('tidy-button')), findsOneWidget,
+        reason: '★M-B6 の段（整理）が測定に入っていない');
+    expect(find.byKey(const ValueKey('summary-live-judgement')), findsOneWidget,
+        reason: '★M-B6 の行（ライブ勝敗の記録）が測定に入っていない');
+
+    // ★★ 2026-08-26（M-B6）: ここで初めて進行バーが 2 行になった ★★
+    //   M-B5 までは「巻き戻しのボタンは『次へ』と同じ高さなので `Wrap` が
+    //   1 行のままなら段は伸びない」で 48 に張りついていた。
+    //   ★**整理のボタンが 1 つ増えて、この幅では折り返す。**
+    //   → U19 は 496 → 598 へ動いた（進行バー +52 / 集計 +50）。
+    //   ★**「変わらないはず」で済ませなかったから見つかった**（D90-5 の作法）。
     expect(
       tester.getSize(find.byKey(const ValueKey('progress-bar'))).height,
-      tester.getSize(find.byKey(const ValueKey('undo-controls'))).height,
-      reason: '★進行バーが 1 行のまま（折り返していれば行数ぶん高くなる）',
+      greaterThan(
+          tester.getSize(find.byKey(const ValueKey('undo-controls'))).height),
+      reason: '★進行バーが折り返している（M-B6 で整理のボタンが増えた）',
     );
 
     // ★★ 溢れの下限に張りついていないこと（(1)(2) と同じ検算）★★
@@ -654,7 +663,7 @@ void main() {
     // ignore: avoid_print
     print('  ★内訳: 起動時の警告の帯 = '
         '${tester.getSize(find.byType(NoticeBar)).height} 論理px'
-        '（帯なしの 496 との差が帯 1 本ぶん）');
+        '（帯なしの 598 との差が帯 1 本ぶん）');
 
     expect(measured, greaterThan(201),
         reason: '★下限のすぐ上に収束している = 溢れが報告されていない');

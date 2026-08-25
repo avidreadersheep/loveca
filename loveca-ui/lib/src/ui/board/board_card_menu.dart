@@ -61,7 +61,7 @@ Future<void> showBoardCardMenu(BuildContext context, BoardDrag drag) {
           label: 'ポジションチェンジする 11.10',
           run: (context) => showPositionChange(
             context,
-            // ★描くプレイヤーの一覧から受け取る（`state.players` を引き直さない / D88）。
+            // ★描くプレイヤーの一覧から受け取る（`GameState` から引き直さない / D88）。
             player: BoardView.of(context).drawnPlayerOf(playerId),
             slot: slot,
             member: card,

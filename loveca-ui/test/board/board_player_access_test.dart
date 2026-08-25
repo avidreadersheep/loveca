@@ -21,6 +21,11 @@
 /// ★★ 陽性対照を対で置く（`ルール整合性チェック_v1.06.md` D-15 §12-5）★★
 /// 0 件は「無い」と「見えていない」の区別がつかない。
 ///
+/// ★★ 走査は本文一致である。説明にその字面を書かないこと（M-B6 で 2 度踏んだ）★★
+/// コメントの中に `GameState` からプレイヤーを引く字面を書くと**それ自体が当たる**。
+/// `abolished_term_test.dart` が「廃止した語そのものをテストに書かない」としているのと
+/// 同じ作法で、**説明は別の言い方でする。**
+///
 /// ★`state/game_store.dart` は走査の対象外である。理由 ——
 /// `BoardState.opponentId` は**モードを見て `String?` を返す**ので型で守られており、
 /// 盤面の描画そのものではなく Store の内部だから。★対象は
@@ -69,6 +74,25 @@ void main() {
     //   陽性対照も別に置いてある。
     expect(_boardStateHits(), isEmpty,
         reason: '★描くプレイヤーは受け取る（`derivedBoardNotices` の引数）');
+  });
+
+  // =========================================================================
+  // ★★ 開始手順にも同じ形を通す（M-B6 / 決定 D93）★★
+  //
+  // `GameSetup.pendingState` は 6.2.1.7 を経ていない途中の盤面で、
+  // そこから手札を引き直すと**上の走査に当たらない抜け道**になる
+  // （`setup.pendingState.players` は `state.players` に一致しない）。
+  // → UI は `GameSetup.handsForMulligan` で**受け取る**。
+  // =========================================================================
+  test('★★ ui/board/ で pendingState を読まない（handsForMulligan で受け取る）★★', () {
+    // ★陽性対照: 同じ走査が loveca_core では当たる。
+    final core = scanDart(coreLibPath, RegExp(r'\bpendingState\b'));
+    expect(core.keys, contains('game_setup.dart'),
+        reason: '★これが 0 件なら下の 0 件は「見えていない」だけ');
+
+    expect(scanDart('lib/src/ui/board', RegExp(r'\bpendingState\b')), isEmpty,
+        reason: '★開始手順の途中の盤面を UI が直接読んでいる。'
+            '手札は `handsForMulligan` で受け取ること（決定 D93）');
   });
 
   test('★ 走査の対象そのものが空でない（前提）', () {
