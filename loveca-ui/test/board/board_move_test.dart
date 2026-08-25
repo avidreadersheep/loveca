@@ -80,11 +80,28 @@ void main() {
         expect(positionOf(Zone.mainDeck, DropEdge.trailing), ZonePosition.bottom);
       });
 
-      test('4.10 成功ライブ: 同じ', () {
-        expect(Zone.successLive.isOrdered, isTrue, reason: '★前提（4.10.2）');
+      // ★★ ここには「4.10 成功ライブ: 同じ」という試験があった（〜2026-08-25）★★
+      //   守っていたのは**このグループ名のとおり 4.1.3**（順番を管理しない領域で
+      //   position が動かないこと）であって、4.10.2 の置き場所の規定ではない。
+      //   `Zone.isOrdered` から機械的に導いた答えを写しただけだった。
+      //   ★4.1.3 のぶんは 4.8 の試験と下の「対」が引き続き守る。
+      //   経緯は `docs/決定事項一覧.md` **D91**。
+      test('★★ 4.10 成功ライブ: どちらの端でも一番上（4.10.2）★★', () {
+        expect(Zone.successLive.isOrdered, isTrue, reason: '★前提（4.10.2 の 1 文目）');
+        // 4.10.2「この領域にカードが置かれる場合、これまでに置かれているカードの
+        //   上に置かれます」= プレイヤーに選ばせない。
         expect(positionOf(Zone.successLive, DropEdge.leading), ZonePosition.top);
-        expect(
-            positionOf(Zone.successLive, DropEdge.trailing), ZonePosition.bottom);
+        expect(positionOf(Zone.successLive, DropEdge.trailing), ZonePosition.top,
+            reason: '★下半分に落としても一番上（4.10.2）');
+      });
+
+      test('★対: 4.8 では要求が握り潰されない（4.10.2 は 4.10 だけの規定）', () {
+        // ★「順番が管理される領域では常に上」という実装だとここで落ちる。
+        //   4.8.2 に置き場所の文は無く、5.6.1 と 10.2.3 が処理ごとに定める。
+        expect(positionIn(Zone.mainDeck, ZonePosition.bottom),
+            ZonePosition.bottom);
+        expect(positionIn(Zone.successLive, ZonePosition.bottom),
+            ZonePosition.top);
       });
 
       test('★対: 順番を管理しない領域では下半分でも top のまま', () {

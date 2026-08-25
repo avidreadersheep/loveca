@@ -228,7 +228,9 @@ GameState _moveCard(GameState state, MoveCard a) {
     a.to,
     insertInto(cardsIn(next, a.toPlayerId, a.to),
         // 4.1.2.1: 移動先の領域の規定に合わせる。
-        [placedIn(taken.card, a.to)], a.position),
+        [placedIn(taken.card, a.to)],
+        // 4.10.2: 領域が置き場所を定めているならそちらが優先する。
+        positionIn(a.to, a.position)),
   );
 }
 
@@ -249,8 +251,9 @@ GameState _moveFromResolution(GameState state, MoveFromResolution a) {
     a.toPlayerId,
     a.to,
     // 4.1.2.1: 移動先の領域の規定に合わせる。
-    insertInto(cardsIn(next, a.toPlayerId, a.to),
-        [placedIn(taken.card, a.to)], a.position),
+    insertInto(cardsIn(next, a.toPlayerId, a.to), [placedIn(taken.card, a.to)],
+        // 4.10.2: 領域が置き場所を定めているならそちらが優先する。
+        positionIn(a.to, a.position)),
   );
 }
 
@@ -271,8 +274,9 @@ GameState _moveFromOutOfRule(GameState state, MoveFromOutOfRule a) {
     a.playerId,
     a.to,
     // ★4.1.2.1: 出どころはルール外の置き場だが、**着地先は 4 章の領域**なので効く。
-    insertInto(cardsIn(next, a.playerId, a.to),
-        [placedIn(taken.card, a.to)], a.position),
+    insertInto(cardsIn(next, a.playerId, a.to), [placedIn(taken.card, a.to)],
+        // 4.10.2: 領域が置き場所を定めているならそちらが優先する。
+        positionIn(a.to, a.position)),
   );
 }
 
@@ -468,7 +472,8 @@ GameState _moveMemberOut(GameState state, MoveMemberOut a) {
       // 4.3.1 / 4.1.2.1: 移動先の領域の規定に向きと表示面を合わせる。
       // ★4.5.4 の向きは移動先には引き継がれない（4.7 以外は向きを持たない）。
       [placedIn(stack.member, a.to)],
-      a.position,
+      // 4.10.2: 領域が置き場所を定めているならそちらが優先する。
+      positionIn(a.to, a.position),
     ),
   );
 }

@@ -481,6 +481,67 @@ void main() {
     });
   });
 
+  group('★★ 4.10.2 — 成功ライブカード置き場は置き場所まで定まっている ★★', () {
+    // 4.10.2「この領域にカードが置かれる場合、これまでに置かれているカードの
+    //   上に置かれます」★Zone.isOrdered が捉えているのは 1 文目だけ。
+    test('★★ core が要求を握り潰す（UI を通さなくても一番上に入る）★★', () {
+      var s = _with(Zone.successLive, [_on('a'), _on('b')]);
+      s = replaceZone(s, 'A', Zone.hand, [_on('x')]);
+
+      final moved = reduce(
+        s,
+        const MoveCard(
+          instanceId: 'x',
+          fromPlayerId: 'A',
+          from: Zone.hand,
+          toPlayerId: 'A',
+          to: Zone.successLive,
+          // ★呼び出し側が「一番下」を要求しても 4.10.2 が優先する。
+          position: ZonePosition.bottom,
+        ),
+        context: _ctx(),
+      );
+
+      expect(
+          cardsIn(moved, 'A', Zone.successLive).map((c) => c.instanceId),
+          ['x', 'a', 'b'],
+          reason: '★4.10.2: これまでに置かれているカードの上');
+    });
+
+    test('★対: 4.8 メインデッキでは要求が通る（4.10.2 は 4.10 だけの規定）', () {
+      // ★「順番が管理される領域では常に上」という実装だとここで落ちる。
+      //   4.8.2 に置き場所の文は無く、5.6.1 と 10.2.3 が処理ごとに定める。
+      var s = _with(Zone.mainDeck, [_on('a', face: FaceState.faceDown)]);
+      s = replaceZone(s, 'A', Zone.hand, [_on('x', face: FaceState.faceDown)]);
+
+      final moved = reduce(
+        s,
+        const MoveCard(
+          instanceId: 'x',
+          fromPlayerId: 'A',
+          from: Zone.hand,
+          toPlayerId: 'A',
+          to: Zone.mainDeck,
+          position: ZonePosition.bottom,
+        ),
+        context: _ctx(),
+      );
+
+      expect(cardsIn(moved, 'A', Zone.mainDeck).map((c) => c.instanceId),
+          ['a', 'x']);
+    });
+
+    test('★取り出すときの規定は無いので、出す側は握り潰さない', () {
+      // ★4.10 に取り出しの条文は無い（1.2.1.1 が数え、8.4.7 が入れるだけ）。
+      //   出す操作は素通しでよい。
+      var s = _with(Zone.successLive, [_on('x'), _on('a')]);
+      s = _move(s, Zone.successLive, Zone.waitingRoom);
+
+      expect(cardsIn(s, 'A', Zone.successLive).map((c) => c.instanceId), ['a']);
+      expect(cardsIn(s, 'A', Zone.waitingRoom), hasLength(1));
+    });
+  });
+
   group('★★ placedIn が受け付けない領域 ★★', () {
     test('メンバーエリアは専用経路が持つ (4.5.4 / 4.5.5.2)', () {
       expect(() => placedIn(_on('x'), Zone.memberArea), throwsArgumentError);

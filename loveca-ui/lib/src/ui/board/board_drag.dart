@@ -224,9 +224,14 @@ BoardMove moveToZone(
     '${to.name} は moveToZone の宛先にならない（専用の関数がある）',
   );
 
-  final position = to.isOrdered == true
-      ? (edge == DropEdge.leading ? ZonePosition.top : ZonePosition.bottom)
-      : ZonePosition.top;
+  // ★★ 領域の一覧を UI に書かない（決定 D85）★★
+  //   4.10.2 が置き場所まで定めている領域では `positionIn` が要求を握り潰すので、
+  //   上下で答えが同じになり、`board_drop.dart` の帯が**自動的に消える**。
+  final position = positionIn(
+      to,
+      to.isOrdered == true
+          ? (edge == DropEdge.leading ? ZonePosition.top : ZonePosition.bottom)
+          : ZonePosition.top);
 
   switch (from) {
     case ZoneCardDrag(:final playerId, :final zone, :final card):

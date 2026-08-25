@@ -660,6 +660,72 @@ void main() {
       expect(
           _state(tester).playerOf(kSelfPlayerId).mainDeck.first.instanceId, id);
     });
+
+    testWidgets('★★ 4.10 成功ライブは置き場所が定まっているので帯が出ない ★★',
+        (tester) async {
+      // ★★ 帯を出す条件はフラグではなく写像の答えである（決定 D85）★★
+      //   4.10.2 が「これまでに置かれているカードの上に置かれます」と定めるので
+      //   上下で答えが同じになり、帯は**自動的に**消える。
+      //   → `board_drop.dart` には領域の一覧を書いていない。
+      await _pumpBoard(
+        tester,
+        handcraftedBoard(selfZones: const {
+          Zone.hand: [_live],
+          Zone.successLive: [_live, _live],
+        }),
+      );
+
+      final id = _state(tester).playerOf(kSelfPlayerId).hand.single.instanceId;
+      final box = _box(tester, _zone(Zone.successLive));
+
+      final gesture = await _hover(
+        tester,
+        from: _bandPoint(tester, id),
+        to: Offset(box.center.dx, box.bottom - 6),
+      );
+      // ★★ 領域の見出し（「成功ライブ 4.10」）を拾わない文言で見ること ★★
+      //   `textContaining('4.10')` にすると見出しが常に当たり、
+      //   **帯を見ていないのに落ちる / 通る**。帯の文言は `board_drop.dart` が決める。
+      expect(find.text('一番下へ 4.10'), findsNothing,
+          reason: '★下半分の帯が出ている = 4.10.2 の 2 文目を無視している');
+      await gesture.moveTo(Offset(box.center.dx, box.top + 6));
+      await tester.pump();
+      expect(find.text('一番上へ 4.10'), findsNothing,
+          reason: '★上半分でも帯を出さない（上下で答えが同じだから）');
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      // ★下半分に落としたのに一番上に入る（4.10.2）。
+      final pile = _state(tester).playerOf(kSelfPlayerId).successLive;
+      expect(pile, hasLength(3));
+      expect(pile.first.instanceId, id);
+    });
+
+    testWidgets('★★ 対: 4.8 では帯が出続ける（4.10.2 は 4.10 だけの規定）★★',
+        (tester) async {
+      // ★この対が無いと「帯を全部消した」実装でも上の試験が通る。
+      await _pumpBoard(
+        tester,
+        handcraftedBoard(selfZones: const {
+          Zone.hand: [_live],
+          Zone.mainDeck: [_member, _member],
+        }),
+      );
+
+      final id = _state(tester).playerOf(kSelfPlayerId).hand.single.instanceId;
+      final box = _box(
+        tester,
+        find.byKey(const ValueKey('pile-main-$kSelfPlayerId')),
+      );
+      final gesture = await _hover(
+        tester,
+        from: _bandPoint(tester, id),
+        to: Offset(box.center.dx, box.bottom - 6),
+      );
+      expect(find.text('一番下へ 4.8'), findsOneWidget);
+      await gesture.up();
+      await tester.pumpAndSettle();
+    });
   });
 
   group('★★ メンバーが 2 人以上いるエリアへの「下に置く」（4.5.5 / 5.10.1）★★', () {
