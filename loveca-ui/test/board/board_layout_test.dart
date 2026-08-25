@@ -212,7 +212,13 @@ void main() {
     testWidgets('★ownerId で分けて出す（8.3.14 が絞るため）', (tester) async {
       await pumpBoard(tester);
 
-      expect(find.textContaining('自分のカード'), findsOneWidget);
+      // ★M-B3 で集計の帯にも「解決領域の自分のカード」（8.3.14 の参照範囲）が
+      //   出るようになったので、解決領域の中に絞って見る。★語を狭めない。
+      final inResolution = find.descendant(
+        of: find.byKey(const ValueKey('resolution-shared')),
+        matching: find.textContaining('自分のカード'),
+      );
+      expect(inResolution, findsOneWidget);
       expect(find.textContaining('相手のカード'), findsOneWidget);
     });
 

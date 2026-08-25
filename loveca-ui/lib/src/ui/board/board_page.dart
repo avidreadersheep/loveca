@@ -28,11 +28,13 @@ import 'package:loveca_core/loveca_core.dart';
 
 import '../../state/app_scope.dart';
 import '../../state/board_notice.dart';
+import '../../state/board_summary.dart';
 import '../../state/game_store.dart';
 import '../common/card_drag.dart';
 import 'board_layout.dart';
 import 'board_notice_bar.dart';
 import 'board_progress.dart';
+import 'board_summary_panel.dart';
 import 'board_view.dart';
 
 class BoardPage extends StatefulWidget {
@@ -139,9 +141,23 @@ class _BoardPageState extends State<BoardPage> {
               ),
               BoardNoticeBar(
                 key: const ValueKey('board-notices'),
-                notices: board.notices,
+                notices: [
+                  ...board.notices,
+                  // ★★ 盤面の状態から導く注記（毎 build 作り直す）★★
+                  //   「いまそうなっていること」なので、操作 1 回で消えてはいけない。
+                  ...derivedBoardNotices(
+                    state: board.state,
+                    cards: env.cards,
+                    viewerId: board.viewerId,
+                    // ★「自分 / 相手」の対応づけは `BoardView` 1 か所に置く。
+                    labelOf: (playerId) =>
+                        playerId == board.viewerId ? '自分' : '相手',
+                  ),
+                ],
                 background: scheme.secondaryContainer,
               ),
+              // ★畳めるのはここだけ（警告は畳めない）。既定は開く。
+              const BoardSummaryPanel(),
               Expanded(
                 child: BoardLayout(
                   onDrawEnergy: store.canDrawEnergy(board.viewerId)

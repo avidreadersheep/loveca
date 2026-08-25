@@ -398,8 +398,20 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('advance-step')));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('8.3.6 → フェイズ終了'), findsOneWidget);
-      expect(find.textContaining('ライブカード置き場が空'), findsOneWidget);
+      // ★「ライブカード置き場が空」は集計の帯（8.4.2 が null の理由）にも出る。
+      //   進行の行に絞って見る。
+      final line = find.descendant(
+        of: find.byKey(const ValueKey('last-operation')),
+        matching: find.textContaining('8.3.6 → フェイズ終了'),
+      );
+      expect(line, findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('last-operation')),
+          matching: find.textContaining('ライブカード置き場が空'),
+        ),
+        findsOneWidget,
+      );
     });
   });
 }

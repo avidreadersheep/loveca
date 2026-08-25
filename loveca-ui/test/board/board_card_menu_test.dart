@@ -306,7 +306,15 @@ void main() {
           _area(tester, MemberAreaSlot.center).orphans.single.instanceId;
       await _openMenu(tester, id);
 
-      expect(find.textContaining('正規の中間状態'), findsOneWidget);
+      // ★M-B3 で盤面の帯にも「正規の中間状態」と出るようになった（孤児の注記）。
+      //   メニューの中に絞って見る。★どちらにも出ることが正しい。
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('card-menu-0')),
+          matching: find.textContaining('正規の中間状態'),
+        ),
+        findsOneWidget,
+      );
       expect(find.textContaining('整理（10.4 / 10.5）'), findsOneWidget);
       // ★押せる行が 1 つも無いので盤面は動かない。
       expect(_depth(tester), 0);

@@ -90,6 +90,37 @@ Widget boardNoticeLine(BoardNotice notice) => switch (notice) {
               'カードデータが未取得です（${cardNumbers.join(' / ')}）。'
               '設定から取り込み直すと解消します。',
         ),
+      AggregationExcluded(
+        :final scope,
+        :final ruleRef,
+        :final count,
+        :final cardNumbers
+      ) =>
+        DegradationLine(
+          icon: Icons.help_outline,
+          severity: DegradationSeverity.warning,
+          text: '$scope の $ruleRef の集計から $count 枚を外しています。'
+              'カードデータが未取得です（${cardNumbers.join(' / ')}）。'
+              '★表示している数値はその分だけ小さくなっています。',
+        ),
+      OrphanCardsPresent(:final playerLabel, :final areaLabels) =>
+        DegradationLine(
+          icon: Icons.layers_clear_outlined,
+          severity: DegradationSeverity.report,
+          // ★★ エラーとして出さない。正規の中間状態である ★★
+          text: '$playerLabelの${areaLabels.join(' / ')}に、'
+              '上にメンバーが居なくなったカードがあります（4.5.5.4.1 / 4.5.5.4.2）。'
+              'これは正規の中間状態で、不具合ではありません。'
+              '整理（10.5.3 / 10.5.4）で控え室・エネルギーデッキ置き場へ移ります。',
+        ),
+      DuplicateMembersPresent(:final playerLabel, :final areaLabels) =>
+        DegradationLine(
+          icon: Icons.group_outlined,
+          severity: DegradationSeverity.report,
+          text: '$playerLabelの${areaLabels.join(' / ')}にメンバーが 2 人以上います。'
+              'これは正規の中間状態で、不具合ではありません。'
+              '整理（10.4.1）で最も後から置いたメンバーだけが残ります。',
+        ),
     };
 
 /// ★同じ種別が複数枚に当たるので件数を添える。★並びは enum の宣言順（決定的にする）。

@@ -161,9 +161,10 @@ class _LastOperationLine extends StatelessWidget {
     ];
 
     return Padding(
+      // ★キーは外側に置く。`Text` 自身に付けると `find.descendant` で辿れない。
+      key: const ValueKey('last-operation'),
       padding: const EdgeInsets.only(top: 2),
       child: Text(
-        key: const ValueKey('last-operation'),
         '直前: ${parts.join(' / ')}',
         style: theme.textTheme.labelSmall,
       ),

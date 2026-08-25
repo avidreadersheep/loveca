@@ -86,6 +86,63 @@ final class TidyExcluded extends BoardNotice {
   final List<String> cardNumbers;
 }
 
+/// ★★ 集計から落ちたカードがある（M-B3 / CLAUDE.md §6）★★
+///
+/// `LiveAggregator` は未知の cardNumber で例外を投げず、除外した事実を返り値に載せる
+/// （`aggregation.dart`。実行時に落ちると対戦が続行不能になるため）。
+/// ★**受け取ったまま捨てると A-3（数字なし表記を 59 種で無言に捨てていた）と同じになる。**
+/// 表示している数値がその分だけ小さいことを出す。
+final class AggregationExcluded extends BoardNotice {
+  const AggregationExcluded({
+    required this.scope,
+    required this.ruleRef,
+    required this.count,
+    required this.cardNumbers,
+  });
+
+  /// 「自分」「相手」、または★**「解決領域（共有）」**（8.3.12 は所有者で絞らない）。
+  final String scope;
+
+  /// どの集計か。★条番号で出す（8.3.10 / 8.3.12 / 8.3.14 / 8.4.2）。
+  final String ruleRef;
+
+  final int count;
+
+  /// ★件数だけにしない（何が引けていないか言えなくなる）。
+  final List<String> cardNumbers;
+}
+
+/// 上にメンバーが居なくなったカードがある（4.5.5.4.1 / 4.5.5.4.2）。
+///
+/// ★★ エラーとして出さない ★★
+/// 10.1.2 によりルール処理はチェックタイミングでのみ走るので、
+/// これは**正規の中間状態**である（`member_area.dart`）。
+final class OrphanCardsPresent extends BoardNotice {
+  const OrphanCardsPresent({
+    required this.playerLabel,
+    required this.areaLabels,
+  });
+
+  final String playerLabel;
+
+  /// 4.5.2.1 が定める領域名称（「左サイドエリア」など）。
+  final List<String> areaLabels;
+}
+
+/// 1 つのメンバーエリアにメンバーが 2 人以上いる（10.4 待ち）。
+///
+/// ★★ これも正規の中間状態である ★★
+/// 11.10.2 の入れ替えや 11.11.1 の再配置の途中では必ず通る。
+final class DuplicateMembersPresent extends BoardNotice {
+  const DuplicateMembersPresent({
+    required this.playerLabel,
+    required this.areaLabels,
+  });
+
+  final String playerLabel;
+  final List<String> areaLabels;
+}
+
 /// デッキが 6.1 のデッキ構築条件を満たしていない。
 ///
 /// ★★ それでも回せる。ただし黙って通さない ★★
