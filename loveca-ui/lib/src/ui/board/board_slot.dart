@@ -35,6 +35,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:loveca_core/loveca_core.dart';
 
+import '../../data/card_image_source.dart';
 import '../common/card_thumb.dart';
 import 'board_view.dart';
 
@@ -170,7 +171,7 @@ class BoardCard extends StatelessWidget {
     // 4.3.3.2: 裏向きのカードは情報が書かれている面が見えない。
     final face = card.face == FaceState.faceDown
         ? BoardFaceDown(width: width)
-        : _art(view);
+        : _art(view, MediaQuery.devicePixelRatioOf(context));
 
     // ★★ 4.3.2.2 のウェイト状態は「マスターから見て横向き」★★
     //   描かないと「向きを変える」が黙って何も起きない操作になる。
@@ -196,7 +197,7 @@ class BoardCard extends StatelessWidget {
     );
   }
 
-  Widget _art(BoardView view) {
+  Widget _art(BoardView view, double devicePixelRatio) {
     final printing = view.catalog.printings[card.printingId];
     final cardType =
         view.catalog.cards[card.cardNumber]?.cardType ?? CardType.member;
@@ -208,6 +209,10 @@ class BoardCard extends StatelessWidget {
       cardType: cardType,
       // ★箱が枠より縦長なので枠の幅 == 箱の幅（`card_thumb.dart` の不変）。
       logicalWidth: width,
+      // ★★ 段は物理幅で決める（未決 U5 の解消 / 決定 D82）★★
+      //   盤面の札は一覧のセルより大きくなりうる。thumb の原寸は 200px なので、
+      //   物理幅がそれを超えると**拡大されてぼやける**。
+      size: cardImageSizeFor(width, devicePixelRatio),
       borderRadius: BorderRadius.circular(3),
     );
   }

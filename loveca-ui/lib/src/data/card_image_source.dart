@@ -37,6 +37,33 @@ enum CardImageSize {
   String get directoryName => name;
 }
 
+/// 使う段を**物理幅**から決める（未決 **U5** の解消 / 決定 D82）.
+///
+/// ```
+/// 段 = スロット物理幅 <= 200 なら thumb、超えるなら normal   （`docs/UI設計メモ.md` §7）
+/// ```
+///
+/// ★★ 定数で `thumb` と書かない ★★
+/// スロット物理幅 = 論理幅 × DPR なので、**答えは DPR の関数**である。
+/// 盤面のスロット（論理 76）なら DPR 1 / 2 では 76 / 152 で thumb、
+/// **DPR 3 で 228 になり初めて 200 を超える**。
+/// 手札の帯（論理 54.7）は DPR 3 でも 164 なので thumb のまま——
+/// **箱ごとに答えが違う**ので、箱ごとに呼ぶ。
+///
+/// ★★ 決定 D42 のキャッシュ見積りはやり直しにならない ★★
+/// `ResizeImage(width:)` に渡すのは**物理幅**であって段ではない。
+/// 段が変えるのは**読む原本**だけで、デコード後の寸法は同じである。
+/// 段を上げて増えるのはファイル読み込みの一時領域だけ。
+///
+/// ★★ 一覧（R4）には使わない ★★
+/// D42 の測定条件（セル 120 物理px / thumb）を動かさないため。
+/// 一覧のセルは論理 140 で、DPR 2 で 280 と 200 を超えるが、
+/// **測定条件のほうを正とする**（変えるなら測り直しが要る / `card_art_test.dart`）。
+CardImageSize cardImageSizeFor(double logicalWidth, double devicePixelRatio) =>
+    logicalWidth * devicePixelRatio > CardImageSize.thumb.sourceWidth
+        ? CardImageSize.normal
+        : CardImageSize.thumb;
+
 abstract class CardImageSource {
   /// [imageHash] が空なら null を返す（＝プレースホルダのまま）。
   ///
