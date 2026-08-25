@@ -30,6 +30,7 @@ import 'package:loveca_core/loveca_core.dart' hide Card;
 import 'package:loveca_ui/src/state/board_mode.dart';
 import 'package:loveca_ui/src/state/game_store.dart';
 import 'package:loveca_ui/src/ui/board/board_page.dart';
+import 'package:loveca_ui/src/ui/board/board_view.dart';
 import 'package:loveca_ui/src/ui/board/board_start_dialog.dart';
 
 import '../support/board_fixture.dart';
@@ -472,6 +473,182 @@ void main() {
         ),
         findsOneWidget,
       );
+    });
+
+    // =====================================================================
+    // ★★ 巻き戻し（M-B5 / 決定 D78）★★
+    // =====================================================================
+
+    /// 乱数を消費する経路（10.2.1 / 10.2.2.2）を通せる盤面。
+    GameState rngBoard() => handcraftedBoard(
+          selfZones: const {
+            Zone.mainDeck: [_member, _live],
+            Zone.waitingRoom: [_member, _live, _member],
+            Zone.energyDeck: [_energy, _energy],
+            Zone.hand: [_member],
+          },
+          opponentZones: const {
+            Zone.mainDeck: [_member, _live],
+            Zone.energyDeck: [_energy],
+          },
+        );
+
+    String labelOf(WidgetTester tester, String key) => tester
+        .widget<Text>(find.descendant(
+          of: find.byKey(ValueKey(key)),
+          matching: find.byType(Text),
+        ))
+        .data!;
+
+    testWidgets('★★ 戻せないときも消さず、無効にして理由を出す ★★', (tester) async {
+      await pumpBoard(tester, rngBoard());
+
+      for (final key in ['undo-button', 'undo-step-button']) {
+        final button = find.byKey(ValueKey(key));
+        // ★★ 消さない ★★ 黙って効かないボタンにもしない。
+        expect(button, findsOneWidget, reason: '★消してはいけない');
+        expect(
+          tester.widget<OutlinedButton>(button).onPressed,
+          isNull,
+          reason: '★戻せないなら無効',
+        );
+      }
+      expect(find.byTooltip('まだ戻せる操作がありません。'), findsNWidgets(2));
+    });
+
+    testWidgets('★★ 押す前に着地先がラベルに出る（Tooltip に隠さない）★★', (tester) async {
+      await pumpBoard(tester, rngBoard());
+
+      await tester.tap(find.byKey(const ValueKey('advance-step')));
+      await tester.pumpAndSettle();
+
+      // ★★ 条番号はラベル自身に出す ★★ Tooltip はマウスを乗せないと出ない。
+      //   ★ステップに入った直後なので、どちらも 1 つ前のステップへ着く。
+      expect(labelOf(tester, 'undo-button'), '1 つ戻す（7.4.1）');
+      expect(labelOf(tester, 'undo-step-button'), '1 ステップ戻す（7.4.1）');
+
+      // ★文（フェイズ名 / ターン番号）は Tooltip に置く。
+      expect(
+        find.byTooltip('先攻アクティブ 7.4 の 7.4.1 へ戻ります（ターン 1）'),
+        findsNWidgets(2),
+      );
+    });
+
+    testWidgets('★★ 対: ステップ内で操作していると「入口」と出る ★★', (tester) async {
+      // ★★ `undoStep` の着地点は 2 通りある（`history.dart`）★★
+      //   片方だけ見ると「常に 1 つ前のステップ」と書く実装でも通る。
+      await pumpBoard(tester, rngBoard());
+
+      final store =
+          tester.widget<BoardView>(find.byType(BoardView).first).store;
+      store.dispatch(const DrawEnergy(playerId: kSelfPlayerId));
+      store.dispatch(const DrawEnergy(playerId: kSelfPlayerId));
+      await tester.pumpAndSettle();
+
+      // ★1 操作戻すほうは「そのステップの中の 1 つ前」なので入口ではない。
+      expect(labelOf(tester, 'undo-button'), '1 つ戻す（7.4.1）');
+      // ★1 ステップ戻すほうは 2 件まとめて入口まで戻る。
+      expect(labelOf(tester, 'undo-step-button'), '1 ステップ戻す（7.4.1 の入口）');
+      expect(
+        find.byTooltip('このステップ（7.4.1）の入口へ戻ります（ターン 1）'),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(const ValueKey('undo-step-button')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('last-rewind')),
+          matching: find.textContaining('1 ステップ戻しました（2 操作）'),
+        ),
+        findsOneWidget,
+      );
+      expect(store.canUndo, isFalse, reason: '★入口まで戻り切っている');
+    });
+
+    testWidgets('★ 押すと戻り、戻ったことが行に出る', (tester) async {
+      await pumpBoard(tester, rngBoard());
+
+      await tester.tap(find.byKey(const ValueKey('advance-step')));
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('progress-bar')),
+          matching: find.textContaining('ステップ 7.4.2'),
+        ),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(const ValueKey('undo-button')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('progress-bar')),
+          matching: find.textContaining('ステップ 7.4.1'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('last-rewind')),
+          matching: find.textContaining('1 つ戻しました（1 操作）'),
+        ),
+        findsOneWidget,
+      );
+      // ★戻った先には「直前の操作」が無いので、その行も消える。
+      expect(find.byKey(const ValueKey('last-operation')), findsNothing);
+    });
+
+    testWidgets('★★ 乱数を消費した操作を戻したときだけ注記が出る ★★', (tester) async {
+      // ★★ 出る側 ★★ メインデッキ 2 枚に対して 3 枚引く → 10.2.1 の割り込み。
+      await pumpBoard(tester, rngBoard());
+
+      final store =
+          tester.widget<BoardView>(find.byType(BoardView).first).store;
+      store.dispatch(const DrawCards(playerId: kSelfPlayerId, count: 3));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('undo-button')));
+      await tester.pumpAndSettle();
+
+      final note = find.byKey(const ValueKey('rewind-rng-note'));
+      expect(note, findsOneWidget);
+      // ★文面は「壊れている」ではなく紙のカードと同じであることが伝わる形（D78）。
+      expect(
+        find.descendant(of: note, matching: find.textContaining('シャッフルは引き直せません')),
+        findsOneWidget,
+      );
+      // ★この論点がオンライン対戦では起きないことも読める。
+      expect(
+        find.descendant(of: note, matching: find.textContaining('オンライン対戦')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('★★ 対: 乱数を消費しない操作を戻しても注記が出ない ★★', (tester) async {
+      // ★これが落ちたら、上の検査は「常に出す実装」でも通っている。
+      await pumpBoard(tester, rngBoard());
+
+      final store =
+          tester.widget<BoardView>(find.byType(BoardView).first).store;
+      final card = store.value.state.playerOf(kSelfPlayerId).hand.first;
+      store.dispatch(MoveCard(
+        instanceId: card.instanceId,
+        fromPlayerId: kSelfPlayerId,
+        from: Zone.hand,
+        toPlayerId: kSelfPlayerId,
+        to: Zone.waitingRoom,
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const ValueKey('undo-button')));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('last-rewind')), findsOneWidget,
+          reason: '★戻したこと自体は出る');
+      expect(find.byKey(const ValueKey('rewind-rng-note')), findsNothing);
     });
   });
 }

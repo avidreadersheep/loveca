@@ -34,6 +34,7 @@ import 'package:flutter/material.dart';
 import 'package:loveca_core/loveca_core.dart';
 
 import '../../state/game_store.dart';
+import '../common/degradation_line.dart';
 import 'board_view.dart';
 
 /// 進行バー。ターン / フェイズ / ステップ（条番号）/ 手番 / 先攻 / 次へ。
@@ -79,6 +80,9 @@ class BoardProgressBar extends StatelessWidget {
               Text('先攻: ${view.labelOf(state.firstPlayerId)}',
                   style: theme.textTheme.labelMedium),
               _AdvanceControls(store: store),
+              // ★★ 巻き戻しは進行の逆操作なので隣に置く（M-B5 / 決定 D78）★★
+              //   段を増やさない（`Wrap` なので狭い窓では縦へ折り返す / U19）。
+              _UndoControls(store: store),
             ],
           ),
           if (board.operation case final operation?) ...[
@@ -87,6 +91,7 @@ class BoardProgressBar extends StatelessWidget {
             //   4 フェイズぶん並ぶことがあるので、混ぜると直前の遷移が読めなくなる。
             _SkippedLine(skipped: operation.skipped),
           ],
+          if (board.rewind case final rewind?) _LastRewindLine(rewind: rewind),
         ],
       ),
     );
@@ -134,6 +139,171 @@ class _AdvanceControls extends StatelessWidget {
               textStyle: theme.textTheme.labelMedium,
             ),
             child: Text(transition.label),
+          ),
+      ],
+    );
+  }
+}
+
+/// ★★ 巻き戻し（決定 D78 / 盤面設計メモ §8-1）★★
+///
+/// ★★ 2 つを 1 つのボタンにしない ★★
+/// `undo` は直前の 1 操作を取り消し、`undoStep` は**そのステップの入口**または
+/// **1 つ前のステップ**へ着地する。**着地先が違うものを同じボタンにしない。**
+///
+/// ★★ 着地先を Tooltip だけに置かない ★★
+/// D78 の目的は「**押す前に**着地先が分かる」ことだが、Tooltip はマウスを
+/// 乗せないと出ない。→ **条番号はボタンのラベル自身に出し**、
+/// フェイズ名・ターン番号・「入口かどうか」を Tooltip に置く。
+/// ★タッチ環境（Phase 5）では Tooltip が出ない。着地先は読めるが**無効の理由が
+/// 読めなくなる** → `docs/UI設計メモ.md` §7 に記録した（判断は Phase 5）。
+///
+/// ★★ 戻せないときも消さない ★★
+/// 無効にして理由を出す（`_DrawEnergyButton` と同じ形）。
+/// 黙って効かないボタンを作らない。
+///
+/// ★★ `StepId` の enum 名をここに書かない ★★
+/// `test/board/step_authority_test.dart` が走査で禁じている。
+/// 着地先は `StepCursor` の `ruleRef` と [phaseLabel] から組む。
+class _UndoControls extends StatelessWidget {
+  const _UndoControls({required this.store});
+
+  final GameStore store;
+
+  @override
+  Widget build(BuildContext context) {
+    final canUndo = store.canUndo;
+    final current = store.value.state.cursor;
+    final undoTarget = canUndo ? store.undoTarget : null;
+    final stepTarget = canUndo ? store.undoStepTarget : null;
+    final stepIsEntrance = stepTarget != null && stepTarget.cursor == current;
+
+    return Wrap(
+      key: const ValueKey('undo-controls'),
+      spacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        _UndoButton(
+          buttonKey: const ValueKey('undo-button'),
+          icon: Icons.undo,
+          label: '1 つ戻す',
+          target: undoTarget,
+          // ★1 操作戻すときの着地先は「その操作を行った時点」であり、
+          //   ステップの入口とは限らない。
+          entrance: false,
+          onPressed: canUndo ? store.undo : null,
+        ),
+        _UndoButton(
+          buttonKey: const ValueKey('undo-step-button'),
+          icon: Icons.first_page,
+          label: '1 ステップ戻す',
+          target: stepTarget,
+          entrance: stepIsEntrance,
+          onPressed: canUndo ? store.undoStep : null,
+        ),
+      ],
+    );
+  }
+}
+
+class _UndoButton extends StatelessWidget {
+  const _UndoButton({
+    required this.buttonKey,
+    required this.icon,
+    required this.label,
+    required this.target,
+    required this.entrance,
+    required this.onPressed,
+  });
+
+  final Key buttonKey;
+  final IconData icon;
+  final String label;
+  final GameState? target;
+  final bool entrance;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final landing = target;
+    final where = landing == null
+        ? null
+        : entrance
+            ? 'このステップ（${landing.cursor.step.ruleRef}）の入口へ戻ります'
+                '（ターン ${landing.turnNumber}）'
+            : '${phaseLabel(landing.cursor.phase)} ${landing.cursor.phase.ruleRef} の '
+                '${landing.cursor.step.ruleRef} へ戻ります'
+                '（ターン ${landing.turnNumber}）';
+
+    return Tooltip(
+      message: where ?? 'まだ戻せる操作がありません。',
+      child: OutlinedButton.icon(
+        key: buttonKey,
+        onPressed: onPressed,
+        icon: Icon(icon, size: 18),
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          textStyle: theme.textTheme.labelMedium,
+        ),
+        // ★条番号はラベルに出す（Tooltip に隠さない）。
+        label: Text(
+          landing == null
+              ? label
+              : '$label（${landing.cursor.step.ruleRef}${entrance ? ' の入口' : ''}）',
+        ),
+      ),
+    );
+  }
+}
+
+/// 直前の巻き戻しで何が起きたか（M-B5 / 決定 D78）。
+///
+/// ★★ 乱数の注記は毎回出さない ★★
+/// 出しっぱなしにすると M3 の縮退 3 種と同じく「なんか出てる」で無視される。
+/// → **取り消した操作が実際に乱数を消費したときだけ出す。**
+/// ★判定は列挙ではなく実測（`state/counting_rng.dart`）。
+///
+/// ★★ 文面は「壊れている」ではなく「紙のカードと同じ」★★
+/// 巻き戻しても乱数は戻らない（`SeededRng` は内部状態を持ち、`GameHistory` は
+/// `GameState` しか持たない）。これは不具合ではなく、決定 D78 が
+/// **明示するだけにする**と決めた挙動である（張り直しは未決 U15）。
+class _LastRewindLine extends StatelessWidget {
+  const _LastRewindLine({required this.rewind});
+
+  final BoardRewindLog rewind;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final what = rewind.wholeStep ? '1 ステップ戻しました' : '1 つ戻しました';
+    final where = rewind.landedOnSameStep
+        ? '${rewind.landedCursor.step.ruleRef} の入口'
+        : '${phaseLabel(rewind.landedCursor.phase)} '
+            '${rewind.landedCursor.phase.ruleRef} の '
+            '${rewind.landedCursor.step.ruleRef}';
+
+    return Column(
+      key: const ValueKey('last-rewind'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Text(
+            '$what（${rewind.entriesPopped} 操作）→ '
+            'ターン ${rewind.landedTurnNumber} / $where',
+            style: theme.textTheme.labelSmall,
+          ),
+        ),
+        if (rewind.rngConsumed)
+          const DegradationLine(
+            key: ValueKey('rewind-rng-note'),
+            icon: Icons.casino_outlined,
+            severity: DegradationSeverity.report,
+            text: 'シャッフルは引き直せません。'
+                'もう一度シャッフルすると別の結果になります。'
+                '（ソロとローカル対戦だけの話です。オンライン対戦では seed をサーバが持ち、'
+                'この端末は乱数を回しません）',
           ),
       ],
     );
