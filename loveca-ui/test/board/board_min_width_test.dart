@@ -6,7 +6,18 @@
 /// |---|---|---|
 /// | (a) | 外部標準 | ★**存在しない。** Material 3 の 840dp は「ペインを何枚出すか」の境界であり、D75 が盤面のペイン縮退を禁じている以上、この盤面に当てられる外部標準が無い。★**「無い」ことを書く**のが格を分けるということ |
 /// | (b-1) | 構造の下限 = **溢れない最小幅**（このファイルが二分探索する） | 実測（テスト用フォント） |
-/// | (b-2) | 可読性 = 実機での物理px と目視 | 実測（実機 / `docs/決定事項一覧.md` D83） |
+/// | (b-2) | 使える下限 = **6.2.1.5 の初期手札が同時に見える幅**（同上） | ★**条文由来**の基準 |
+/// | (b-3) | 可読性 = 実機での物理px と目視 | 実測（実機 / `docs/決定事項一覧.md` D83） |
+///
+/// ★★ 「溢れない」は「使える」ではない ★★
+/// U8 と同じ注意。文字は ellipsis で潰れるので、幅を削っても溢れずに
+/// **読めなくなるだけ**である。(b-1) は溢れの下限であって使える幅ではない。
+/// → 使える下限は**条文から取る**（(b-2)）。「見た目の好み」で決めない。
+///
+/// ★★ 札の大きさはウィンドウ幅で変わらない ★★
+/// スロットは `kBoardSlotWidth` の固定値なので、窓を広げても札は大きくならない。
+/// **(b-3) の可読性は `kBoardSlotWidth` の話であって `kBoardMinWidth` の話ではない。**
+/// 窓幅が決めるのは「同時に何が見えるか」だけである。
 ///
 /// ★★ 2 つの下限がある ★★
 /// 盤面（`BoardLayout`）は最小幅を下回ると**横スクロールする**ので溢れない。
@@ -16,10 +27,6 @@
 /// |---|---|---|
 /// | 1 | 置き場 11 + 共有 1 が**横スクロールなしで**収まる幅 | `BoardLayout(minWidth: 0)` を幅で挟む |
 /// | 2 | 盤面以外（`AppBar` / 進行バー / 帯）が溢れない幅 | `BoardPage` を窓幅で挟む |
-///
-/// ★★ 「溢れない」は「読める」ではない ★★
-/// U8 と同じ注意。文字は ellipsis で潰れるので、幅を削っても溢れずに
-/// **読めなくなるだけ**である。(b-1) は**溢れの下限**であって使える幅ではない。
 ///
 /// ★★ 測る前に「削らないもの」を決めてある ★★
 /// 置き場 11 + 共有 1 + ルール外 2（盤面設計メモ §4-1）。
@@ -284,5 +291,99 @@ void main() {
     }
     expect(find.byKey(const ValueKey('resolution-shared')), findsOneWidget);
     expect(find.textContaining('脇置き 6.2.1.6'), findsOneWidget);
+  });
+
+  testWidgets('★★ U16 (3): 6.2.1.5 の初期手札 6 枚が同時に見える最小幅 ★★',
+      (tester) async {
+    // ★★ 「溢れない」は「使える」ではない ★★
+    //   (1)(2) は**溢れの下限**であって、その幅で回せるという意味ではない。
+    //   使えるかどうかの下限は**条文から取る** —— 6.2.1.5 は初期手札を
+    //   `RuleConfig.initialHandSize` 枚と定めており、それが同時に見えなければ
+    //   毎ターン横スクロールしながら回すことになる。
+    //   ★これは「見た目の好み」ではなく条文由来の基準である。
+    //
+    //   ★盤面のクランプ（`kBoardMinWidth`）を外して測る。外さないと
+    //   窓をいくら狭めても中身は 1100 のまま横スクロールになり、**常に見える**。
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(3000, 2400);
+    addTearDown(tester.view.reset);
+
+    // ★★ 探索の途中では当然溢れる。ここで見たいのは溢れではない ★★
+    //   溢れ以外の例外は握らず元のハンドラへ流す（決定 D53 と同じ考え方）。
+    final previous = FlutterError.onError;
+    FlutterError.onError = (details) {
+      if (!details.exceptionAsString().contains('overflowed')) {
+        previous?.call(details);
+      }
+    };
+    addTearDown(() => FlutterError.onError = previous);
+
+    final state = handcraftedBoard(selfZones: const {Zone.hand: _fullHand});
+    expect(state.playerOf(kSelfPlayerId).hand,
+        hasLength(RuleConfig.standard.initialHandSize),
+        reason: '★前提: 6.2.1.5 の枚数');
+
+    final store = GameStore(
+      initialState: state,
+      viewerId: kSelfPlayerId,
+      seed: 1,
+      cards: realShapedCatalog().cards,
+      rng: SeededRng(1),
+    );
+    addTearDown(store.dispose);
+
+    Future<bool> allVisibleAt(double width) async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.topLeft,
+              child: SizedBox(
+                width: width,
+                height: 2200,
+                child: BoardView(
+                  state: state,
+                  viewerId: kSelfPlayerId,
+                  catalog: realShapedCatalog(),
+                  imageSource: const LocalDirectoryCardImageSource(null),
+                  store: store,
+                  child: const BoardLayout(onDrawEnergy: null, minWidth: 0),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final strip =
+          tester.getRect(find.byKey(const ValueKey('hand-$kSelfPlayerId')));
+      // ★★ `ListView` は画面外を作らない ★★
+      //   末尾の札が組まれていなければ見えていない（D-10 と同じ形）。
+      final last = state.playerOf(kSelfPlayerId).hand.last;
+      final finder = find.byKey(ValueKey('board-card-${last.instanceId}'));
+      if (finder.evaluate().isEmpty) return false;
+      return tester.getRect(finder).right <= strip.right + 0.5;
+    }
+
+    expect(await allVisibleAt(400), isFalse, reason: '★狭ければ見えないはず');
+    expect(await allVisibleAt(1600), isTrue);
+
+    var lo = 400.0;
+    var hi = 1600.0;
+    while (hi - lo > 1) {
+      final mid = ((lo + hi) / 2).roundToDouble();
+      if (await allVisibleAt(mid)) {
+        hi = mid;
+      } else {
+        lo = mid;
+      }
+    }
+
+    // ignore: avoid_print
+    print('★U16 測定 (3): 6.2.1.5 の初期手札 6 枚が同時に見える最小幅 = $hi 論理px');
+
+    expect(hi, lessThanOrEqualTo(kBoardMinWidth),
+        reason: '★採用値では初期手札が全部見えない');
   });
 }

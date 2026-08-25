@@ -333,6 +333,10 @@ class _BackRow extends StatelessWidget {
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
+      // ★★ 箱の上端を揃える ★★
+      //   束の中身（`_MiniStrip`）が出た列だけ背が高くなるので、既定の
+      //   `center` だと**その列の箱だけ上にずれる**。実機で実際にずれた。
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         for (final cell in mirrored ? cells.reversed : cells) ...[
           cell,
@@ -359,6 +363,10 @@ class _MemberRow extends StatelessWidget {
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
+      // ★★ 箱の上端を揃える（上の `_BackRow` と同じ理由）★★
+      //   4.5.7.1 の「正面が縦に並ぶ」は横位置の話だが、箱が上下にずれると
+      //   D47 の「上半分 / 下半分」がどこを指すのかも読みにくくなる。
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         for (final slot in slots) ...[
           _MemberSlot(

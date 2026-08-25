@@ -400,4 +400,48 @@ void main() {
       expect(find.byKey(const ValueKey('resolution-shared')), findsOneWidget);
     });
   });
+
+  group('★★ 束の中身が出ても行がずれない（M-B2 / 実機で発覚）★★', () {
+    testWidgets('1 列だけ背が高くなっても、同じ行の箱の上端は揃う',
+        (tester) async {
+      // ★★ 実機で実際にずれた ★★
+      //   下に重ねたカード（4.5.5.1）や 10.4 待ちの重複メンバーが出た列だけ
+      //   `Column` が高くなる。`Row` の既定（center）だと**その列の箱だけ
+      //   上にずれる**。4.5.7.1 の「正面が縦に並ぶ」は横位置の話だが、
+      //   箱が上下にずれると D47 の「上半分 / 下半分」も読みにくくなる。
+      await pumpBoard(
+        tester,
+        state: handcraftedBoard(
+          selfMembers: const {
+            MemberAreaSlot.leftSide: [trioMemberPrinting],
+            MemberAreaSlot.center: [trioMemberPrinting],
+            MemberAreaSlot.rightSide: [trioMemberPrinting],
+          },
+          // ★センターだけ束の中身を持つ。
+          selfBeneath: const {
+            MemberAreaSlot.center: [energyPrinting],
+          },
+        ),
+      );
+
+      double topOf(MemberAreaSlot slot) => tester
+          .getRect(
+            find
+                .descendant(
+                  of: memberSlot(kSelfPlayerId, slot),
+                  matching: find.byType(SizedBox),
+                )
+                .first,
+          )
+          .top;
+
+      // ★前提: センターだけ中身が出ている（出ていなければ何も証明しない）。
+      expect(find.text('下'), findsOneWidget);
+
+      expect(topOf(MemberAreaSlot.center),
+          closeTo(topOf(MemberAreaSlot.leftSide), 0.5));
+      expect(topOf(MemberAreaSlot.rightSide),
+          closeTo(topOf(MemberAreaSlot.leftSide), 0.5));
+    });
+  });
 }
