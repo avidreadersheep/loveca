@@ -18,7 +18,6 @@ import 'package:loveca_core/loveca_core.dart' hide Card;
 import 'package:loveca_ui/src/state/board_mode.dart';
 import 'package:loveca_ui/src/ui/board/board_formation.dart';
 import 'package:loveca_ui/src/ui/board/board_page.dart';
-import 'package:loveca_ui/src/ui/board/board_slot.dart';
 import 'package:loveca_ui/src/ui/board/board_start_dialog.dart';
 import 'package:loveca_ui/src/ui/board/board_view.dart';
 

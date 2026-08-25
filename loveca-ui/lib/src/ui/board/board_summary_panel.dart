@@ -30,8 +30,10 @@ library;
 import 'package:flutter/material.dart';
 import 'package:loveca_core/loveca_core.dart' hide Card;
 
+import '../../state/board_mode.dart';
 import '../../state/board_summary.dart';
 import '../common/heart_chips.dart';
+import 'board_live_judgement.dart';
 import 'board_view.dart';
 
 class BoardSummaryPanel extends StatefulWidget {
@@ -84,6 +86,9 @@ class _BoardSummaryPanelState extends State<BoardSummaryPanel> {
             for (final player in widget.players)
               _PlayerSummary(playerId: player.playerId),
             _SharedDraw(),
+            // ★★ ライブ勝敗の記録（8.4.6 / 8.4.7 / 決定 D10 / D93）★★
+            //   入力は 8.4.2 のスコア合計なので、その隣に置く。
+            const _LiveJudgementRow(),
             const SizedBox(height: 2),
             Text(
               // ★★ 出していないものを明示する（D18）★★
@@ -159,6 +164,74 @@ class _PlayerSummary extends StatelessWidget {
       ),
     );
   }
+}
+
+/// ★★ ライブ勝敗の記録 8.4.6 / 8.4.7（決定 D10 / D25 / D93）★★
+///
+/// ★★ ソロでは口ごと出さない（決定 D88 / §14-7 の持ち越し 1）★★
+/// ソロは 8.4.6 と 8.4.13 を飛ばす（§14-4）ので**記録する対象が残らない**。
+/// ★**黙って消さない。**理由を 1 行残す —— 消えていること自体が
+/// 「実装されていない」と読まれると、あとで同じ検討をやり直すことになる。
+class _LiveJudgementRow extends StatelessWidget {
+  const _LiveJudgementRow();
+
+  @override
+  Widget build(BuildContext context) {
+    final view = BoardView.of(context);
+    final theme = Theme.of(context);
+
+    if (view.mode == BoardMode.solo) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 1),
+        child: Text(
+          '★ライブ勝敗の記録（8.4.6 / 8.4.7）はソロでは出しません。'
+          '8.4.6 は 2 者の比較で、8.4.13 も相手を要求するため、'
+          'ソロではどちらの手順も通りません（記録する対象が残りません）。',
+          key: const ValueKey('live-judgement-solo-note'),
+          style: theme.textTheme.labelSmall
+              ?.copyWith(color: theme.colorScheme.outline),
+        ),
+      );
+    }
+
+    final record = view.state.liveJudgement;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 1),
+      child: Wrap(
+        key: const ValueKey('summary-live-judgement'),
+        spacing: 12,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text('ライブ勝敗 8.4.6 / 8.4.7', style: theme.textTheme.labelSmall),
+          // ★★ 2 つを別々に出す（決定 D25 の訂正）★★
+          //   8.4.13 が参照するのは移動実績のほうなので、まとめて 1 つに見せない。
+          Text(
+            record == null
+                ? '未設定'
+                : '勝者 8.4.6: ${_names(view, record.winnerIds)} / '
+                    '移動実績 8.4.7: ${_names(view, record.movedToSuccessIds)}',
+            key: const ValueKey('live-judgement-value'),
+            style: theme.textTheme.labelSmall,
+          ),
+          TextButton(
+            key: const ValueKey('live-judgement-open'),
+            onPressed: () => showLiveJudgement(context),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              minimumSize: const Size(0, 28),
+              textStyle: theme.textTheme.labelSmall,
+            ),
+            child: const Text('記録する…'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// ★playerId を画面に出さない（内部語彙）。
+  String _names(BoardView view, Set<String> ids) =>
+      ids.isEmpty ? 'なし' : ids.map(view.labelOf).join(' / ');
 }
 
 /// 総合ルール 8.3.12.1 のドロー。★共有なので 1 つだけ出す。
