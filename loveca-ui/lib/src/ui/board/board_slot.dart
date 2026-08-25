@@ -30,6 +30,8 @@
 /// 「ライブだけ帯を掴めない」という種別依存の不具合になる。**
 library;
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:loveca_core/loveca_core.dart';
 
@@ -166,10 +168,35 @@ class BoardCard extends StatelessWidget {
     final view = BoardView.of(context);
 
     // 4.3.3.2: 裏向きのカードは情報が書かれている面が見えない。
-    if (card.face == FaceState.faceDown) {
-      return BoardFaceDown(width: width);
-    }
+    final face = card.face == FaceState.faceDown
+        ? BoardFaceDown(width: width)
+        : _art(view);
 
+    // ★★ 4.3.2.2 のウェイト状態は「マスターから見て横向き」★★
+    //   描かないと「向きを変える」が黙って何も起きない操作になる。
+    if (card.orientation != CardOrientation.wait) return face;
+
+    // ★★ 箱の寸法は変えない ★★
+    //   変えると D76（箱は例外なく `kCardAspectRatio`）と
+    //   D47（`DropEdge` はスロット高さ基準）の前提が両方崩れる。
+    //   → **中身だけ**を回し、箱に収まるよう一様に縮める。
+    //   縮小率は 箱の幅 / 箱の高さ = `kCardAspectRatio`。
+    return Transform(
+      key: ValueKey('board-card-wait-${card.instanceId}'),
+      alignment: Alignment.center,
+      transform: Matrix4.identity()
+        ..scaleByDouble(
+          kCardAspectRatio,
+          kCardAspectRatio,
+          kCardAspectRatio,
+          1,
+        )
+        ..rotateZ(math.pi / 2),
+      child: face,
+    );
+  }
+
+  Widget _art(BoardView view) {
     final printing = view.catalog.printings[card.printingId];
     final cardType =
         view.catalog.cards[card.cardNumber]?.cardType ?? CardType.member;

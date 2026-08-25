@@ -23,6 +23,7 @@ import '../../data/card_image_source.dart';
 
 import '../common/card_drag.dart';
 import '../common/card_thumb.dart';
+import 'board_card_menu.dart';
 import 'board_drag.dart';
 import 'board_slot.dart';
 import 'board_view.dart';
@@ -73,7 +74,14 @@ class BoardPiece extends StatelessWidget {
         source: view.imageSource,
       ),
       child: SizedBox.expand(
-        child: BoardCard(card: drag.card, width: width),
+        // ★★ 押す側も矩形を作る（決定 D46）★★
+        //   `HitTestBehavior.opaque` なので**帯を叩いてもメニューが開く**。
+        //   絵の上だけで開く形にすると、ライブの札だけ操作しにくくなる。
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => showBoardCardMenu(context, drag),
+          child: BoardCard(card: drag.card, width: width),
+        ),
       ),
     );
   }

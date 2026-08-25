@@ -54,6 +54,7 @@ import 'package:loveca_core/loveca_core.dart' hide Card;
 
 import '../common/card_drag.dart';
 import '../common/card_thumb.dart';
+import 'board_card_menu.dart';
 import 'board_drag.dart';
 import 'board_drop.dart';
 import 'board_piece.dart';
@@ -444,8 +445,25 @@ class _AreaContents extends StatelessWidget {
       for (final stack in area.stacks)
         for (final beneath in stack.beneath)
           // ★4.5.5.2: 下に重ねられたカードは向きを示す配置状態を持たない。
-          _MiniCard(card: beneath, tag: '下'),
-      for (final orphan in area.orphans) _MiniCard(card: orphan, tag: '孤児'),
+          //   ★掴ませない（動かす `GameAction` は `DetachFromMember` だけで
+          //   落とす先が無い）。剥がすのはメニュー。
+          _MiniCard(
+            card: beneath,
+            tag: '下',
+            onTap: (context) => showBeneathCardMenu(
+              context,
+              playerId: playerId,
+              slot: area.slot,
+              card: beneath,
+            ),
+          ),
+      for (final orphan in area.orphans)
+        _MiniCard(
+          card: orphan,
+          tag: '孤児',
+          // ★できることが無い。だからこそ理由を出す（整理は M-B5）。
+          onTap: showOrphanCardMenu,
+        ),
     ];
 
     if (items.isEmpty) return const SizedBox.shrink();
@@ -821,7 +839,7 @@ class _FreeArea extends StatelessWidget {
 /// 「掴めないこと」を薄い色で表すと、読み込み中と区別がつかなくなる。
 /// 掴めない理由は [tag] が示す（「下」= 4.5.5.1 / 「孤児」= 4.5.5.4.1）。
 class _MiniCard {
-  const _MiniCard({required this.card, this.tag, this.drag});
+  const _MiniCard({required this.card, this.tag, this.drag, this.onTap});
 
   final CardInstance card;
 
@@ -829,6 +847,9 @@ class _MiniCard {
   final String? tag;
 
   final BoardDrag? drag;
+
+  /// ★掴めない札にも口を残す。**押しても何も起きない形にしない。**
+  final void Function(BuildContext context)? onTap;
 }
 
 /// [_MiniCard] を横に並べる帯。★スロットの幅を超えない。
@@ -859,9 +880,16 @@ class _MiniStrip extends StatelessWidget {
             children: [
               BoardSlot(
                 width: _kMiniWidth,
-                child: item.drag == null
-                    ? BoardCard(card: item.card, width: _kMiniWidth)
-                    : BoardPiece(drag: item.drag!, width: _kMiniWidth),
+                child: item.drag != null
+                    ? BoardPiece(drag: item.drag!, width: _kMiniWidth)
+                    : GestureDetector(
+                        // ★決定 D46: 押す側も矩形を作る（帯を叩いても開く）。
+                        behavior: HitTestBehavior.opaque,
+                        onTap: item.onTap == null
+                            ? null
+                            : () => item.onTap!(context),
+                        child: BoardCard(card: item.card, width: _kMiniWidth),
+                      ),
               ),
               if (item.tag != null)
                 SizedBox(
