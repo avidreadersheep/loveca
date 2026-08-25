@@ -49,6 +49,8 @@ import 'package:loveca_core/loveca_core.dart';
 
 import 'board_mode.dart';
 import 'board_notice.dart';
+import 'board_session.dart';
+import 'counting_rng.dart';
 import 'store.dart';
 
 /// 直前の 1 操作の結果（M-B3 / 決定 D86）。
@@ -134,6 +136,62 @@ class BoardTidyLog {
   }
 }
 
+/// 直前の巻き戻しの結果（M-B5 / 決定 D78 / D90）。
+///
+/// ★★ 寿命は「次の操作まで」である ★★
+/// 盤面設計メモ §10-2 の 3 系統のうち「進行の結果」と同じ扱いにしてある。
+/// 巻き戻したことが読めないと、**盤面だけが黙って変わる。**
+class BoardRewindLog {
+  const BoardRewindLog({
+    required this.wholeStep,
+    required this.entriesPopped,
+    required this.landedCursor,
+    required this.landedTurnNumber,
+    required this.landedOnSameStep,
+    required this.rngConsumed,
+  });
+
+  /// `undoStep`（1 ステップ戻す）なら true。`undo`（1 操作戻す）なら false。
+  final bool wholeStep;
+
+  /// この巻き戻しで取り消した操作の件数。★`undoStep` では 2 件以上になりうる。
+  final int entriesPopped;
+
+  final StepCursor landedCursor;
+
+  final int landedTurnNumber;
+
+  /// ★★ 着地先が巻き戻す前と同じステップか ★★
+  /// `undoStep` には着地点が 2 通りある（`history.dart`）——
+  /// ①そのステップ内で操作していたなら**そのステップの入口**（カーソルは変わらない）
+  /// ②入った直後なら**1 つ前のステップ**。
+  /// ★「カーソルが変わったか」を成否の signal にしないためにここへ持つ。
+  final bool landedOnSameStep;
+
+  /// ★★ 取り消した操作が乱数を消費していたか（決定 D78）★★
+  /// **真のときだけ**「引き直せない」注記を出す。毎回出すと無視される。
+  /// ★判定は列挙ではなく [CountingRng] の実測。理由はそのファイルの doc。
+  final bool rngConsumed;
+}
+
+/// 履歴 1 件ぶんの、UI 側の付随情報（M-B5）。
+///
+/// ★★ `GameHistory` は [GameState] しか持たない ★★
+/// 「直前の操作」「直前の整理」「乱数を消費したか」は `loveca_core` の履歴に無いので、
+/// UI が**並行して**同じ深さのスタックで持つ。
+/// ★`loveca_core` に持たせない —— Phase 6 の権威サーバに UI の表示都合を持ち込まない。
+class _AppliedLog {
+  const _AppliedLog({
+    required this.operation,
+    required this.tidy,
+    required this.rngConsumed,
+  });
+
+  final BoardOperationLog? operation;
+  final BoardTidyLog? tidy;
+  final bool rngConsumed;
+}
+
 /// 盤面 1 セッションぶんの状態。
 class BoardState {
   const BoardState({
@@ -144,6 +202,8 @@ class BoardState {
     this.notices = const [],
     this.operation,
     this.tidy,
+    this.rewind,
+    this.log = const [],
   });
 
   /// 盤面と履歴（決定 D36）。
@@ -171,6 +231,13 @@ class BoardState {
   /// 直前の整理の結果。★整理が起きるまで null。
   final BoardTidyLog? tidy;
 
+  /// 直前の巻き戻しの結果（M-B5）。★次の操作で消える。
+  final BoardRewindLog? rewind;
+
+  /// ★★ セッションのログ（決定 D78 / `board_session.dart`）★★
+  /// 巻き戻しも発生順に載っている。**同じ seed・同じモードで再生できる。**
+  final List<BoardLogEntry> log;
+
   GameState get state => session.state;
 
   /// [viewerId] の相手。★★ソロでは null★★（決定 D88 / §14-5）。
@@ -182,11 +249,21 @@ class BoardState {
       ? state.players.firstWhere((p) => p.playerId != viewerId).playerId
       : null;
 
+  /// ★★ `clear*` を置いてある理由（M-B5）★★
+  /// `x ?? this.x` だけだと **null にできない**。巻き戻すと「直前の操作」も
+  /// 「直前の整理」も**その時点の値へ戻す**必要があり、戻した先が「まだ何もしていない」
+  /// なら null にしなければならない。放っておくと古い「直前:」が現在の状態に見える。
+  /// ★前例は `data/deck_list_store.dart` の `clearActionError`。
   BoardState copyWith({
     GameSession? session,
     String? viewerId,
     BoardOperationLog? operation,
+    bool clearOperation = false,
     BoardTidyLog? tidy,
+    bool clearTidy = false,
+    BoardRewindLog? rewind,
+    bool clearRewind = false,
+    List<BoardLogEntry>? log,
   }) =>
       BoardState(
         session: session ?? this.session,
@@ -194,9 +271,12 @@ class BoardState {
         mode: mode,
         seed: seed,
         notices: notices,
-        operation: operation ?? this.operation,
-        // ★null を渡すと「前の整理を残す」。消したい場面が無いので clear 引数を置かない。
-        tidy: tidy ?? this.tidy,
+        operation: clearOperation ? null : (operation ?? this.operation),
+        // ★null を渡すと「前の整理を残す」（[BoardTidyLog] の doc）。
+        //   消すのは巻き戻しのときだけなので、明示の [clearTidy] で行う。
+        tidy: clearTidy ? null : (tidy ?? this.tidy),
+        rewind: clearRewind ? null : (rewind ?? this.rewind),
+        log: log ?? this.log,
       );
 }
 
@@ -208,7 +288,20 @@ class GameStore extends Store<BoardState> {
   /// 既定値は「指定し忘れがコンパイルで止まらない」= 漏れうる構造であり、
   /// D49 / D77 / D80 が一貫して退けてきた形である。
   /// ★利得: **どのテストがどのモードを試しているかが型で見える。**
-  GameStore({
+  ///
+  /// ★★ [historyMaxDepth] を引数にしてある理由（M-B5）★★
+  /// 既定の 512 は**手では到達させられない**（512 回操作するテストは書けない）。
+  /// 到達したことを帯に出す（決定 D78「捨てたことを黙らない」）以上、
+  /// **到達を本当に起こすテスト**が要る。
+  /// ★前例は `loveca_core` の `skipForward` が `isSkipped` を関数で受けていること ——
+  /// 「到達しない列挙値を足す（＝ 死んだ枝を作る）代わりの手当て」と同じ形である。
+  ///
+  /// ★★ [rng] を [CountingRng] で包む（M-B5 / `counting_rng.dart`）★★
+  /// 「乱数を消費したか」を**列挙ではなく実測で**判定するため。素通しの包みなので
+  /// 同じ seed なら同じ列が出る（`test/state/counting_rng_test.dart` が固定）。
+  /// ★包んだものを [_rng] と [_context] が**同じインスタンスとして**共有する必要が
+  /// あるので、初期化子リストでは書けず私設コンストラクタへ委譲している。
+  factory GameStore({
     required GameState initialState,
     required String viewerId,
     required BoardMode mode,
@@ -216,10 +309,35 @@ class GameStore extends Store<BoardState> {
     required Map<String, Card> cards,
     required DeterministicRng rng,
     List<BoardNotice> notices = const [],
-  })  : _context =
-            ReduceContext(cards: cards, rng: rng, mode: mode.progression),
+    int historyMaxDepth = 512,
+  }) =>
+      GameStore._(
+        initialState: initialState,
+        viewerId: viewerId,
+        mode: mode,
+        seed: seed,
+        cards: cards,
+        rng: CountingRng(rng),
+        notices: notices,
+        historyMaxDepth: historyMaxDepth,
+      );
+
+  GameStore._({
+    required GameState initialState,
+    required String viewerId,
+    required BoardMode mode,
+    required int seed,
+    required Map<String, Card> cards,
+    required CountingRng rng,
+    required List<BoardNotice> notices,
+    required int historyMaxDepth,
+  })  : _rng = rng,
+        _context = ReduceContext(cards: cards, rng: rng, mode: mode.progression),
         super(BoardState(
-          session: GameSession(state: initialState),
+          session: GameSession(
+            state: initialState,
+            history: GameHistory(maxDepth: historyMaxDepth),
+          ),
           viewerId: viewerId,
           mode: mode,
           seed: seed,
@@ -230,42 +348,159 @@ class GameStore extends Store<BoardState> {
   ///   毎回作り直すと同じ札が出続ける。
   final ReduceContext _context;
 
+  /// [_context] が持っているものと**同じインスタンス**。消費数を読むために持つ。
+  final CountingRng _rng;
+
+  /// ★★ 履歴と同じ深さの並行スタック（M-B5）★★
+  /// `GameHistory` は [GameState] しか持たないので、UI の付随情報はこちらに積む。
+  /// **`_ops.length == value.session.history.depth` を常に保つ。**
+  final _ops = <_AppliedLog>[];
+
   /// cardNumber -> Card。★集計（`state/board_summary.dart`）が要る。
   Map<String, Card> get cards => _context.cards;
 
+  /// 1 つのアクションを適用する。★[dispatchAll] の 1 件版。
+  void dispatch(GameAction action) => dispatchAll([action]);
+
   /// ★★ `reduce` を呼ぶ唯一の場所 ★★
   ///
-  /// ★複数のアクションを 1 操作として戻したい場合（11.10 / 11.11 の補助コマンド、
-  /// ライブカードセット）は、`reduce` を N 回回して `record` を 1 回だけ呼ぶ
-  /// （決定 D78 / 盤面設計メモ §8-2 / M-B5 の巻き戻し）。ここはその 1 回版である。
-  void dispatch(GameAction action) {
+  /// ★★ 合成コマンド（決定 D78 / 盤面設計メモ §8-2）★★
+  /// `reduce` を N 回回して合成状態を作り、`record` を **1 回だけ**呼ぶ。
+  /// これにより N 個のアクションが**履歴 1 件 = 1 undo** になる。
+  /// `GameSession.apply` を N 回呼ぶと undo が N 回要るので、
+  /// プレイヤーには 1 操作に見えるものが 1 回で戻らない。
+  ///
+  /// ★★ [dispatch] をここへ畳んである ★★
+  /// 経路を 2 本にすると `reduce` の呼び出し口が 2 つになる。
+  /// `test/board/reduce_call_site_test.dart` が「`game_store.dart` にちょうど 1 件」を
+  /// 走査で固定しているのは、Phase 6 の差し替え点を 1 箇所に保つためである。
+  ///
+  /// ★★ 途中で投げたときの扱い ★★
+  /// N 回のうち k 回目が投げたら、**1〜k-1 回目の結果も残らない。**
+  /// [state] への代入がループの外に 1 回しか無いので、`value` は `identical` のまま。
+  /// 履歴も 1 件も増えない（`record` に到達しない）。
+  /// ★**ただし乱数は進む。**1〜k-1 回目が消費したぶんは戻せない。
+  /// これは未決 **U15**（巻き戻しても乱数が張り直されない）と同じ性質であり、
+  /// **同じ引き金を踏んだときに一緒に解く。**
+  void dispatchAll(List<GameAction> actions) {
     final before = value.state;
+    final rngBefore = _rng.count;
 
-    // ★★ 投げたらここで終わる。下の record に到達しない ★★
-    final report = reduceWithReport(before, action, context: _context);
-    final tidy = report.tidy;
+    var next = before;
+    var refreshCount = 0;
+    RuleProcessResult? tidy;
+    AdvanceResult? advance;
+    var skipped = const <StepCursor>[];
+
+    for (final action in actions) {
+      // ★★ 投げたらここで終わる。下の record にも state の代入にも到達しない ★★
+      final report = reduceWithReport(next, action, context: _context);
+      next = report.state;
+      refreshCount += report.refreshCount;
+      // ★整理と進行は「最後に起きたもの」を採る。起きていなければ前の値を保つ。
+      tidy = report.tidy ?? tidy;
+      advance = report.advance ?? advance;
+      if (report.skipped.isNotEmpty) skipped = report.skipped;
+    }
+
+    final operation = BoardOperationLog(
+      cursorBefore: before.cursor,
+      executed: advance?.executed,
+      taken: advance?.taken,
+      refreshCount: refreshCount,
+      // ★飛ばしたカーソルを黙って落とさない（決定 D88）。
+      skipped: skipped,
+    );
+    final tidyLog = tidy == null
+        ? null
+        : BoardTidyLog(
+            cursor: before.cursor,
+            applied: tidy.applied,
+            warnings: tidy.warnings,
+            excludedCount: tidy.excludedCount,
+            unknownCardNumbers: tidy.unknownCardNumbers,
+          );
+
+    final session = value.session.record(next);
+    // ★整理が起きていないときは前の値を残す（[BoardTidyLog] の doc）。
+    _pushApplied(
+      session,
+      _AppliedLog(
+        operation: operation,
+        tidy: tidyLog ?? value.tidy,
+        rngConsumed: _rng.count > rngBefore,
+      ),
+    );
 
     state = value.copyWith(
-      session: value.session.record(report.state),
-      operation: BoardOperationLog(
-        cursorBefore: before.cursor,
-        executed: report.advance?.executed,
-        taken: report.advance?.taken,
-        refreshCount: report.refreshCount,
-        // ★飛ばしたカーソルを黙って落とさない（決定 D88）。
-        skipped: report.skipped,
-      ),
-      // ★整理が起きていないときは前の値を残す（[BoardTidyLog] の doc）。
-      tidy: tidy == null
-          ? null
-          : BoardTidyLog(
-              cursor: before.cursor,
-              applied: tidy.applied,
-              warnings: tidy.warnings,
-              excludedCount: tidy.excludedCount,
-              unknownCardNumbers: tidy.unknownCardNumbers,
-            ),
+      session: session,
+      operation: operation,
+      tidy: tidyLog,
+      // ★巻き戻しの行は次の操作で消す（寿命は「次の操作まで」）。
+      clearRewind: true,
+      log: [...value.log, Act(actions)],
     );
+  }
+
+  /// 1 操作戻す（決定 D78 / 盤面設計メモ §8-1）。戻せなければ何もしない。
+  void undo() => _rewind(value.session.undo(), wholeStep: false, entry: const Undo());
+
+  /// ★★ 1 ステップ戻す（決定 D78）★★
+  ///
+  /// 着地点は 2 通りある（`history.dart`）——
+  /// ①そのステップ内で操作していたなら**そのステップの入口**（カーソルは変わらない）
+  /// ②入った直後なら**1 つ前のステップ**。
+  /// ★**「カーソルが変わったか」を成否の signal にしない。**null かどうかで見る。
+  void undoStep() =>
+      _rewind(value.session.undoStep(), wholeStep: true, entry: const UndoStep());
+
+  void _rewind(
+    GameSession? next, {
+    required bool wholeStep,
+    required BoardLogEntry entry,
+  }) {
+    if (next == null) return;
+
+    final before = value.state;
+    final popped = value.session.history.depth - next.history.depth;
+
+    // ★★ 取り消した件数は履歴の深さの差から導く ★★
+    //   `undoStep` の「カーソルが変わるまで pop」を UI で再実装しない（D-15 の型）。
+    var rngConsumed = false;
+    for (var i = 0; i < popped; i++) {
+      final removed = _ops.removeLast();
+      rngConsumed = rngConsumed || removed.rngConsumed;
+    }
+
+    // ★戻った先の「直前の操作 / 直前の整理」へ戻す。無ければ null に落とす。
+    final restored = _ops.isEmpty ? null : _ops.last;
+
+    state = value.copyWith(
+      session: next,
+      operation: restored?.operation,
+      clearOperation: restored?.operation == null,
+      tidy: restored?.tidy,
+      clearTidy: restored?.tidy == null,
+      rewind: BoardRewindLog(
+        wholeStep: wholeStep,
+        entriesPopped: popped,
+        landedCursor: next.state.cursor,
+        landedTurnNumber: next.state.turnNumber,
+        landedOnSameStep: next.state.cursor == before.cursor,
+        rngConsumed: rngConsumed,
+      ),
+      log: [...value.log, entry],
+    );
+  }
+
+  /// `_ops` の深さを履歴に合わせる。
+  ///
+  /// ★`GameHistory.push` は [GameHistory.maxDepth] を超えると**先頭から捨てる**。
+  ///   並行スタックも同じ規則で捨てないと、巻き戻しの対応がずれる。
+  void _pushApplied(GameSession session, _AppliedLog applied) {
+    _ops.add(applied);
+    final overflow = _ops.length - session.history.depth;
+    if (overflow > 0) _ops.removeRange(0, overflow);
   }
 
   /// 盤面の向きを変える（決定 D75）。★`GameAction` ではない。
@@ -291,6 +526,31 @@ class GameStore extends Store<BoardState> {
   /// メインデッキのようなリフレッシュ（10.2）が無い。6.1.1.3 の 12 枚を
   /// 使い切ると出せなくなる。**黙って何も起きない形にしない。**
   bool canDrawEnergy(String playerId) => countIn(playerId, Zone.energyDeck) > 0;
+
+  /// 戻せる操作があるか（決定 D78）。
+  ///
+  /// ★★ false でもボタンを消さない ★★
+  /// 無効にして理由を出す。黙って効かないボタンを作らない
+  /// （`canDrawEnergy` と同じ方針）。
+  bool get canUndo => value.session.canUndo;
+
+  /// 「1 つ戻す」の着地先。★**押す前に**出すために要る（決定 D78）。
+  GameState? get undoTarget => value.session.history.last?.state;
+
+  /// 「1 ステップ戻す」の着地先。
+  ///
+  /// ★`GameSession` はイミュータブルなので、試しに呼んでも副作用が無い。
+  ///   ★着地点が現在と同じカーソルになることがある（そのステップの入口）。
+  GameState? get undoStepTarget => value.session.undoStep()?.state;
+
+  /// ★★ 履歴が上限に達しているか（決定 D78 / `history.dart`）★★
+  /// 上限を超えると**古いものから黙って捨てられる。**捨てたことを黙らないため、
+  /// 帯に出す（`state/board_summary.dart` の `derivedBoardNotices`）。
+  bool get isHistoryAtMaxDepth =>
+      value.session.history.depth >= value.session.history.maxDepth;
+
+  /// 保持している履歴の上限。★UI に 512 を書かないため。
+  int get historyMaxDepth => value.session.history.maxDepth;
 
   /// 次へ進むのにプレイヤーの宣言が要るか。
   ///

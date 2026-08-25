@@ -20,13 +20,20 @@ import '../support/fake_deck_repository.dart';
 import '../support/pump_app.dart';
 import '../support/real_shaped_catalog.dart';
 
-GameStore storeWith({int seed = 1, GameState? state}) => GameStore(
+GameStore storeWith({
+  int seed = 1,
+  GameState? state,
+  // ★★ 512 は手では到達させられない（M-B5）★★ 到達を本当に起こすために下げる。
+  int historyMaxDepth = 512,
+}) =>
+    GameStore(
       initialState: state ?? boardFixtureState(),
       viewerId: kSelfPlayerId,
       mode: BoardMode.localVersus,
       seed: seed,
       cards: realShapedCatalog().cards,
       rng: SeededRng(seed),
+      historyMaxDepth: historyMaxDepth,
     );
 
 void main() {
@@ -195,6 +202,215 @@ void main() {
       // ★DrawEnergy は進行ではないので遷移も整理も無い。
       expect(store.value.operation!.taken, isNull);
       expect(store.value.tidy, isNull);
+      store.dispose();
+    });
+  });
+
+  group('★★ 合成コマンド（M-B5 / 決定 D78 / 盤面設計メモ §8-2）★★', () {
+    test('★★ N 個のアクションで履歴は 1 件だけ増える ★★', () {
+      final store = storeWith();
+      final card = store.value.state.playerOf(kSelfPlayerId).hand.first;
+
+      store.dispatchAll([
+        MoveCard(
+          instanceId: card.instanceId,
+          fromPlayerId: kSelfPlayerId,
+          from: Zone.hand,
+          toPlayerId: kSelfPlayerId,
+          to: Zone.waitingRoom,
+        ),
+        MoveCard(
+          instanceId: card.instanceId,
+          fromPlayerId: kSelfPlayerId,
+          from: Zone.waitingRoom,
+          toPlayerId: kSelfPlayerId,
+          to: Zone.exile,
+        ),
+      ]);
+
+      expect(store.value.session.history.depth, 1,
+          reason: '★2 件積まれると undo が 2 回要る');
+      expect(store.value.state.playerOf(kSelfPlayerId).exile, hasLength(1));
+
+      // ★1 回の undo で**両方**戻る。
+      store.undo();
+      expect(store.value.state.playerOf(kSelfPlayerId).exile, isEmpty);
+      expect(store.value.state.playerOf(kSelfPlayerId).waitingRoom, isEmpty,
+          reason: '★中間状態が残っていたら合成になっていない');
+      expect(store.value.state.playerOf(kSelfPlayerId).hand.map((c) => c.instanceId),
+          contains(card.instanceId));
+      store.dispose();
+    });
+
+    test('★★ 途中で投げたら 1〜k-1 回目の結果も残らない ★★', () {
+      // ★★ M-B3 の単発版（例外が出たら record に到達しない）の合成版 ★★
+      //   合成では中間状態が生じるので、**黙って中途半端な状態にしない**ことを固定する。
+      final store = storeWith();
+      final before = store.value;
+      final card = store.value.state.playerOf(kSelfPlayerId).hand.first;
+
+      expect(
+        () => store.dispatchAll([
+          MoveCard(
+            instanceId: card.instanceId,
+            fromPlayerId: kSelfPlayerId,
+            from: Zone.hand,
+            toPlayerId: kSelfPlayerId,
+            to: Zone.waitingRoom,
+          ),
+          // ★2 つ目で投げる。1 つ目は成功している。
+          const MoveCard(
+            instanceId: 'no-such-instance',
+            fromPlayerId: kSelfPlayerId,
+            from: Zone.waitingRoom,
+            toPlayerId: kSelfPlayerId,
+            to: Zone.exile,
+          ),
+        ]),
+        throwsArgumentError,
+      );
+
+      expect(identical(store.value, before), isTrue,
+          reason: '★state への代入はループの外に 1 回だけ');
+      expect(store.value.session.canUndo, isFalse);
+      expect(store.value.state.playerOf(kSelfPlayerId).waitingRoom, isEmpty,
+          reason: '★1 つ目の移動も残らない');
+      expect(store.value.log, isEmpty);
+      store.dispose();
+    });
+
+    test('★ dispatch は dispatchAll の 1 件版（同じ形で積まれる）', () {
+      final one = storeWith();
+      final many = storeWith();
+
+      one.dispatch(const DrawEnergy(playerId: kSelfPlayerId));
+      many.dispatchAll(const [DrawEnergy(playerId: kSelfPlayerId)]);
+
+      expect(many.value.session.history.depth, one.value.session.history.depth);
+      expect(many.value.operation!.cursorBefore, one.value.operation!.cursorBefore);
+      one.dispose();
+      many.dispose();
+    });
+  });
+
+  group('★★ 巻き戻し（M-B5 / 決定 D78）★★', () {
+    test('★ 戻せないときは何も起きない（例外にしない）', () {
+      final store = storeWith();
+      final before = store.value;
+
+      store.undo();
+      store.undoStep();
+
+      expect(identical(store.value, before), isTrue);
+      expect(store.canUndo, isFalse);
+      expect(store.undoTarget, isNull);
+      expect(store.undoStepTarget, isNull);
+      store.dispose();
+    });
+
+    test('★★ 着地先を押す前に読める（決定 D78）★★', () {
+      final store = storeWith();
+      final at = store.value.state.cursor;
+
+      store.dispatch(const DrawEnergy(playerId: kSelfPlayerId));
+
+      expect(store.canUndo, isTrue);
+      // ★「押したらどこへ着くか」を押す前に問える。
+      expect(store.undoTarget!.cursor, at);
+      expect(store.undoStepTarget!.cursor, at);
+      store.dispose();
+    });
+
+    test('★★ 巻き戻すと「直前の操作」も戻る（古い表示を残さない）★★', () {
+      final store = storeWith();
+
+      store.dispatch(const DrawEnergy(playerId: kSelfPlayerId));
+      expect(store.value.operation, isNotNull);
+
+      store.undo();
+
+      expect(store.value.operation, isNull,
+          reason: '★戻した先は「まだ何もしていない」。直前: が残ると嘘になる');
+      expect(store.value.rewind, isNotNull);
+      expect(store.value.rewind!.entriesPopped, 1);
+      expect(store.value.rewind!.wholeStep, isFalse);
+      store.dispose();
+    });
+
+    test('★ 次の操作で巻き戻しの行は消える（寿命は次の操作まで）', () {
+      final store = storeWith();
+
+      store.dispatch(const DrawEnergy(playerId: kSelfPlayerId));
+      store.undo();
+      expect(store.value.rewind, isNotNull);
+
+      store.dispatch(const DrawEnergy(playerId: kSelfPlayerId));
+
+      expect(store.value.rewind, isNull);
+      expect(store.value.operation, isNotNull);
+      store.dispose();
+    });
+
+    test('★★ 履歴と並行スタックの深さがずれない ★★', () {
+      // ★ずれると、巻き戻したときに別の操作の「直前:」が復活する。
+      final store = storeWith();
+
+      for (var i = 0; i < 3; i++) {
+        store.dispatch(const DrawEnergy(playerId: kSelfPlayerId));
+      }
+      expect(store.value.session.history.depth, 3);
+
+      store.undo();
+      expect(store.value.session.history.depth, 2);
+      expect(store.value.operation, isNotNull, reason: '★2 件目の操作が戻ってくる');
+
+      store.undo();
+      store.undo();
+      expect(store.value.session.history.depth, 0);
+      expect(store.value.operation, isNull);
+      expect(store.canUndo, isFalse);
+      store.dispose();
+    });
+  });
+
+  group('★★ maxDepth に達したことを黙らない（決定 D78）★★', () {
+    test('★★ 到達すると立つ / ★対 到達していなければ立たない ★★', () {
+      // ★★ 512 件は手では作れないので、上限を小さくして**本当に到達させる** ★★
+      //   「起きない入力で出ないこと」も対で見る（M3 の縮退テストと同じ手法）。
+      final store = storeWith(historyMaxDepth: 3);
+      expect(store.isHistoryAtMaxDepth, isFalse, reason: '★空なら立たない');
+      expect(store.historyMaxDepth, 3);
+
+      store.dispatch(const DrawEnergy(playerId: kSelfPlayerId));
+      store.dispatch(const DrawEnergy(playerId: kSelfPlayerId));
+      expect(store.isHistoryAtMaxDepth, isFalse, reason: '★★ 手前では立たない ★★');
+
+      store.dispatch(const DrawEnergy(playerId: kSelfPlayerId));
+      expect(store.isHistoryAtMaxDepth, isTrue);
+
+      // ★★ 超えても canUndo は真のまま = 黙って捨てられている ★★
+      //   だから帯に出す必要がある。
+      store.dispatch(const DrawEnergy(playerId: kSelfPlayerId));
+      expect(store.value.session.history.depth, 3, reason: '★深さは飽和する');
+      expect(store.canUndo, isTrue);
+      expect(store.isHistoryAtMaxDepth, isTrue);
+
+      store.dispose();
+    });
+
+    test('★★ 捨てられても並行スタックがずれない ★★', () {
+      // ★捨てる規則が食い違うと、巻き戻したときに別の操作の「直前:」が出る。
+      final store = storeWith(historyMaxDepth: 2);
+      for (var i = 0; i < 5; i++) {
+        store.dispatch(const DrawEnergy(playerId: kSelfPlayerId));
+      }
+
+      store.undo();
+      store.undo();
+
+      expect(store.value.session.history.depth, 0);
+      expect(store.value.operation, isNull);
+      expect(store.canUndo, isFalse);
       store.dispose();
     });
   });
