@@ -24,6 +24,25 @@
 /// ★debug / profile でこの値は変わらない。レイアウトは同じ RenderObject・
 /// 同じ制約・同じフォントで計算され、`kDebugMode` は寸法に影響しない。
 /// §9-3 の注記（**時間**は debug と profile で違う）とは別の話である。
+///
+/// ★★★ 2026-08-25 訂正: 二分探索が溢れを取りこぼしていた（M-B2 で発覚）★★★
+/// `DebugOverflowIndicatorMixin._overflowReportNeeded` は一度報告すると false になり、
+/// **`reassemble`（ホットリロード）でしか戻らない。**
+/// 幅を変えて同じツリーを `pumpWidget` し直しても `RenderObject` は使い回されるので、
+/// **2 回目以降の溢れが黙って落ちていた。**
+/// → 探索は「1 回目だけ真、あとは全部偽」になり、**下限のすぐ上に収束していた。**
+///
+/// | | 訂正前 | 訂正後 |
+/// |---|---:|---:|
+/// | 溢れの下限（テスト用フォント） | 151 | **198** |
+///
+/// ★★ 決定 D61 の結論は変わらない ★★
+/// 採用値 `kDeckPaneMinWidth = 320` はどちらの値も上回っており、
+/// 「2 ペインにした瞬間に一覧が 3 列を割らない」という根拠 (b) は成立したまま。
+/// **変わったのは記録されていた数値であって判断ではない。**
+///
+/// ★手当ては「毎回ツリーを捨ててから組み直す」。
+/// ★これは D-10（検知手段自身が同じ罠を踏む）の実例である。
 library;
 
 import 'package:flutter/material.dart' hide Card;
@@ -86,6 +105,10 @@ void main() {
     //   `takeException` は 1 つしか保持せず、2 つ目からは
     //   「Multiple exceptions」に化けて中身が読めない。自分で拾う。
     //   ★溢れ以外の例外は握らず、元のハンドラへ流す（決定 D53 と同じ考え方）。
+    // ★★ ここが要（上の doc の訂正を参照）★★
+    //   捨てないと `RenderObject` が使い回され、2 回目以降の溢れが報告されない。
+    await tester.pumpWidget(const SizedBox.shrink());
+
     var overflowed = false;
     final previous = FlutterError.onError;
     FlutterError.onError = (details) {
@@ -108,6 +131,9 @@ void main() {
     addTearDown(tester.view.reset);
 
     // ★二分探索。下限は溢れる幅、上限は溢れない幅であることを先に確かめる。
+    //   ★★ 下限が真になることだけでは足りない ★★
+    //     溢れが 1 回しか報告されないと、下限だけ真であとは全部偽になる。
+    //     探索の**途中でも真が出る**ことは、結果が下限 +1 でないことで分かる。
     expect(await overflowsAt(tester, 120), isTrue, reason: '狭すぎれば溢れるはず');
     expect(await overflowsAt(tester, 600), isFalse);
 
@@ -132,6 +158,10 @@ void main() {
       lessThanOrEqualTo(kDeckPaneMinWidth),
       reason: '採用している kDeckPaneMinWidth では溢れてしまう',
     );
+    // ★★ 探索が「下限 +1」に落ちていないこと ★★
+    //   落ちていたら溢れの取りこぼし（上の訂正）が再発している。
+    expect(high, greaterThan(121),
+        reason: '★下限のすぐ上に収束している = 溢れが報告されていない');
   });
 
   testWidgets('採用値 kDeckPaneMinWidth では溢れない', (tester) async {

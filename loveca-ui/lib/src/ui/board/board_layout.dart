@@ -73,10 +73,24 @@ const double _kResolutionWidth = kBoardSlotWidth * 0.6;
 
 /// 盤面の本体。★上段が相手、下段が視点（決定 D75）。
 class BoardLayout extends StatelessWidget {
-  const BoardLayout({super.key, required this.onDrawEnergy});
+  const BoardLayout({
+    super.key,
+    required this.onDrawEnergy,
+    this.minWidth = kBoardMinWidth,
+  });
 
   /// 「エネルギーを1枚出す」（決定 D73 / D81）。null なら押せない。
   final VoidCallback? onDrawEnergy;
+
+  /// ★★ 未決 **U16** を実測するための口である ★★
+  /// 既定は [kBoardMinWidth]。**本番でこれを渡さない。**
+  ///
+  /// 下のクランプがあるかぎり、窓をいくら狭めても盤面は
+  /// [kBoardMinWidth] のまま横スクロールになり、**溢れない**。
+  /// つまり「その幅で本当に収まるのか」を外から測れない。
+  /// → `test/board/board_min_width_test.dart` だけが 0 を渡して
+  /// **溢れの下限**を二分探索する（U8 / D61 と同じ手順）。
+  final double minWidth;
 
   @override
   Widget build(BuildContext context) {
@@ -89,8 +103,8 @@ class BoardLayout extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         // ★最小幅を下回ったら盤面ごとスクロールする（1 ペインに縮退しない / D75）。
-        final width = constraints.maxWidth < kBoardMinWidth
-            ? kBoardMinWidth
+        final width = constraints.maxWidth < minWidth
+            ? minWidth
             : constraints.maxWidth;
 
         return SingleChildScrollView(
