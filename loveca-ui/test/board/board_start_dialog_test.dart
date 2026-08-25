@@ -1,9 +1,13 @@
-/// R2 → R7 の入口と開始ダイアログ（決定 D79 / D80 / D81）.
+/// R2 → R7 の入口と開始ダイアログ（決定 D79 / D80 / D81 / D88）.
 ///
 /// ★★ 6.2.1.4 の 2 段を UI が潰していないこと ★★
 /// 条文は「無作為にどちらかのプレイヤーを選択し、**そのプレイヤーが**
-/// どちらが先攻となるかを選びます」の 2 段。一人回しでは形骸化するが、
+/// どちらが先攻となるかを選びます」の 2 段。ローカル対戦では形骸化するが、
 /// **UI が構造を潰すと Phase 6 で組み直しになる。**
+///
+/// ★★ 2 段を保つのはローカル対戦だけである（決定 D88 / D81 の訂正）★★
+/// 条文は「**各プレイヤーは**無作為に…」であり、**1 人では手順が成立しない。**
+/// ★ソロでは出さないが、**黙って飛ばさず理由を出す**ことを対で固定する。
 ///
 /// ★★ 6.1 違反は通す。未知の刷りは通さない ★★
 /// 前者はサンドボックス（D-A）として正当。後者は `CardInstance` を作れない。
@@ -13,6 +17,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loveca_core/loveca_core.dart' hide Card;
+import 'package:loveca_ui/src/state/board_mode.dart';
 import 'package:loveca_ui/src/ui/board/board_page.dart';
 import 'package:loveca_ui/src/ui/board/board_start_dialog.dart';
 import 'package:loveca_ui/src/ui/deck/deck_list_page.dart';
@@ -44,19 +49,36 @@ void main() {
     return repository;
   }
 
-  Future<void> openStartDialog(WidgetTester tester) async {
+  /// ★★ 入口はモードごとに 2 本ある（決定 D88 / D81 の訂正）★★
+  /// 既定はローカル対戦 —— この群が見ているのは 6.2.1.4 の 2 段であり、
+  /// **それを保つのはローカル対戦だけ**だからである。
+  Future<void> openStartDialog(
+    WidgetTester tester, {
+    BoardMode mode = BoardMode.localVersus,
+  }) async {
     await tester.tap(find.byType(PopupMenuButton<String>).first);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('一人回し'));
+    await tester.tap(find.text(mode.label));
     await tester.pumpAndSettle();
   }
 
-  group('★ R2 のデッキメニューが唯一の入口（決定 D81）', () {
-    testWidgets('「一人回し」からダイアログが開く', (tester) async {
+  group('★ R2 のデッキメニューが唯一の入口（決定 D81 / D88）', () {
+    testWidgets('★★ 入口が 2 本ある（ソロ / ローカル対戦）★★', (tester) async {
+      await openDeckList(tester);
+      await tester.tap(find.byType(PopupMenuButton<String>).first);
+      await tester.pumpAndSettle();
+
+      expect(find.text('ソロ'), findsOneWidget);
+      expect(find.text('ローカル対戦'), findsOneWidget);
+      // ★★ 廃止した語が残っていないこと（決定 D88-1）★★
+      expect(find.text('一人回し'), findsNothing);
+    });
+
+    testWidgets('「ローカル対戦」からダイアログが開く', (tester) async {
       await openDeckList(tester);
       await openStartDialog(tester);
 
-      expect(find.text('一人回しを始める'), findsOneWidget);
+      expect(find.text('ローカル対戦を始める'), findsOneWidget);
     });
 
     testWidgets('★条番号が画面に出る（根拠が追える）', (tester) async {
@@ -128,7 +150,7 @@ void main() {
         // ★★ 次の回の前に R7 を閉じる ★★
         //   `pumpWidget` は同じ型の `MaterialApp` なら要素を作り直さないので、
         //   閉じないと **Navigator に前回の盤面が残ったまま**になり、
-        //   2 回目の「一人回し」が見つからない。
+        //   2 回目の「ローカル対戦」が見つからない。
         await tester.pageBack();
         await tester.pumpAndSettle();
 
@@ -192,7 +214,7 @@ void main() {
 
       expect(find.byType(BoardPage), findsOneWidget);
       expect(find.textContaining('6.1 の構築条件を満たしていません'), findsWidgets);
-      // ★M-B1 が暫定であることも盤面から読める。
+      // ★6.2.1.6 を経ていないことも盤面から読める。
       expect(find.textContaining('マリガンはまだありません'), findsOneWidget);
     });
   });
@@ -244,6 +266,85 @@ void main() {
 
       expect(tester.widget<BoardPage>(find.byType(BoardPage)).viewerId,
           kSelfPlayerId);
+    });
+  });
+
+  // =========================================================================
+  // ★★ ソロの入口（決定 D88 / 盤面設計メモ §14-1 / D81 の訂正）★★
+  //
+  // ★★ 「出さない」だけでは足りない ★★
+  //   6.2.1.4 を単に消すと「このアプリは 6.2.1.4 を実装していない」と読まれる。
+  //   **成立しない理由を画面に出す**ことまでが D88 の要求である。
+  // =========================================================================
+  group('★★ ソロ: 成立しない手順は理由つきで出さない ★★', () {
+    testWidgets('タイトルがモードを名乗る', (tester) async {
+      await openDeckList(tester);
+      await openStartDialog(tester, mode: BoardMode.solo);
+
+      expect(find.text('ソロを始める'), findsOneWidget);
+    });
+
+    testWidgets('★★ 6.2.1.4 を出さず、成立しない理由を出す ★★', (tester) async {
+      await openDeckList(tester);
+      await openStartDialog(tester, mode: BoardMode.solo);
+
+      expect(find.text('① 選ぶ人を決める'), findsNothing);
+      expect(find.text('② その人が先攻を選ぶ'), findsNothing);
+      // ★黙って飛ばしていないこと。
+      expect(find.byKey(const ValueKey('solo-first-player-note')),
+          findsOneWidget);
+      expect(find.textContaining('プレイヤーが 1 人ではこの手順が成立しません'),
+          findsOneWidget);
+    });
+
+    testWidgets('★★ 6.2.1.1 の相手デッキを選ばせず、理由を出す ★★', (tester) async {
+      await openDeckList(tester);
+      await openStartDialog(tester, mode: BoardMode.solo);
+
+      expect(find.byKey(const ValueKey('opponent-deck')), findsNothing);
+      expect(find.byKey(const ValueKey('solo-opponent-note')), findsOneWidget);
+      // ★1.1.1 に触れる（players が 2 人のままである理由 / §14-5）。
+      expect(find.textContaining('1.1.1'), findsOneWidget);
+    });
+
+    testWidgets('★対: ローカル対戦では両方とも出る', (tester) async {
+      // ★これが無いと「キーを間違えていて常に findsNothing」でも通る。
+      await openDeckList(tester);
+      await openStartDialog(tester);
+
+      expect(find.byKey(const ValueKey('opponent-deck')), findsOneWidget);
+      expect(find.text('① 選ぶ人を決める'), findsOneWidget);
+      expect(find.byKey(const ValueKey('solo-first-player-note')), findsNothing);
+      expect(find.byKey(const ValueKey('solo-opponent-note')), findsNothing);
+    });
+
+    testWidgets('★ 相手の 6.1 違反は出さない（幽霊の違反にしない）', (tester) async {
+      await openDeckList(tester);
+      await openStartDialog(tester, mode: BoardMode.solo);
+
+      // fixture は 6.1 を満たせないので、自分側は必ず出る（前提）。
+      expect(find.byKey(const ValueKey('invalid-自分')), findsOneWidget);
+      expect(find.byKey(const ValueKey('invalid-相手')), findsNothing);
+    });
+
+    testWidgets('★★ 始めるとソロの盤面が立ち、自分が先攻になる ★★', (tester) async {
+      await openDeckList(tester);
+      await openStartDialog(tester, mode: BoardMode.solo);
+      await tester.tap(find.byKey(const ValueKey('start-board')));
+      await tester.pumpAndSettle();
+
+      final page = tester.widget<BoardPage>(find.byType(BoardPage));
+      expect(page.mode, BoardMode.solo);
+      expect(page.viewerId, kSelfPlayerId);
+      // ★ソロは常に先攻（決定 D88）。
+      expect(page.initialState.firstPlayerId, kSelfPlayerId);
+      // ★1.1.1: players は 2 人のまま（描かないだけではなく参照しない / §14-5）。
+      expect(page.initialState.players, hasLength(2));
+      // ★相手側には自分と同じデッキが入っているので手札 6 枚（6.2.1.5）。
+      expect(page.initialState.playerOf(kOpponentPlayerId).hand, hasLength(6),
+          reason: '★空の Deck を採らない（条文に無い状態を作らない / §14-5）');
+      // ★盤面の帯にも相手の 6.1 違反は出ない。
+      expect(find.textContaining('相手のデッキは 6.1'), findsNothing);
     });
   });
 }

@@ -1,13 +1,17 @@
-/// R2 から R7 へ入る 1 本道（決定 D81 / 盤面設計メモ §9）.
+/// R2 から R7 へ入る道（決定 D81 / D88 / 盤面設計メモ §9 / §14）.
 ///
 /// ★★ 6.2.1 を走らせるのはここ 1 箇所である ★★
-/// `GameSetup.begin` → （★6.2.1.6 マリガンが入る場所 / M-B5）→ `dealInitialEnergy`。
+/// `GameSetup.begin` → （★6.2.1.6 マリガンが入る場所 / M-B6）→ `dealInitialEnergy`。
 /// **2 箇所で走らせない。** 走らせる場所が増えると
 /// 「seed をどこで作ったか」「マリガンをどこに挟むか」が分岐する。
 ///
 /// ★★ 押したデッキが自分側になる（決定 D81）★★
 /// `viewerId` の既定が自明になり、「どちらが自分側か」をダイアログで決めずに済む。
 /// D75 が `viewerId` を 1 つだけ持つと定めた形と素直に噛み合う。
+///
+/// ★★ 入口は R2 のデッキメニュー 2 本（決定 D88 / D81 の訂正）★★
+/// 「ソロ」と「ローカル対戦」。D81 は 1 本と書いていたが、**モードは開始時に選ぶ**
+/// （あとから切り替えると 6.2.1 をやり直すことになり「同じ seed で同じ盤面」が崩れる）。
 ///
 /// ★★ 入口を R3 に作らない ★★
 /// R3 は未保存の編集がありうるので、その上に R7 を積むと
@@ -24,11 +28,12 @@ import '../../state/board_notice.dart';
 import 'board_page.dart';
 import 'board_start_dialog.dart';
 
-/// 一人回しを開始する。★[deck] が自分側。
-Future<void> startSoloBoard(
+/// 盤面を開始する。★[deck] が自分側。
+Future<void> startBoard(
   BuildContext context, {
   required Deck deck,
   required List<Deck> candidates,
+  required BoardMode mode,
 }) async {
   final scope = AppScope.of(context);
   final env = scope.environment;
@@ -37,6 +42,7 @@ Future<void> startSoloBoard(
     context,
     deck: deck,
     candidates: candidates,
+    mode: mode,
     // ★検証は `DeckRepository` 経由（UI から DAO を直接呼ばない / D55）。
     validate: env.decks.validate,
   );
@@ -61,7 +67,7 @@ Future<void> startSoloBoard(
       config: env.ruleConfig,
     );
 
-    // ★★ ここに 6.2.1.6（マリガン）が入る（M-B5）★★
+    // ★★ ここに 6.2.1.6（マリガン）が入る（M-B6）★★
     //   setup = setup.mulligan(...);
     //   ★順を入れ替えないこと。入れ替えると乱数の消費順が条文と変わる。
     initialState = setup.dealInitialEnergy(rng: rng);
@@ -83,11 +89,10 @@ Future<void> startSoloBoard(
         initialState: initialState,
         // ★押したデッキが自分側（決定 D81）。
         viewerId: kSelfPlayerId,
-        // ★★ D88 以前の「一人回し」はローカル対戦を指す（D88-1）★★
-        //   ソロの入口は次のコミットで足す。
-        mode: BoardMode.localVersus,
+        mode: mode,
         seed: request.seed,
         notices: _noticesFor(
+          mode: mode,
           selfResult: env.decks.validate(deck),
           opponentResult: env.decks.validate(request.opponentDeck),
         ),
@@ -97,16 +102,21 @@ Future<void> startSoloBoard(
 }
 
 /// 盤面に常設する注記（盤面設計メモ §10-3）。
+///
+/// ★★ ソロでは相手の 6.1 違反を出さない（決定 D88 / §14-5）★★
+/// 相手側には自分と同じデッキが入っているので、出すと**同じ違反が 2 回**並ぶ。
+/// それは幽霊の 6.1 違反であって、盤面から読み取れる事実ではない。
 List<BoardNotice> _noticesFor({
+  required BoardMode mode,
   required DeckValidationResult selfResult,
   required DeckValidationResult opponentResult,
 }) =>
     [
-      // ★★ M-B1 の盤面は 6.2.1.6 を経ていない。暫定であることを盤面に出す ★★
-      //   中途半端に動くものが「完成」と誤認される形にしない。M-B5 で消す。
+      // ★★ この盤面は 6.2.1.6 を経ていない。暫定であることを盤面に出す ★★
+      //   中途半端に動くものが「完成」と誤認される形にしない。M-B6 で消す。
       const MulliganNotImplemented(),
       if (!selfResult.isValid)
         DeckNotValid(playerLabel: '自分', issues: selfResult.issues),
-      if (!opponentResult.isValid)
+      if (mode.hasOpponent && !opponentResult.isValid)
         DeckNotValid(playerLabel: '相手', issues: opponentResult.issues),
     ];

@@ -1,4 +1,4 @@
-/// 一人回しの開始ダイアログ（決定 D79 / D81 / 盤面設計メモ §9）.
+/// 盤面の開始ダイアログ（決定 D79 / D81 / D88 / 盤面設計メモ §9 / §14）.
 ///
 /// ★★ 決めるものを 6.2.1 の条文順に並べ、条番号を出す ★★
 ///
@@ -11,8 +11,19 @@
 /// ★★ 6.2.1.4 の 2 段を 1 段に潰さない ★★
 /// 条文は「**無作為にどちらかのプレイヤーを選択し**、そのプレイヤーが
 /// **どちらが先攻プレイヤーとなるかを選びます**」の 2 段である。
-/// 一人回しでは形骸化するが、**UI が構造を潰すと Phase 6 で組み直しになる。**
+/// ローカル対戦では形骸化するが、**UI が構造を潰すと Phase 6 で組み直しになる。**
 /// → ①「選ぶ人」を決める（自分 / 相手 / 無作為）→ ②その人が先攻を選ぶ。
+///
+/// ★★ ただし 2 段を保つのはローカル対戦だけである（決定 D88 / D81 の訂正）★★
+/// 条文は「**各プレイヤーは**無作為にどちらのプレイヤーを選択し」であり、
+/// **プレイヤーが 1 人では手順そのものが成立しない。**ソロは常に自分が先攻。
+/// ★**黙って飛ばさず理由を出す。**飛ばしたことが見えないと、
+/// 「このアプリは 6.2.1.4 を実装していない」と読まれる。
+///
+/// ★★ ソロの相手デッキは**自分と同じもの**（決定 D81 の既定 / §14-5）★★
+/// 空の `Deck` を採らない理由は 2 つ ——
+/// (1) 6.2.1.5 で**手札 0 枚の `PlayerState`** という条文に存在しない状態を作る、
+/// (2) 7.6.2 が空のメインデッキ + 空の控え室で 10.2.2 のリフレッシュを踏む経路が生まれる。
 ///
 /// ★★ 6.1 を満たさないデッキでも開始できる。ただし黙って通さない ★★
 /// アプリはサンドボックス（D-A）なので、条件を満たさないデッキで回すこと自体は正当。
@@ -27,6 +38,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:loveca_core/loveca_core.dart';
 
+import '../../state/board_mode.dart';
 import '../../state/board_seed.dart';
 
 /// 開始ダイアログの結果。★`GameSetup` にそのまま渡せる値だけを持つ。
@@ -46,7 +58,7 @@ class BoardStartRequest {
   final int seed;
 }
 
-/// 一人回しを始める側の playerId。★盤面の `viewerId` の既定にもなる（決定 D81）。
+/// 盤面を始める側の playerId。★盤面の `viewerId` の既定にもなる（決定 D81）。
 const String kSelfPlayerId = 'self';
 const String kOpponentPlayerId = 'opponent';
 
@@ -54,6 +66,7 @@ Future<BoardStartRequest?> showBoardStartDialog(
   BuildContext context, {
   required Deck deck,
   required List<Deck> candidates,
+  required BoardMode mode,
   required DeckValidationResult Function(Deck) validate,
 }) =>
     showDialog<BoardStartRequest>(
@@ -61,6 +74,7 @@ Future<BoardStartRequest?> showBoardStartDialog(
       builder: (_) => _BoardStartDialog(
         deck: deck,
         candidates: candidates,
+        mode: mode,
         validate: validate,
       ),
     );
@@ -69,11 +83,13 @@ class _BoardStartDialog extends StatefulWidget {
   const _BoardStartDialog({
     required this.deck,
     required this.candidates,
+    required this.mode,
     required this.validate,
   });
 
   final Deck deck;
   final List<Deck> candidates;
+  final BoardMode mode;
   final DeckValidationResult Function(Deck) validate;
 
   @override
@@ -120,14 +136,19 @@ class _BoardStartDialogState extends State<_BoardStartDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // ★★ ソロの相手側は**自分と同じデッキ**（決定 D81 / §14-5）★★
+    final versus = widget.mode == BoardMode.localVersus;
+    final opponentDeck = versus ? _opponentDeck : widget.deck;
+
     final selfResult = widget.validate(widget.deck);
-    final opponentResult = widget.validate(_opponentDeck);
+    final opponentResult = widget.validate(opponentDeck);
 
     // ★未知の刷りがあると GameSetup が投げる。ここで止める。
+    //   ★ソロでは同じデッキなので selfResult と同じ答えになる。
     final blocked = selfResult.hasUnknownCards || opponentResult.hasUnknownCards;
 
     return AlertDialog(
-      title: const Text('一人回しを始める'),
+      title: Text('${widget.mode.label}を始める'),
       content: SizedBox(
         width: 520,
         child: SingleChildScrollView(
@@ -144,33 +165,61 @@ class _BoardStartDialogState extends State<_BoardStartDialog> {
                     Text('自分: ${widget.deck.name}',
                         style: theme.textTheme.bodyMedium),
                     const SizedBox(height: 6),
-                    DropdownButtonFormField<String>(
-                      key: const ValueKey('opponent-deck'),
-                      initialValue: _opponentDeck.deckId,
-                      decoration: const InputDecoration(
-                        labelText: '相手',
-                        helperText: '★同じデッキも選べます',
-                        isDense: true,
+                    // ★★ ソロでは相手を選ばせない。★黙って飛ばさず理由を出す ★★
+                    if (!versus)
+                      Text(
+                        'ソロでは相手を置きません。'
+                        '★1.1.1 が「原則 2 名」と定めているため盤面の内部では'
+                        '相手側にも同じデッキを置きますが、'
+                        '自分側の初期盤面（6.2.1.2 / 6.2.1.5）には影響しません。',
+                        key: const ValueKey('solo-opponent-note'),
+                        style: theme.textTheme.labelSmall,
+                      )
+                    else
+                      DropdownButtonFormField<String>(
+                        key: const ValueKey('opponent-deck'),
+                        initialValue: _opponentDeck.deckId,
+                        decoration: const InputDecoration(
+                          labelText: '相手',
+                          helperText: '★同じデッキも選べます',
+                          isDense: true,
+                        ),
+                        items: [
+                          for (final candidate in widget.candidates)
+                            DropdownMenuItem(
+                              value: candidate.deckId,
+                              child: Text(candidate.deckId == widget.deck.deckId
+                                  ? '${candidate.name}（同じデッキ）'
+                                  : candidate.name),
+                            ),
+                        ],
+                        onChanged: (id) => setState(() {
+                          _opponentDeck = widget.candidates
+                              .firstWhere((d) => d.deckId == id);
+                        }),
                       ),
-                      items: [
-                        for (final candidate in widget.candidates)
-                          DropdownMenuItem(
-                            value: candidate.deckId,
-                            child: Text(candidate.deckId == widget.deck.deckId
-                                ? '${candidate.name}（同じデッキ）'
-                                : candidate.name),
-                          ),
-                      ],
-                      onChanged: (id) => setState(() {
-                        _opponentDeck = widget.candidates
-                            .firstWhere((d) => d.deckId == id);
-                      }),
-                    ),
                   ],
                 ),
               ),
 
-              // ---- 6.2.1.4（★2 段）----
+              // ---- 6.2.1.4（★2 段を保つのはローカル対戦だけ / 決定 D88）----
+              if (!versus)
+                _Step(
+                  ruleRef: '6.2.1.4',
+                  title: '先攻を決める',
+                  // ★★ 条文は「各プレイヤーは無作為にどちらのプレイヤーを選択し」★★
+                  //   プレイヤーが 1 人ではこの手順そのものが成立しない。
+                  //   ★出さないだけでは「実装していない」と読まれる。理由を書く。
+                  child: Text(
+                    '★条文は「各プレイヤーは無作為にどちらのプレイヤーを選択し、'
+                    'そのプレイヤーがどちらが先攻プレイヤーとなるかを選びます」ですが、'
+                    'プレイヤーが 1 人ではこの手順が成立しません。'
+                    'ソロでは常に自分が先攻です（8.4.13 の入れ替えも起きません）。',
+                    key: const ValueKey('solo-first-player-note'),
+                    style: theme.textTheme.labelSmall,
+                  ),
+                )
+              else
               _Step(
                 ruleRef: '6.2.1.4',
                 title: '先攻を決める',
@@ -269,11 +318,13 @@ class _BoardStartDialogState extends State<_BoardStartDialog> {
                 deck: widget.deck,
                 result: selfResult,
               ),
-              _Validation(
-                label: '相手',
-                deck: _opponentDeck,
-                result: opponentResult,
-              ),
+              // ★ソロで「相手のデッキが 6.1 を満たさない」は幽霊である（§14-5）。
+              if (versus)
+                _Validation(
+                  label: '相手',
+                  deck: _opponentDeck,
+                  result: opponentResult,
+                ),
             ],
           ),
         ),
@@ -290,8 +341,9 @@ class _BoardStartDialogState extends State<_BoardStartDialog> {
           onPressed: blocked || _parsedSeed == null
               ? null
               : () => Navigator.of(context).pop(BoardStartRequest(
-                    opponentDeck: _opponentDeck,
-                    firstPlayerId: _firstPlayerId,
+                    opponentDeck: opponentDeck,
+                    // ★ソロは常に自分が先攻（決定 D88）。
+                    firstPlayerId: versus ? _firstPlayerId : kSelfPlayerId,
                     seed: _parsedSeed!,
                   )),
           child: const Text('始める'),

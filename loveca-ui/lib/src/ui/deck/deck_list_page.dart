@@ -23,6 +23,7 @@ import 'package:loveca_core/loveca_core.dart';
 
 import '../../data/deck_repository.dart';
 import '../../state/app_scope.dart';
+import '../../state/board_mode.dart';
 import '../../state/deck_list_store.dart';
 import '../../state/store.dart';
 import '../board/start_board.dart';
@@ -122,19 +123,23 @@ class _DeckListPageState extends State<DeckListPage> {
     }
   }
 
-  /// R7 一人回し（決定 D81 / 盤面設計メモ §11）。
+  /// R7 盤面（決定 D81 / D88 / 盤面設計メモ §11 / §14）。
   ///
-  /// ★★ 入口はここ 1 本だけ ★★
-  /// 押したデッキが自分側になるので `viewerId` の既定が自明になる（決定 D75）。
+  /// ★★ 入口はここだけ。ただし**モードごとに 2 本**（D81 の訂正 / D88）★★
+  /// モードは開始時に選ぶ。あとから切り替えると 6.2.1 をやり直すことになり、
+  /// 「同じ seed で同じ盤面」が成立しなくなる。
+  /// ★押したデッキが自分側になるので `viewerId` の既定が自明になる（決定 D75）。
   /// ★R3 からは開かない —— 未保存の編集の上に R7 を積むと
   /// 「保存していない構築で回っている」状態が生まれる（R6 の入口と同じ理由）。
-  Future<void> _playSolo(Deck deck) async {
+  Future<void> _startBoard(Deck deck, BoardMode mode) async {
     final decks = _store!.value.decks;
-    await startSoloBoard(
+    await startBoard(
       context,
       deck: deck,
       // ★相手デッキの候補。★同じデッキも選べる（既定 / 決定 D81）。
+      //   ★ソロでは使わない（相手側は自分と同じデッキ / §14-5）。
       candidates: decks is Ready<List<Deck>> ? decks.value : [deck],
+      mode: mode,
     );
   }
 
@@ -220,7 +225,7 @@ class _DeckListPageState extends State<DeckListPage> {
                         onEditMeta: _editMeta,
                         onDuplicate: _duplicateDeck,
                         onShare: _shareDeck,
-                        onPlaySolo: _playSolo,
+                        onStartBoard: _startBoard,
                       ),
               ),
             ),
@@ -270,7 +275,7 @@ class _DeckList extends StatelessWidget {
     required this.onEditMeta,
     required this.onDuplicate,
     required this.onShare,
-    required this.onPlaySolo,
+    required this.onStartBoard,
   });
 
   final List<Deck> decks;
@@ -279,7 +284,9 @@ class _DeckList extends StatelessWidget {
   final void Function(Deck) onEditMeta;
   final void Function(Deck) onDuplicate;
   final void Function(Deck) onShare;
-  final void Function(Deck) onPlaySolo;
+
+  /// ★R7 の入口。★モードは開始時に選ぶ（決定 D88）。
+  final void Function(Deck, BoardMode) onStartBoard;
 
   @override
   Widget build(BuildContext context) => ListView.separated(
@@ -299,7 +306,8 @@ class _DeckList extends StatelessWidget {
                 'meta' => onEditMeta(deck),
                 'duplicate' => onDuplicate(deck),
                 'share' => onShare(deck),
-                'solo' => onPlaySolo(deck),
+                'solo' => onStartBoard(deck, BoardMode.solo),
+                'versus' => onStartBoard(deck, BoardMode.localVersus),
                 _ => onDelete(deck),
               },
               itemBuilder: (_) => const [
@@ -307,8 +315,10 @@ class _DeckList extends StatelessWidget {
                 PopupMenuItem(value: 'duplicate', child: Text('複製')),
                 PopupMenuItem(value: 'share', child: Text('共有形式をコピー')),
                 PopupMenuDivider(),
-                // ★R7 への唯一の入口（決定 D81）。
-                PopupMenuItem(value: 'solo', child: Text('一人回し')),
+                // ★★ R7 への入口は 2 本（決定 D88 / D81 の訂正）★★
+                //   モードは開始時に選ぶ。あとから切り替えない。
+                PopupMenuItem(value: 'solo', child: Text('ソロ')),
+                PopupMenuItem(value: 'versus', child: Text('ローカル対戦')),
                 PopupMenuDivider(),
                 PopupMenuItem(value: 'delete', child: Text('削除')),
               ],
