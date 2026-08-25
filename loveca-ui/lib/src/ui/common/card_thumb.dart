@@ -21,6 +21,19 @@
 /// ★`precacheImage` の常時先読みを書かない（決定 D42）。
 /// 60 セル先読みは速いスクロールでは実質「全件先読み」になり、
 /// RSS ピークが 141〜151 MiB から 175〜178 MiB へ増える。
+///
+/// ★★ 絵が出ない理由は 3 つあり、3 つとも別の絵にする（決定 D89）★★
+///
+/// | 理由 | 出すもの | 何の問題か |
+/// |---|---|---|
+/// | `imageHash` が空（`build --skip-images` 由来 / **D-4**） | [_Placeholder] | **データ** |
+/// | ★**画像の置き場そのものが無い**（dist 未解決 / D60） | ★[_NoImageStoreMark] | **設定** |
+/// | 読めなかった | [_BrokenMark] | ファイル |
+///
+/// ★★ 「空」と「失敗」を同じ表示で表さない（`docs/UI設計メモ.md` §3-4(2)）★★
+/// 畳むと、**症状（絵が出ない）から原因（置き場が無い）へ辿れない。**
+/// 実機で 2 人が別々の誤診をしたのがそれである。
+/// ★原因そのものは `BootGate` の帯が全画面で言う（D89 の層 2）。ここは症状側の印。
 library;
 
 import 'package:flutter/material.dart';
@@ -114,6 +127,11 @@ class CardThumb extends StatelessWidget {
         // ★下地は常に描く。デコードが間に合わない間、セルが透明にならないように。
         //   ColoredBox にしてあるのでヒットテストも通る（決定 D46）。
         const _Placeholder(),
+        // ★★ 置き場が無いことを、データが無いことと区別して出す（決定 D89）★★
+        //   ★`imageHash` が空のときは**従来のプレースホルダのまま**にする
+        //   （そちらはデータの問題で、設定を直しても出ない）。
+        if (provider == null && !source.hasImageStore && imageHash.isNotEmpty)
+          const _NoImageStoreMark(),
         if (provider != null)
           Image(
             image: provider,
@@ -214,6 +232,25 @@ class _Placeholder extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ColoredBox(
         color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      );
+}
+
+/// ★★ 画像の置き場そのものが無い（決定 D89）★★
+///
+/// ★[_BrokenMark]（読めなかった）とも [_Placeholder]（データが無い）とも
+/// 別の絵にする。**同じ絵にすると、設定の問題とデータの問題が畳まれる。**
+class _NoImageStoreMark extends StatelessWidget {
+  const _NoImageStoreMark();
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: Icon(
+          // ★「置き場が無い」——「壊れている」でも「まだ来ていない」でもない。
+          Icons.folder_off_outlined,
+          key: const ValueKey('no-image-store'),
+          size: 18,
+          color: Theme.of(context).colorScheme.outline,
+        ),
       );
 }
 

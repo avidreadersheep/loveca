@@ -14,7 +14,11 @@ import 'package:flutter/widgets.dart';
 import 'package:loveca_ui/src/data/card_image_source.dart';
 
 class RecordingImageSource implements CardImageSource {
-  RecordingImageSource();
+  RecordingImageSource({this.hasImageStore = true});
+
+  /// ★決定 D89。既定は「置き場はある」（この fake が見たいのは要求の有無）。
+  @override
+  final bool hasImageStore;
 
   /// `provider` が呼ばれた imageHash（重複あり。呼ばれた回数が分かる）。
   final List<String> requested = [];

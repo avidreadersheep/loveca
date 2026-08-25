@@ -65,6 +65,20 @@ CardImageSize cardImageSizeFor(double logicalWidth, double devicePixelRatio) =>
         : CardImageSize.thumb;
 
 abstract class CardImageSource {
+  /// ★★ 画像の置き場そのものがあるか（決定 D89）★★
+  ///
+  /// ★★ 「空」と「失敗」を同じ型で表さない（`docs/UI設計メモ.md` §3-4(2)）★★
+  /// [provider] が null を返す理由は 2 つあり、**原因も対処も違う。**
+  ///
+  /// | 理由 | 何の問題か | 対処 |
+  /// |---|---|---|
+  /// | `imageHash` が空（`build --skip-images` 由来の dist / **D-4**） | **データ** | 配信物を作り直す |
+  /// | ★**置き場そのものが無い**（dist 未解決 / D60） | **設定** | 設定画面で場所を指定する |
+  ///
+  /// この口が無いと、画面は 2 つを**同じプレースホルダ**で表すしかない。
+  /// 実機で 2 人が別々の誤診をしたのがまさにそれである（決定 D89）。
+  bool get hasImageStore;
+
   /// [imageHash] が空なら null を返す（＝プレースホルダのまま）。
   ///
   /// [cacheWidthPx] は**物理ピクセル**（決定 D42）。
@@ -86,6 +100,10 @@ class LocalDirectoryCardImageSource implements CardImageSource {
 
   /// `dist/images`。★dist が無いまま起動している場合は null（決定 D60）。
   final Directory? imagesRoot;
+
+  /// ★dist が解決できていれば置き場はある（決定 D89）。
+  @override
+  bool get hasImageStore => imagesRoot != null;
 
   @override
   ImageProvider? provider(

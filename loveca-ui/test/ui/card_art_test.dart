@@ -394,6 +394,90 @@ void main() {
       expect(decks.lastSaved!.coverPrintingId, drawLivePrinting);
     });
   });
+
+  // =========================================================================
+  // ★★ 絵が出ない理由を撃ち分ける（M-B4 / 決定 D89 / `docs/UI設計メモ.md` §11-2）★★
+  //
+  // ★★ 「空」と「失敗」を同じ表示で表さない（§3-4(2)）★★
+  //   `imageHash` が空は**データ**の問題（`build --skip-images` 由来 / D-4）、
+  //   置き場が無いのは**設定**の問題（dist 未解決 / D60）。
+  //   ★原因も対処も違うのに、同じプレースホルダに畳まれていた。
+  //   実機で 2 人が別々の誤診をしたのがそれである。
+  //
+  // ★★ 2×2 の全部を見る ★★
+  //   出る側だけを見ると「常に出す実装」でも通り、
+  //   出ない側だけを見ると「常に出さない実装」でも通る（D-10）。
+  // =========================================================================
+  group('★★ 置き場が無いことを、データが無いことと区別して出す（D89）★★', () {
+    late Directory tmp;
+
+    setUp(() {
+      tmp = Directory.systemTemp.createTempSync('loveca_no_store');
+      for (final size in CardImageSize.values) {
+        Directory(p.join(tmp.path, size.directoryName))
+            .createSync(recursive: true);
+      }
+    });
+
+    tearDown(() => tmp.deleteSync(recursive: true));
+
+    Finder noStoreMark(String printingId) => find.descendant(
+          of: _cell(printingId),
+          matching: find.byKey(const ValueKey('no-image-store')),
+        );
+
+    testWidgets('★★ 置き場が無い: 専用の印が出る ★★', (tester) async {
+      // ★`imagesRoot == null` = dist が解決できていない（決定 D60）。
+      await openBrowse(
+        tester,
+        imageSource: const LocalDirectoryCardImageSource(null),
+      );
+
+      expect(noStoreMark(trioMemberPrinting), findsOneWidget);
+      expect(noStoreMark(drawLivePrinting), findsOneWidget);
+      // ★下地は残る（セルが透明にならない / 決定 D42・D46）。
+      expect(_placeholder(_cell(trioMemberPrinting)), findsOneWidget);
+    });
+
+    testWidgets('★★ 対: 置き場はあるが imageHash が空 → 従来のプレースホルダのまま ★★',
+        (tester) async {
+      // ★★ 撃ち分けが片側へ倒れていないことの確認 ★★
+      //   これが無いと「常に置き場が無いと言う実装」でも上のテストは通る。
+      await pumpInAppScope(
+        tester,
+        const CardBrowsePage(),
+        decks: FakeDeckRepository(catalog: realShapedCatalogWithoutImages()),
+        catalog: realShapedCatalogWithoutImages(),
+        imageSource: LocalDirectoryCardImageSource(tmp),
+      );
+
+      expect(noStoreMark(trioMemberPrinting), findsNothing,
+          reason: '★これはデータの問題であって設定の問題ではない');
+      expect(_placeholder(_cell(trioMemberPrinting)), findsOneWidget);
+    });
+
+    testWidgets('★ 対: 置き場もデータもある → 印は出ない', (tester) async {
+      for (final hash in const [
+        'eb37cd1dcab44c4c855f5f42b6d90ce3', // drawLivePrinting
+        '2637683a982e97d6217371d8728b4b6c', // trioMemberPrinting
+      ]) {
+        File(p.join(tmp.path, CardImageSize.thumb.directoryName, '$hash.webp'))
+            .writeAsBytesSync(_onePixelPng);
+      }
+      await openBrowse(tester, imageSource: LocalDirectoryCardImageSource(tmp));
+
+      expect(noStoreMark(trioMemberPrinting), findsNothing);
+      expect(noStoreMark(drawLivePrinting), findsNothing);
+    });
+
+    test('★ 撃ち分けの出どころは `CardImageSource` 1 か所（D57 の抽象）', () {
+      // ★★ 画面が `Directory` を直接見て判断しない ★★
+      //   ネットワーク実装を足したときに、UI 側の分岐が嘘になる。
+      expect(const LocalDirectoryCardImageSource(null).hasImageStore, isFalse);
+      expect(LocalDirectoryCardImageSource(Directory.systemTemp).hasImageStore,
+          isTrue);
+    });
+  });
 }
 
 /// 1x1 の透明 PNG（デコーダは拡張子ではなく中身を見るので `.webp` でも読める）。
