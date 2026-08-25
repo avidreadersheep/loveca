@@ -117,6 +117,36 @@ final class MoveAction extends BoardMove {
   final GameAction action;
 }
 
+/// ★★ 2 つ以上の [GameAction] で 1 操作を表す（M-B5 / 決定 D78 / 盤面設計メモ §7-3）★★
+///
+/// ★★ なぜ要るのか — 条文ではなく型の都合である ★★
+/// メンバーエリア / 解決領域 / 盤の外のあいだの移動には、直接動かす [GameAction] が無い。
+///
+/// - [MoveOutOfRule.from] は [Zone] なので、`Zone.memberArea` を渡せない
+///   （`cardsIn(Zone.memberArea)` が例外を投げる）
+/// - [PlaceMemberInArea.from] も [Zone] なので、[OutOfRuleZone] や解決領域から置けない
+///
+/// ★★ 条文はこれらの移動を禁じていない ★★（M-B5 で PDF と突き合わせて確認した）
+///
+/// | 条 | 内容 | 直接移動を禁じるか |
+/// |---|---|---|
+/// | 4.5.5.4 | メンバーが**メンバーエリア以外の領域に移動する場合**、そのメンバーカードのみが移動します | ✗ 移動を前提にしている |
+/// | 4.14.1 / 4.14.2 | 解決領域は共有・公開領域で、順番は管理されません | ✗ 出入りの経路を定めていない |
+/// | 4.5.1 | プレイしたメンバーカードを置く領域です | ✗ 移動元を限定していない |
+/// | 4.1.4 | メンバーエリア間・ライブカード置き場間以外の移動では新しいカードとみなされます | ★中継すると 2 回起きるが、効果を自動処理しない（D-A）以上**観測できる差は無い** |
+///
+/// → **手札を中継して合成する。**★4.1.7 は残す（中継先は必ずオーナー自身の手札）。
+///
+/// ★★ M-B5 以前は 2 操作だった ★★
+/// 「いったん手札などへ戻してから」と拒否し、プレイヤーが自分で 2 回ドラッグしていた。
+/// **戻すのにも 2 回の undo が要った。**いまは 1 操作 = 履歴 1 件 = 1 undo である。
+final class MoveActions extends BoardMove {
+  const MoveActions(this.actions);
+
+  /// ★順に `reduce` へ通す。`GameStore.dispatchAll` が **`record` を 1 回だけ**呼ぶ。
+  final List<GameAction> actions;
+}
+
 /// ★★ どのメンバーの下に置くかを選ばせる（総合ルール 4.5.5 / 5.10.1）★★
 ///
 /// [StackUnderMember] は `memberInstanceId` を要る。
@@ -130,10 +160,16 @@ final class NeedsMemberChoice extends BoardMove {
     required this.from,
     required this.slot,
     required this.candidates,
+    this.before = const [],
   });
 
   final String instanceId;
   final String playerId;
+
+  /// ★★ 選ばせる前に通す合成の前半（M-B5 / [MoveActions] と同じ理由）★★
+  /// 解決領域 / 盤の外から「下に置く」に落ちたときは、手札への中継が先に要る。
+  /// ★空でなければ `dispatchAll` で**まとめて 1 操作**にする。
+  final List<GameAction> before;
 
   /// 重ねる前にカードがあった領域。5.10.1 のエネルギーならエネルギー置き場。
   final Zone from;
@@ -258,39 +294,15 @@ BoardMove moveToMemberSlot(
 }) {
   switch (from) {
     case ZoneCardDrag(playerId: final fromPlayerId, :final zone, :final card):
-      if (fromPlayerId != playerId) {
-        return const MoveRefused('メンバーエリアへ置けるのは自分のカードだけです（4.5.1）。');
-      }
-      final members = [for (final stack in area.stacks) stack.member];
-
-      // ★メンバーが 1 人もいなければ「下に置く」が成立しない。
-      //   上半分・下半分とも 4.5.1 の「置く」になる（＝ 帯を出さない）。
-      if (edge == DropEdge.leading || members.isEmpty) {
-        return MoveAction(PlaceMemberInArea(
-          instanceId: card.instanceId,
-          playerId: playerId,
-          from: zone,
-          slot: slot,
-        ));
-      }
-
-      if (members.length == 1) {
-        return MoveAction(StackUnderMember(
-          instanceId: card.instanceId,
-          playerId: playerId,
-          from: zone,
-          slot: slot,
-          memberInstanceId: members.single.instanceId,
-        ));
-      }
-
-      // ★2 人以上いるなら選ばせる。★黙って末尾のメンバーの下に入れない。
-      return NeedsMemberChoice(
-        instanceId: card.instanceId,
+      if (fromPlayerId != playerId) return const MoveRefused(_notOwnMemberArea);
+      return _intoMemberSlot(
+        card: card,
         playerId: playerId,
         from: zone,
         slot: slot,
-        candidates: members,
+        edge: edge,
+        area: area,
+        before: const [],
       );
 
     case MemberCardDrag(
@@ -311,18 +323,101 @@ BoardMove moveToMemberSlot(
         toSlot: slot,
       ));
 
-    case ResolutionCardDrag():
-      return const MoveRefused(
-        '解決領域からメンバーエリアへは直接置けません。'
-        'いったん手札などへ戻してから置いてください（4.14.1 / 4.5.1）。',
+    // ★★ 手札を中継して合成する（M-B5 / [MoveActions]）★★
+    case ResolutionCardDrag(:final card):
+      if (card.ownerId != playerId) return const MoveRefused(_notOwnMemberArea);
+      return _intoMemberSlot(
+        card: card,
+        playerId: playerId,
+        from: _relayZone,
+        slot: slot,
+        edge: edge,
+        area: area,
+        before: [
+          MoveFromResolution(
+            instanceId: card.instanceId,
+            toPlayerId: playerId,
+            to: _relayZone,
+          ),
+        ],
       );
 
-    case OutOfRuleCardDrag():
-      return const MoveRefused(
-        '盤の外からメンバーエリアへは直接置けません。'
-        'いったん手札などへ戻してから置いてください（4.5.1）。',
+    case OutOfRuleCardDrag(
+        playerId: final fromPlayerId,
+        zone: final fromZone,
+        :final card
+      ):
+      if (fromPlayerId != playerId) return const MoveRefused(_notOwnMemberArea);
+      return _intoMemberSlot(
+        card: card,
+        playerId: playerId,
+        from: _relayZone,
+        slot: slot,
+        edge: edge,
+        area: area,
+        before: [
+          MoveFromOutOfRule(
+            instanceId: card.instanceId,
+            playerId: playerId,
+            from: fromZone,
+            to: _relayZone,
+          ),
+        ],
       );
   }
+}
+
+/// [moveToMemberSlot] の後半（4.5.1「置く」と 4.5.5 / 5.10.1「下に置く」の撃ち分け）。
+///
+/// ★[before] が空でなければ手札を中継する合成になる（M-B5 / [MoveActions]）。
+///   ★**撃ち分けの規則は 1 か所に置く。**中継の有無で分岐を書き分けると必ず食い違う。
+BoardMove _intoMemberSlot({
+  required CardInstance card,
+  required String playerId,
+  required Zone from,
+  required MemberAreaSlot slot,
+  required DropEdge edge,
+  required MemberArea area,
+  required List<GameAction> before,
+}) {
+  final members = [for (final stack in area.stacks) stack.member];
+
+  // ★メンバーが 1 人もいなければ「下に置く」が成立しない。
+  //   上半分・下半分とも 4.5.1 の「置く」になる（＝ 帯を出さない）。
+  if (edge == DropEdge.leading || members.isEmpty) {
+    return _composed(
+      before,
+      PlaceMemberInArea(
+        instanceId: card.instanceId,
+        playerId: playerId,
+        from: from,
+        slot: slot,
+      ),
+    );
+  }
+
+  if (members.length == 1) {
+    return _composed(
+      before,
+      StackUnderMember(
+        instanceId: card.instanceId,
+        playerId: playerId,
+        from: from,
+        slot: slot,
+        memberInstanceId: members.single.instanceId,
+      ),
+    );
+  }
+
+  // ★2 人以上いるなら選ばせる。★黙って末尾のメンバーの下に入れない。
+  return NeedsMemberChoice(
+    instanceId: card.instanceId,
+    playerId: playerId,
+    from: from,
+    slot: slot,
+    candidates: members,
+    before: before,
+  );
 }
 
 /// 共有の解決領域へ落とす。総合ルール 4.14.1。
@@ -340,17 +435,38 @@ BoardMove moveToResolution(BoardDrag from) {
     case ResolutionCardDrag():
       return const MoveIgnored();
 
-    case MemberCardDrag():
-      return const MoveRefused(
-        'メンバーエリアから解決領域へは直接移せません。'
-        'いったん手札などへ出してから移してください（4.5.5.4 / 4.14.1）。',
-      );
+    // ★★ 手札を中継して合成する（M-B5 / [MoveActions]）★★
+    case MemberCardDrag(:final playerId, :final slot, :final card):
+      return MoveActions([
+        // ★4.5.5.4: メンバーカードのみが移動し、下のカードはエリアに残る（孤児）。
+        MoveMemberOut(
+          instanceId: card.instanceId,
+          playerId: playerId,
+          slot: slot,
+          toPlayerId: playerId,
+          to: _relayZone,
+        ),
+        MoveToResolution(
+          instanceId: card.instanceId,
+          fromPlayerId: playerId,
+          from: _relayZone,
+        ),
+      ]);
 
-    case OutOfRuleCardDrag():
-      return const MoveRefused(
-        '盤の外から解決領域へは直接移せません。'
-        'いったん手札などへ戻してから移してください（4.14.1）。',
-      );
+    case OutOfRuleCardDrag(:final playerId, :final zone, :final card):
+      return MoveActions([
+        MoveFromOutOfRule(
+          instanceId: card.instanceId,
+          playerId: playerId,
+          from: zone,
+          to: _relayZone,
+        ),
+        MoveToResolution(
+          instanceId: card.instanceId,
+          fromPlayerId: playerId,
+          from: _relayZone,
+        ),
+      ]);
   }
 }
 
@@ -373,28 +489,85 @@ BoardMove moveToOutOfRule(
         to: to,
       ));
 
-    case OutOfRuleCardDrag(playerId: final fromPlayerId, zone: final fromZone):
-      if (fromPlayerId == playerId && fromZone == to) return const MoveIgnored();
-      return const MoveRefused(
-        '盤の外どうしの移動はできません。いったん手札などへ戻してから出してください。',
-      );
+    // ★★ ここから下は手札を中継して合成する（M-B5 / [MoveActions]）★★
+    case OutOfRuleCardDrag(
+        playerId: final fromPlayerId,
+        zone: final fromZone,
+        :final card
+      ):
+      if (fromPlayerId != playerId) return const MoveRefused(_crossPlayerOutOfRule);
+      if (fromZone == to) return const MoveIgnored();
+      return MoveActions([
+        MoveFromOutOfRule(
+          instanceId: card.instanceId,
+          playerId: playerId,
+          from: fromZone,
+          to: _relayZone,
+        ),
+        MoveOutOfRule(
+          instanceId: card.instanceId,
+          playerId: playerId,
+          from: _relayZone,
+          to: to,
+        ),
+      ]);
 
-    case ResolutionCardDrag():
-      return const MoveRefused(
-        '解決領域から盤の外へは直接移せません。'
-        'いったん手札などへ戻してから出してください（4.14.1）。',
-      );
+    case ResolutionCardDrag(:final card):
+      if (card.ownerId != playerId) return const MoveRefused(_crossPlayerOutOfRule);
+      return MoveActions([
+        MoveFromResolution(
+          instanceId: card.instanceId,
+          toPlayerId: playerId,
+          to: _relayZone,
+        ),
+        MoveOutOfRule(
+          instanceId: card.instanceId,
+          playerId: playerId,
+          from: _relayZone,
+          to: to,
+        ),
+      ]);
 
-    case MemberCardDrag():
-      return const MoveRefused(
-        'メンバーエリアから盤の外へは直接移せません。'
-        'いったん手札などへ出してから移してください（4.5.5.4）。',
-      );
+    case MemberCardDrag(playerId: final fromPlayerId, :final slot, :final card):
+      if (fromPlayerId != playerId) return const MoveRefused(_crossPlayerOutOfRule);
+      return MoveActions([
+        // ★4.5.5.4: メンバーカードのみが移動し、下のカードはエリアに残る（孤児）。
+        MoveMemberOut(
+          instanceId: card.instanceId,
+          playerId: playerId,
+          slot: slot,
+          toPlayerId: playerId,
+          to: _relayZone,
+        ),
+        MoveOutOfRule(
+          instanceId: card.instanceId,
+          playerId: playerId,
+          from: _relayZone,
+          to: to,
+        ),
+      ]);
   }
 }
 
 const String _crossPlayerOutOfRule =
     '盤の外の置き場はプレイヤーごとに分かれています。自分のカードは自分の側へ出してください。';
+
+const String _notOwnMemberArea = 'メンバーエリアへ置けるのは自分のカードだけです（4.5.1）。';
+
+/// ★★ 合成で中継する領域（M-B5 / 盤面設計メモ §7-3）★★
+///
+/// ★4.1.7 により、中継先は**必ずオーナー自身の**手札である。
+/// ★4.11.2（手札は自分のみが確認できる）に触れない —— 中間状態は履歴にも画面にも
+/// 現れない（`GameStore.dispatchAll` が `record` を 1 回しか呼ばないため）。
+const Zone _relayZone = Zone.hand;
+
+/// 合成が要るときだけ [MoveActions] にする。
+///
+/// ★★ 中継が無いときに [MoveActions] へ包まない ★★
+/// 単発のドラッグまで合成の形にすると、`GameStore.dispatch` の 1 件版が
+/// 使われなくなり、**「1 操作 = 1 履歴」の検査が合成の検査と混ざる。**
+BoardMove _composed(List<GameAction> before, GameAction action) =>
+    before.isEmpty ? MoveAction(action) : MoveActions([...before, action]);
 
 /// 総合ルール 4.1.7 の確認。
 ///

@@ -46,12 +46,18 @@ Future<void> applyBoardMove(BuildContext context, BoardMove move) async {
     case MoveAction(:final action):
       store.dispatch(action);
 
-    case NeedsMemberChoice():
+    // ★★ 合成は 1 操作として積む（M-B5 / 決定 D78 / 盤面設計メモ §8-2）★★
+    //   `reduce` を N 回回して `record` は 1 回だけ。**1 回の undo で戻る。**
+    case MoveActions(:final actions):
+      store.dispatchAll(actions);
+
+    case NeedsMemberChoice(:final before):
       // ★★ 2 択では足りないので選ばせる（4.5.5 / 5.10.1）★★
       final chosen = await showStackUnderChoice(context, move);
       // ★キャンセルしたら dispatch しない（履歴が増えない）。
       if (chosen == null) return;
-      store.dispatch(move.withMember(chosen));
+      // ★中継が要るときも 1 操作にまとめる（[NeedsMemberChoice.before]）。
+      store.dispatchAll([...before, move.withMember(chosen)]);
 
     case MoveRefused(:final reason):
       // ★落ちたのに何も起きないと「アプリが壊れている」と読まれる。
@@ -183,6 +189,9 @@ class _EdgeOverlay extends StatelessWidget {
 /// 上下に何かが出ていること自体が意味を持たない。
 String? boardEdgeLabel(BoardMove move) => switch (move) {
       MoveAction(:final action) => _actionEdgeLabel(action),
+      // ★★ 合成の意味を決めるのは最後のアクションである（M-B5）★★
+      //   手札への中継（前半）は上下で変わらない。上下を撃ち分けるのは後半だけ。
+      MoveActions(:final actions) => _actionEdgeLabel(actions.last),
       // 4.5.5 / 5.10.1「下に置く」。★どのメンバーの下かはこのあと選ばせる。
       NeedsMemberChoice() => '下に置く 4.5.5',
       // ★落とせない / 何も起きないなら上下の区別も無い。

@@ -771,6 +771,62 @@ void main() {
       }
     });
 
+    // ★★ 手札を中継する合成（M-B5 / 決定 D78）★★
+    //   写像は 7 経路あるが、**画面から通せるのは 6 経路**（脇置きは M-B6）。
+    //   M-B5 以前はどれも「いったん手札などへ戻してから」と拒否していた。
+    //   ★**1 経路だけ確かめても足りない** —— 他が 2 件積む実装でも通る。
+    //   ★条文は禁じていない（4.5.5.4 / 4.14.1 / 4.5.1）。詳細は `board_drag.dart`。
+    testWidgets('★★ 合成の 6 経路すべてで履歴がちょうど 1 件増える ★★', (tester) async {
+      // ★★ 中継先の手札に札が残っていたら合成になっていない ★★
+      //   1 件だけ積んで中間状態が残る実装を弾く。
+      for (final route in _relayRoutes) {
+        await _pumpBoard(tester, route.board());
+
+        expect(_historyDepth(tester), 0, reason: '★${route.name}: 前提');
+        final id = route.pick(_state(tester));
+
+        await _drag(
+          tester,
+          // ★ここは D46 の帯の検査ではないので絵の中心を掴む
+          //   （メンバーの札に帯は無い / `_bandPoint` は厚み > 10 を要求する）。
+          from: tester.getCenter(_art(id)),
+          to: tester.getCenter(route.target(tester)),
+        );
+
+        expect(_historyDepth(tester), 1,
+            reason: '★${route.name}: 履歴が 1 件でなければ 1 回で戻せない');
+        expect(route.landed(_state(tester)), contains(id),
+            reason: '★${route.name}: 落ちていない（拒否されている）');
+        expect(
+          [for (final c in _state(tester).playerOf(kSelfPlayerId).hand)
+            c.instanceId],
+          isNot(contains(id)),
+          reason: '★${route.name}: 中継した手札に残っている（合成になっていない）',
+        );
+      }
+    });
+
+    testWidgets('★★ 合成も 1 回の巻き戻しで元へ戻る ★★', (tester) async {
+      // ★★ これが M-B5 で合成にした理由そのものである ★★
+      //   2 件積んでいれば 1 回では戻り切らず、中継先の手札に残る。
+      for (final route in _relayRoutes) {
+        await _pumpBoard(tester, route.board());
+        final before = _signatureOf(_state(tester));
+        final id = route.pick(_state(tester));
+
+        await _drag(
+          tester,
+          from: tester.getCenter(_art(id)),
+          to: tester.getCenter(route.target(tester)),
+        );
+        _view(tester).store.undo();
+        await tester.pumpAndSettle();
+
+        expect(_signatureOf(_state(tester)), before,
+            reason: '★${route.name}: 1 回の undo で元に戻っていない');
+      }
+    });
+
     testWidgets('★同じ場所へ落としたら履歴が増えない（MoveIgnored）', (tester) async {
       await _pumpBoard(
         tester,
@@ -835,3 +891,128 @@ void main() {
     });
   });
 }
+
+
+// ===========================================================================
+// ★★ 手札を中継する合成の経路表（M-B5）★★
+// ===========================================================================
+
+/// 掴む場所 → 落とす場所。どれも M-B5 以前は `MoveRefused` だった。
+class _RelayRoute {
+  const _RelayRoute({
+    required this.name,
+    required this.board,
+    required this.pick,
+    required this.target,
+    required this.landed,
+  });
+
+  final String name;
+  final GameState Function() board;
+
+  /// 掴む札。★盤面から引く（instanceId を写さない）。
+  final String Function(GameState) pick;
+  final Finder Function(WidgetTester) target;
+
+  /// 落ちたはずの場所の instanceId。
+  final List<String> Function(GameState) landed;
+}
+
+const _relayMember = parallelMemberNormal;
+
+GameState _boardWithMember() => handcraftedBoard(
+      selfMembers: const {
+        MemberAreaSlot.center: [_relayMember],
+      },
+    );
+
+GameState _boardWithResolution() =>
+    handcraftedBoard(selfResolution: const [_relayMember]);
+
+GameState _boardWithFreeArea() =>
+    handcraftedBoard(selfFreeArea: const [_relayMember]);
+
+String _memberIn(GameState s) => s
+    .playerOf(kSelfPlayerId)
+    .memberAreas
+    .firstWhere((a) => a.slot == MemberAreaSlot.center)
+    .stacks
+    .single
+    .member
+    .instanceId;
+
+String _inResolution(GameState s) => s.resolution.single.instanceId;
+
+String _inFreeArea(GameState s) =>
+    cardsInOutOfRule(s, kSelfPlayerId, OutOfRuleZone.freeArea).single.instanceId;
+
+List<String> _idsInFreeArea(GameState s) => [
+      for (final c in cardsInOutOfRule(s, kSelfPlayerId, OutOfRuleZone.freeArea))
+        c.instanceId,
+    ];
+
+List<String> _idsInResolution(GameState s) =>
+    [for (final c in s.resolution) c.instanceId];
+
+List<String> _idsInMemberArea(GameState s) => [
+      for (final area in s.playerOf(kSelfPlayerId).memberAreas)
+        for (final stack in area.stacks) stack.member.instanceId,
+    ];
+
+final _relayRoutes = <_RelayRoute>[
+  _RelayRoute(
+    name: 'メンバー 4.5 → 盤の外',
+    board: _boardWithMember,
+    pick: _memberIn,
+    target: (t) => find.byKey(const ValueKey('free-area-$kSelfPlayerId')),
+    landed: _idsInFreeArea,
+  ),
+  _RelayRoute(
+    name: 'メンバー 4.5 → 解決領域 4.14',
+    board: _boardWithMember,
+    pick: _memberIn,
+    target: (t) => find.byKey(const ValueKey('resolution-shared')),
+    landed: _idsInResolution,
+  ),
+  _RelayRoute(
+    name: '解決領域 4.14 → メンバーエリア 4.5',
+    board: _boardWithResolution,
+    pick: _inResolution,
+    target: (t) => _memberSlot(MemberAreaSlot.leftSide),
+    landed: _idsInMemberArea,
+  ),
+  _RelayRoute(
+    name: '解決領域 4.14 → 盤の外',
+    board: _boardWithResolution,
+    pick: _inResolution,
+    target: (t) => find.byKey(const ValueKey('free-area-$kSelfPlayerId')),
+    landed: _idsInFreeArea,
+  ),
+  _RelayRoute(
+    name: '盤の外 → メンバーエリア 4.5',
+    board: _boardWithFreeArea,
+    pick: _inFreeArea,
+    target: (t) => _memberSlot(MemberAreaSlot.leftSide),
+    landed: _idsInMemberArea,
+  ),
+  _RelayRoute(
+    name: '盤の外 → 解決領域 4.14',
+    board: _boardWithFreeArea,
+    pick: _inFreeArea,
+    target: (t) => find.byKey(const ValueKey('resolution-shared')),
+    landed: _idsInResolution,
+  ),
+  // ★★ 「盤の外 → 盤の外（脇置き 6.2.1.6）」は画面に落とし先がまだ無い ★★
+  //   脇置きは M-B6（マリガン）で置く。写像は `board_move_test.dart` が持つ。
+  //   ★**「7 経路すべて」と書かないこと。**画面から通せるのは 6 経路である。
+];
+
+/// 盤面の要点だけの署名（巻き戻しで元へ戻ったことを見る）。
+///
+/// ★網羅は `test/state/board_session_test.dart` が持つ。ここは 1 枚の行き先だけ。
+String _signatureOf(GameState state) => [
+      _idsInMemberArea(state).join(','),
+      _idsInResolution(state).join(','),
+      _idsInFreeArea(state).join(','),
+      [for (final c in state.playerOf(kSelfPlayerId).hand) c.instanceId].join(','),
+    ].join('|');

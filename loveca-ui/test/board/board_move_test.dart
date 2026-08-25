@@ -266,13 +266,49 @@ void main() {
       expect((move as MoveRefused).reason, contains('4.5.1'));
     });
 
-    test('★解決領域 / 盤の外からは直接置けない（2 段になるため）', () {
-      for (final from in <BoardDrag>[
-        ResolutionCardDrag(card: _card('a')),
+    // ★★ M-B5 以前は「いったん手札などへ戻してから」と拒否していた ★★
+    //   条文は禁じていない（4.5.1 は移動元を限定していない）。**型の都合**だった
+    //   （`PlaceMemberInArea.from` が [Zone] なので解決領域 / 盤の外を渡せない）。
+    //   → 手札を中継する合成にした。**2 操作が 1 操作 = 1 undo になった。**
+    test('★★ 解決領域 / 盤の外からは手札を中継して合成する（M-B5）★★', () {
+      final cases = <BoardDrag, Type>{
+        ResolutionCardDrag(card: _card('a')): MoveFromResolution,
         OutOfRuleCardDrag(
           playerId: _self,
           zone: OutOfRuleZone.freeArea,
           card: _card('a'),
+        ): MoveFromOutOfRule,
+      };
+
+      cases.forEach((from, relayType) {
+        final move = moveToMemberSlot(
+          from,
+          playerId: _self,
+          slot: MemberAreaSlot.center,
+          edge: DropEdge.leading,
+          area: _area(),
+        );
+
+        final actions = (move as MoveActions).actions;
+        expect(actions, hasLength(2), reason: '★中継 1 + 本体 1');
+        expect(actions.first.runtimeType, relayType);
+        // ★中継先はオーナー自身の手札（4.1.7）。
+        expect(_relayTo(actions.first), Zone.hand);
+        final place = actions.last as PlaceMemberInArea;
+        expect(place.from, Zone.hand);
+        expect(place.slot, MemberAreaSlot.center);
+      });
+    });
+
+    // ★★ 対: オーナーでなければ合成しない（4.5.1）★★
+    //   合成で「誰のカードでも置ける」になっていないことを見る。
+    test('★対 相手のカードは解決領域 / 盤の外からでも置けない', () {
+      for (final from in <BoardDrag>[
+        ResolutionCardDrag(card: _card('a', owner: _opponent)),
+        OutOfRuleCardDrag(
+          playerId: _opponent,
+          zone: OutOfRuleZone.freeArea,
+          card: _card('a', owner: _opponent),
         ),
       ]) {
         final move = moveToMemberSlot(
@@ -284,6 +320,35 @@ void main() {
         );
         expect((move as MoveRefused).reason, isNotEmpty);
       }
+    });
+
+    // ★★ 中継が要るときも「下に置く」の撃ち分けは同じ（4.5.5 / 5.10.1）★★
+    //   撃ち分けを中継の有無で書き分けていないことの検査。
+    test('★★ 中継しても下半分は「下に置く」になる ★★', () {
+      final single = moveToMemberSlot(
+        ResolutionCardDrag(card: _card('a')),
+        playerId: _self,
+        slot: MemberAreaSlot.center,
+        edge: DropEdge.trailing,
+        area: _area(members: [_card('m1')]),
+      );
+      final stack = (single as MoveActions).actions.last as StackUnderMember;
+      expect(stack.memberInstanceId, 'm1');
+      expect(stack.from, Zone.hand);
+
+      // ★2 人以上なら中継を抱えたまま選ばせる。★黙って末尾に入れない。
+      final many = moveToMemberSlot(
+        ResolutionCardDrag(card: _card('a')),
+        playerId: _self,
+        slot: MemberAreaSlot.center,
+        edge: DropEdge.trailing,
+        area: _area(members: [_card('m1'), _card('m2')]),
+      );
+      final choice = many as NeedsMemberChoice;
+      expect(choice.candidates, hasLength(2));
+      expect(choice.before, hasLength(1), reason: '★中継を落とすと札が消える');
+      expect(choice.before.single, isA<MoveFromResolution>());
+      expect(choice.from, Zone.hand);
     });
   });
 
@@ -303,15 +368,30 @@ void main() {
           isA<MoveIgnored>());
     });
 
-    test('★メンバー / 盤の外からは拒否（理由が出る）', () {
-      for (final from in <BoardDrag>[
+    // ★★ M-B5 以前は拒否だった（「いったん手札などへ出してから」）★★
+    //   4.5.5.4 は「メンバーエリア以外の領域に移動する場合」と**移動を前提にしている**。
+    //   禁じていたのは条文ではなく型（`MoveToResolution.from` が [Zone]）。
+    test('★★ メンバー / 盤の外からは手札を中継して合成する（M-B5）★★', () {
+      final cases = <BoardDrag, Type>{
         MemberCardDrag(
-            playerId: _self, slot: MemberAreaSlot.center, card: _card('a')),
+                playerId: _self, slot: MemberAreaSlot.center, card: _card('a')):
+            MoveMemberOut,
         OutOfRuleCardDrag(
-            playerId: _self, zone: OutOfRuleZone.freeArea, card: _card('a')),
-      ]) {
-        expect((moveToResolution(from) as MoveRefused).reason, isNotEmpty);
-      }
+                playerId: _self,
+                zone: OutOfRuleZone.freeArea,
+                card: _card('a')):
+            MoveFromOutOfRule,
+      };
+
+      cases.forEach((from, relayType) {
+        final actions = (moveToResolution(from) as MoveActions).actions;
+        expect(actions, hasLength(2));
+        expect(actions.first.runtimeType, relayType);
+        expect(_relayTo(actions.first), Zone.hand);
+        final into = actions.last as MoveToResolution;
+        expect(into.from, Zone.hand);
+        expect(into.fromPlayerId, _self);
+      });
     });
   });
 
@@ -338,7 +418,7 @@ void main() {
       expect((move as MoveRefused).reason, isNotEmpty);
     });
 
-    test('★同じ置き場なら無視 / ★対 別の置き場どうしは拒否', () {
+    test('★同じ置き場なら無視 / ★対 別の置き場どうしは合成（M-B5）', () {
       final drag = OutOfRuleCardDrag(
         playerId: _self,
         zone: OutOfRuleZone.freeArea,
@@ -349,10 +429,71 @@ void main() {
         moveToOutOfRule(drag, playerId: _self, to: OutOfRuleZone.freeArea),
         isA<MoveIgnored>(),
       );
-      expect(
-        moveToOutOfRule(drag, playerId: _self, to: OutOfRuleZone.mulliganAside),
-        isA<MoveRefused>(),
-      );
+
+      // ★M-B5 以前は拒否だった。ルール外の置き場を定める条文は無いので、
+      //   禁じていたのは型（`MoveOutOfRule.from` が [Zone]）だけである。
+      final actions = (moveToOutOfRule(drag,
+              playerId: _self, to: OutOfRuleZone.mulliganAside) as MoveActions)
+          .actions;
+      expect(actions, hasLength(2));
+      expect((actions.first as MoveFromOutOfRule).to, Zone.hand);
+      final out = actions.last as MoveOutOfRule;
+      expect(out.from, Zone.hand);
+      expect(out.to, OutOfRuleZone.mulliganAside);
+    });
+
+    // ★★ M-B5 で合成にした残り 2 経路（メンバー / 解決領域 → 盤の外）★★
+    test('★★ メンバー / 解決領域からは手札を中継して合成する（M-B5）★★', () {
+      final cases = <BoardDrag, Type>{
+        MemberCardDrag(
+                playerId: _self, slot: MemberAreaSlot.center, card: _card('a')):
+            MoveMemberOut,
+        ResolutionCardDrag(card: _card('a')): MoveFromResolution,
+      };
+
+      cases.forEach((from, relayType) {
+        final actions = (moveToOutOfRule(from,
+                playerId: _self, to: OutOfRuleZone.freeArea) as MoveActions)
+            .actions;
+        expect(actions, hasLength(2));
+        expect(actions.first.runtimeType, relayType);
+        expect(_relayTo(actions.first), Zone.hand);
+        final out = actions.last as MoveOutOfRule;
+        expect(out.from, Zone.hand);
+        expect(out.to, OutOfRuleZone.freeArea);
+      });
+    });
+
+    // ★★ 対: 4.1.7 は合成でも残る ★★
+    //   「合成にしたら誰のカードでも盤の外へ出せる」になっていないことを見る。
+    test('★対 相手のカードは合成でも自分の盤の外へ出せない', () {
+      for (final from in <BoardDrag>[
+        MemberCardDrag(
+            playerId: _opponent,
+            slot: MemberAreaSlot.center,
+            card: _card('a', owner: _opponent)),
+        ResolutionCardDrag(card: _card('a', owner: _opponent)),
+        OutOfRuleCardDrag(
+            playerId: _opponent,
+            zone: OutOfRuleZone.freeArea,
+            card: _card('a', owner: _opponent)),
+      ]) {
+        final move =
+            moveToOutOfRule(from, playerId: _self, to: OutOfRuleZone.freeArea);
+        expect((move as MoveRefused).reason, isNotEmpty);
+      }
     });
   });
 }
+
+/// 合成の前半（中継）が手札へ向いていることを見る。
+///
+/// ★★ 中継先を型ごとに書き分けない ★★
+/// 4 種の中継アクションで `to` の意味は同じなので、1 か所で読む。
+Zone? _relayTo(GameAction action) => switch (action) {
+      MoveMemberOut(:final to) => to,
+      MoveFromResolution(:final to) => to,
+      MoveFromOutOfRule(:final to) => to,
+      MoveCard(:final to) => to,
+      _ => null,
+    };
