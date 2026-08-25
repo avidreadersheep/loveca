@@ -39,6 +39,24 @@
 /// ★★ 測る前に「削らないもの」を決めてある ★★
 /// 置き場 11 + 共有 1 + ルール外 2（盤面設計メモ §4-1）。
 /// **収まるよう表示を削ってから測ると検算にならない。**
+///
+/// ★★ 2026-08-25 追記（M-B4）: 条件が 2 つ増えた ★★
+///
+/// | 条件 | なぜ測るか |
+/// |---|---|
+/// | ★**起動時の警告の帯**（決定 D89） | Navigator の**上**に段が 1 本増えた。★「増えないはず」で済ませない —— M-B2 と M-B3 で 2 回とも実際に動いた（D83 / D86） |
+/// | ★**モード**（決定 D88） | ソロは袖 1 本と行 3 段が消える。未決 **U20** |
+///
+/// ★★ U20 の判断基準は測る前に宣言してある ★★
+/// **ソロの下限がローカル対戦の下限より 112 論理px 以上小さいときだけ**
+/// `BoardLayout.minWidth` をモードの関数にする。それ未満なら 1100 据え置き。
+/// ★112 = 袖 1 本（`kBoardSlotWidth` 76 + 24）+ 間隔 12 ——
+/// **ソロで横方向から消えるのは袖 1 本だけ**である（行 3 段は縦に消える）。
+/// 中央列の幅は自分側のメンバー 3 スロットが決めるので不変、
+/// (b-3) の 696 は自分の手札 6 枚（6.2.1.5）が決めるので不変。
+/// → 袖 1 本ぶんも下がらないなら、下限を決めているのは**モードに依存しない部品**であり、
+/// 前提を 2 つに増やす代償（測定・記録が 2 系統になる /
+/// D75 の「盤面の判断点は viewerId 1 つ」に穴が開く）に**見合うものが無い。**
 library;
 
 import 'dart:convert';
@@ -47,6 +65,7 @@ import 'package:flutter/material.dart' hide Card;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loveca_core/loveca_core.dart' hide Card;
 import 'package:loveca_ui/src/state/board_mode.dart';
+import 'package:loveca_ui/src/boot/boot_steps.dart';
 import 'package:loveca_ui/src/data/card_image_source.dart';
 import 'package:loveca_ui/src/state/board_notice.dart';
 import 'package:loveca_ui/src/state/game_store.dart';
@@ -55,6 +74,7 @@ import 'package:loveca_ui/src/ui/board/board_page.dart';
 import 'package:loveca_ui/src/ui/board/board_slot.dart';
 import 'package:loveca_ui/src/ui/board/board_start_dialog.dart';
 import 'package:loveca_ui/src/ui/board/board_view.dart';
+import 'package:loveca_ui/src/ui/common/notice_bar.dart';
 
 import '../support/board_fixture.dart';
 import '../support/fake_deck_repository.dart';
@@ -176,6 +196,98 @@ Future<double> _search(
   return hi;
 }
 
+/// 盤面ごと（`AppBar` / 進行バー / 帯 / 集計を含む）を実寸で立てる。
+///
+/// ★[bootNotices] は**起動時の警告の帯**（決定 D89）。盤面の帯とは別物である。
+Future<void> _pumpBoard(
+  WidgetTester tester, {
+  required Size size,
+  required BoardMode mode,
+  List<BootNotice> bootNotices = const [],
+}) async {
+  tester.view.physicalSize = size;
+  await pumpInAppScope(
+    tester,
+    BoardPage(
+      initialState: _crowded(),
+      viewerId: kSelfPlayerId,
+      mode: mode,
+      seed: 1234567890,
+      // ★盤面の帯 2 本（最も混む状態）。
+      notices: const [
+        MulliganNotImplemented(),
+        DeckNotValid(playerLabel: '自分', issues: []),
+      ],
+    ),
+    decks: FakeDeckRepository(),
+    catalog: realShapedCatalog(),
+    notices: bootNotices,
+  );
+}
+
+/// 起動時の警告 1 件（決定 D89 の文面）。★帯が出ている状態を作る。
+const _bootNotices = [
+  BootNotice(
+    'カードデータの置き場所が見つかりません。カード画像は 1 枚も表示されません',
+    details: ['設定画面で「カードデータの場所」を指定してください。'],
+  ),
+];
+
+/// 横の下限を測る（★盤面以外が溢れない最小幅）。
+Future<double> _measureWidth(
+  WidgetTester tester, {
+  required BoardMode mode,
+  List<BootNotice> bootNotices = const [],
+  void Function(List<String> where)? onOverflow,
+}) {
+  Future<bool> overflowsAt(double width) async {
+    final where = await _overflowsWhere(tester, () async {
+      await _pumpBoard(
+        tester,
+        size: Size(width, 1400),
+        mode: mode,
+        bootNotices: bootNotices,
+      );
+    });
+    if (where.isNotEmpty) onOverflow?.call(where);
+    return where.isNotEmpty;
+  }
+
+  return _search(overflowsAt, low: 200, high: 1600);
+}
+
+/// 縦の下限を測る（★盤面以外が縦に溢れない最小の高さ = 未決 U19）。
+///
+/// ★★ [low] は「必ず溢れる高さ」でなければならない ★★
+/// 実測（2026-08-25 / M-B4）: **起動時の警告の帯を出した状態では、高さ 120 で
+/// 溢れが 1 件も報告されない**（130 以上では報告される）。原因は追っていないが、
+/// **検知手段が極端な入力で黙る**という点で D83（溢れは `RenderObject` ごとに
+/// 1 回しか報告されない）と同じ型である。
+/// ★[_search] の「狭すぎれば溢れるはず」の検査がこれを捕まえた。**外さないこと。**
+Future<double> _measureHeight(
+  WidgetTester tester, {
+  required BoardMode mode,
+  required double width,
+  double low = 120,
+  List<BootNotice> bootNotices = const [],
+  void Function(List<String> where)? onOverflow,
+}) {
+  Future<bool> overflowsAt(double height) async {
+    final where = await _overflowsWhere(tester, () async {
+      await _pumpBoard(
+        tester,
+        size: Size(width, height),
+        mode: mode,
+        bootNotices: bootNotices,
+      );
+    });
+    if (where.isNotEmpty) onOverflow?.call(where);
+    return where.isNotEmpty;
+  }
+
+  return _search(overflowsAt, low: low, high: 1400);
+}
+
 void main() {
   testWidgets('★★ U16 (1): 置き場が横スクロールなしで収まる最小幅 ★★',
       (tester) async {
@@ -242,31 +354,12 @@ void main() {
     addTearDown(tester.view.reset);
 
     var lastWhere = const <String>[];
-    Future<bool> overflowsAt(double width) async {
-      final where = await _overflowsWhere(tester, () async {
-          tester.view.physicalSize = Size(width, 1400);
-          await pumpInAppScope(
-            tester,
-            BoardPage(
-              initialState: _crowded(),
-              viewerId: kSelfPlayerId,
-              mode: BoardMode.localVersus,
-              seed: 1234567890,
-              // ★帯 2 本（最も混む状態）。
-              notices: const [
-                MulliganNotImplemented(),
-                DeckNotValid(playerLabel: '自分', issues: []),
-              ],
-            ),
-            decks: FakeDeckRepository(),
-            catalog: realShapedCatalog(),
-          );
-      });
-      if (where.isNotEmpty) lastWhere = where;
-      return where.isNotEmpty;
-    }
-
-    final measured = await _search(overflowsAt, low: 200, high: 1600);
+    // ★★ 起動時の警告の帯は出さない条件で測る（決定 D89 / §11-5 の 1）★★
+    final measured = await _measureWidth(
+      tester,
+      mode: BoardMode.localVersus,
+      onOverflow: (where) => lastWhere = where,
+    );
 
     // ignore: avoid_print
     print('★U16 測定 (2)（テスト用フォント）: '
@@ -364,34 +457,15 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
 
-    final crowded = _crowded();
-    // ★整理の帯にも出させる（10.3 / 10.6 の両方が立つ盤面にしてある）。
     var lastWhere = const <String>[];
 
-    Future<bool> overflowsAt(double height) async {
-      final where = await _overflowsWhere(tester, () async {
-        tester.view.physicalSize = Size(kBoardMinWidth, height);
-        await pumpInAppScope(
-          tester,
-          BoardPage(
-            initialState: crowded,
-            viewerId: kSelfPlayerId,
-            mode: BoardMode.localVersus,
-            seed: 1234567890,
-            notices: const [
-              MulliganNotImplemented(),
-              DeckNotValid(playerLabel: '自分', issues: []),
-            ],
-          ),
-          decks: FakeDeckRepository(),
-          catalog: realShapedCatalog(),
-        );
-      });
-      if (where.isNotEmpty) lastWhere = where;
-      return where.isNotEmpty;
-    }
-
-    final measured = await _search(overflowsAt, low: 120, high: 1400);
+    // ★★ 起動時の警告の帯は出さない条件で測る（決定 D89 / §11-5 の 2）★★
+    final measured = await _measureHeight(
+      tester,
+      mode: BoardMode.localVersus,
+      width: kBoardMinWidth,
+      onOverflow: (where) => lastWhere = where,
+    );
 
     // ignore: avoid_print
     print('★U16 測定 (4)（テスト用フォント）: '
@@ -400,7 +474,11 @@ void main() {
 
     // ★★ どの段が高さを食っているかを内訳で残す ★★
     //   ★次に判断する人が測り直さずに済むように。
-    await overflowsAt(measured);
+    await _pumpBoard(
+      tester,
+      size: Size(kBoardMinWidth, measured),
+      mode: BoardMode.localVersus,
+    );
     for (final key in const [
       'progress-bar',
       'tidy-notices',
@@ -515,5 +593,254 @@ void main() {
 
     expect(hi, lessThanOrEqualTo(kBoardMinWidth),
         reason: '★採用値では初期手札が全部見えない');
+  });
+
+  // =========================================================================
+  // ★★ M-B4 で増えた 2 つの条件（決定 D88 / D89）★★
+  //
+  // ★★ 「増えないはず」で済ませない ★★
+  //   M-B2 と M-B3 で「増やさないはず」が **2 回とも実際に動いた**（D83 / D86）。
+  // =========================================================================
+
+  testWidgets('★★ U19 (帯あり): 起動時の警告が出ている状態の縦の下限 ★★',
+      (tester) async {
+    // ★★ 別の値として記録する（`docs/UI設計メモ.md` §11-5 の 3）★★
+    //   帯は Navigator の**上**にあるので、盤面のどの段よりも先に高さを取る。
+    //   ★「帯 1 本ぶん増える」ことを予想として書いてあるが、**実測で確かめる。**
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    var lastWhere = const <String>[];
+    final measured = await _measureHeight(
+      tester,
+      mode: BoardMode.localVersus,
+      width: kBoardMinWidth,
+      // ★120 では溢れが報告されない（この関数の doc）。必ず溢れる高さから始める。
+      low: 200,
+      bootNotices: _bootNotices,
+      onOverflow: (where) => lastWhere = where,
+    );
+
+    // ignore: avoid_print
+    print('★U19 測定（帯あり / テスト用フォント）: '
+        '盤面以外が縦に溢れない最小の高さ = $measured 論理px'
+        '（直前に溢れた向き: ${lastWhere.join(' / ')}）');
+
+    // ★内訳: 帯そのものの高さ。★次に判断する人が測り直さずに済むように。
+    await _pumpBoard(
+      tester,
+      size: Size(kBoardMinWidth, measured),
+      mode: BoardMode.localVersus,
+      bootNotices: _bootNotices,
+    );
+    expect(find.byKey(const ValueKey('boot-notice-bar')), findsOneWidget,
+        reason: '★前提: 帯が出ている状態を測っている');
+    // ignore: avoid_print
+    print('  ★内訳: 起動時の警告の帯 = '
+        '${tester.getSize(find.byType(NoticeBar)).height} 論理px'
+        '（帯なしの 496 との差が帯 1 本ぶん）');
+
+    expect(measured, greaterThan(201),
+        reason: '★下限のすぐ上に収束している = 溢れが報告されていない');
+  });
+
+  testWidgets('★★ U20: ソロの下限（横 3 つと縦）★★', (tester) async {
+    // ★★ 判断基準はこのファイルの doc に**測る前に**書いてある ★★
+    //   ソロの下限がローカル対戦より 112 論理px 以上小さいときだけ分ける。
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    // ---- (b-2) 盤面以外が溢れない最小幅 ----
+    final width = await _measureWidth(tester, mode: BoardMode.solo);
+    // ---- 縦 ----
+    final height = await _measureHeight(
+      tester,
+      mode: BoardMode.solo,
+      width: kBoardMinWidth,
+    );
+
+    // ignore: avoid_print
+    print('★U20 測定（ソロ / テスト用フォント）: '
+        '盤面以外が溢れない最小幅 = $width 論理px / '
+        '縦に溢れない最小の高さ = $height 論理px');
+
+    expect(width, greaterThan(201));
+    expect(height, greaterThan(121));
+
+    // ★★ 採用値がすべての下限を上回る（D83 と同じ検算）★★
+    expect(kSoloBoardMinWidth, greaterThan(width));
+    expect(kSoloBoardMinWidth, greaterThan(height));
+  });
+
+  testWidgets('★★ U20 の判断: ソロは袖 1 本ぶんだけ狭い（決定 D88）★★',
+      (tester) async {
+    // ★★ 「分ける」と決めた根拠を数で固定する ★★
+    //   判断基準は `board_min_width_test.dart` の doc に**測る前に**書いてある ——
+    //   ソロの下限が 112（袖 1 本）以上小さいときだけ分ける。
+    expect(kBoardSleeveWidth, 112, reason: '★袖 1 本 = 76 + 24 + 12');
+    expect(kBoardMinWidth - kSoloBoardMinWidth, kBoardSleeveWidth,
+        reason: '★引いたのは袖 1 本ぶんだけである（勝手に丸めていない）');
+
+    // ★★ 実際にモードで切り替わっていること（定数を置いただけにしない）★★
+    expect(boardMinWidthOf(BoardMode.solo), kSoloBoardMinWidth);
+    expect(boardMinWidthOf(BoardMode.localVersus), kBoardMinWidth);
+
+    // ★★ 画面から通した経路で効いていること ★★
+    //   ★ソロの最小幅とローカル対戦の最小幅の**間**の窓幅で見る。
+    //   ローカル対戦は横スクロールになり、ソロはならない。
+    const between = (kSoloBoardMinWidth + kBoardMinWidth) / 2;
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    double boardWidthAt(BoardMode mode) =>
+        tester.getSize(find.byType(BoardLayout)).width;
+
+    for (final (mode, scrolls) in const [
+      (BoardMode.solo, false),
+      (BoardMode.localVersus, true),
+    ]) {
+      await _pumpBoard(tester, size: const Size(between, 1400), mode: mode);
+      final inner = tester.getSize(
+        find.descendant(
+          of: find.byType(BoardLayout),
+          matching: find.byType(SizedBox),
+        ).first,
+      );
+      expect(inner.width > boardWidthAt(mode), scrolls,
+          reason: '★$mode で横スクロールの有無が想定と違う');
+    }
+  });
+
+  testWidgets('★★ U20: ソロの (b-1) 置き場が横スクロールなしで収まる最小幅 ★★',
+      (tester) async {
+    // ★★ ソロで横方向から消えるのは袖 1 本だけ ★★
+    //   予想は「ローカル対戦の 506 から袖 1 本（112）ぶん下がる」。★実測する。
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(3000, 2400);
+    addTearDown(tester.view.reset);
+
+    final state = _crowded();
+    final store = GameStore(
+      initialState: state,
+      viewerId: kSelfPlayerId,
+      mode: BoardMode.solo,
+      seed: 1,
+      cards: realShapedCatalog().cards,
+      rng: SeededRng(1),
+    );
+    addTearDown(store.dispose);
+
+    Future<bool> overflowsAt(double width) => _overflows(tester, () async {
+          await tester.pumpWidget(
+            MaterialApp(
+              home: Scaffold(
+                body: Align(
+                  alignment: Alignment.topLeft,
+                  child: SizedBox(
+                    width: width,
+                    height: 2200,
+                    child: BoardView(
+                      state: state,
+                      viewerId: kSelfPlayerId,
+                      mode: BoardMode.solo,
+                      catalog: realShapedCatalog(),
+                      imageSource: const LocalDirectoryCardImageSource(null),
+                      store: store,
+                      // ★★ クランプを外して測る（本番では渡さない）★★
+                      child: const BoardLayout(minWidth: 0),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        });
+
+    final measured = await _search(overflowsAt, low: 100, high: 1600);
+
+    // ignore: avoid_print
+    print('★U20 測定（ソロ / テスト用フォント）: '
+        '置き場が横スクロールなしで収まる最小幅 = $measured 論理px');
+
+    expect(measured, greaterThan(101),
+        reason: '★下限のすぐ上に収束している = 溢れが報告されていない');
+  });
+
+  testWidgets('★★ U20: ソロでも (b-3) 696 は変わらない（条文由来）★★',
+      (tester) async {
+    // ★★ 6.2.1.5 の初期手札 6 枚が同時に見える幅は**自分の手札**が決める ★★
+    //   ソロでも相手が居ても同じ帯なので、下がらないはずである。★確かめる。
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(3000, 2400);
+    addTearDown(tester.view.reset);
+
+    final previous = FlutterError.onError;
+    FlutterError.onError = (details) {
+      if (!details.exceptionAsString().contains('overflowed')) {
+        previous?.call(details);
+      }
+    };
+    addTearDown(() => FlutterError.onError = previous);
+
+    final state = handcraftedBoard(selfZones: const {Zone.hand: _fullHand});
+    final store = GameStore(
+      initialState: state,
+      viewerId: kSelfPlayerId,
+      mode: BoardMode.solo,
+      seed: 1,
+      cards: realShapedCatalog().cards,
+      rng: SeededRng(1),
+    );
+    addTearDown(store.dispose);
+
+    Future<bool> allVisibleAt(double width) async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.topLeft,
+              child: SizedBox(
+                width: width,
+                height: 2200,
+                child: BoardView(
+                  state: state,
+                  viewerId: kSelfPlayerId,
+                  mode: BoardMode.solo,
+                  catalog: realShapedCatalog(),
+                  imageSource: const LocalDirectoryCardImageSource(null),
+                  store: store,
+                  child: const BoardLayout(minWidth: 0),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final strip =
+          tester.getRect(find.byKey(const ValueKey('hand-$kSelfPlayerId')));
+      final last = state.playerOf(kSelfPlayerId).hand.last;
+      final finder = find.byKey(ValueKey('board-card-${last.instanceId}'));
+      if (finder.evaluate().isEmpty) return false;
+      return tester.getRect(finder).right <= strip.right + 0.5;
+    }
+
+    expect(await allVisibleAt(300), isFalse, reason: '★狭ければ見えないはず');
+    expect(await allVisibleAt(1600), isTrue);
+
+    var lo = 300.0;
+    var hi = 1600.0;
+    while (hi - lo > 1) {
+      final mid = ((lo + hi) / 2).roundToDouble();
+      if (await allVisibleAt(mid)) {
+        hi = mid;
+      } else {
+        lo = mid;
+      }
+    }
+
+    // ignore: avoid_print
+    print('★U20 測定（ソロ）: 6.2.1.5 の初期手札 6 枚が同時に見える最小幅 = $hi 論理px');
   });
 }
