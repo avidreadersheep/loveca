@@ -274,6 +274,99 @@ void main() {
     });
   });
 
+  group('★★ 「エネルギーを1枚出す」は両プレイヤーの袖に出る（決定 D87）★★', () {
+    // ★★ M-B1 は視点側の袖にしか渡していなかった ★★
+    //   一人回しは 1 人が両プレイヤーを操作する（D77 / D84）のに、相手側の
+    //   エネルギーを手で出すには視点を切り替えるしかなかった。
+    //   ★M-B3 でメインデッキの口を両側に出したことでこの非対称が見えたので直した。
+    Future<void> pumpBoard(WidgetTester tester, GameState state) async {
+      tester.view.physicalSize = const Size(1800, 1600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+
+      await pumpInAppScope(
+        tester,
+        BoardPage(initialState: state, viewerId: kSelfPlayerId, seed: 3),
+        decks: FakeDeckRepository(),
+        catalog: realShapedCatalog(),
+      );
+    }
+
+    /// ★エネルギーデッキ置き場（4.9）の残り枚数。★どちらの山から出たかが分かる。
+    ///   （エネルギー置き場の見出しは箱の**兄弟**なので `descendant` で辿れない）
+    Finder deckCount(String playerId, int count) => find.descendant(
+          of: find.byKey(ValueKey('pile-energy-$playerId')),
+          matching: find.text('$count'),
+        );
+
+    testWidgets('両側にボタンがあり、どちらも押せる', (tester) async {
+      await pumpBoard(
+        tester,
+        handcraftedBoard(
+          selfZones: const {
+            Zone.energyDeck: [energyPrinting, energyPrinting],
+          },
+          opponentZones: const {
+            Zone.energyDeck: [energyPrinting, energyPrinting],
+          },
+        ),
+      );
+
+      for (final playerId in [kSelfPlayerId, kOpponentPlayerId]) {
+        final button = find.byKey(ValueKey('draw-energy-$playerId'));
+        expect(button, findsOneWidget, reason: '★$playerId 側のボタンが無い');
+        expect(tester.widget<FilledButton>(button).onPressed, isNotNull);
+      }
+    });
+
+    testWidgets('★★ 相手側を押すと増えるのは相手のエネルギー ★★', (tester) async {
+      await pumpBoard(
+        tester,
+        handcraftedBoard(
+          selfZones: const {
+            Zone.energyDeck: [energyPrinting, energyPrinting],
+          },
+          opponentZones: const {
+            Zone.energyDeck: [energyPrinting, energyPrinting],
+          },
+        ),
+      );
+
+      await tester
+          .tap(find.byKey(const ValueKey('draw-energy-$kOpponentPlayerId')));
+      await tester.pumpAndSettle();
+
+      expect(deckCount(kOpponentPlayerId, 1), findsOneWidget,
+          reason: '★相手のエネルギーデッキが 2 → 1');
+      // ★対: 自分のエネルギーデッキは減っていない（取り違えの検査）。
+      expect(deckCount(kSelfPlayerId, 2), findsOneWidget);
+    });
+
+    testWidgets('★片側だけ空なら、そちらだけ無効になる', (tester) async {
+      await pumpBoard(
+        tester,
+        handcraftedBoard(
+          selfZones: const {
+            Zone.energyDeck: [energyPrinting],
+          },
+        ),
+      );
+
+      expect(
+        tester
+            .widget<FilledButton>(
+                find.byKey(const ValueKey('draw-energy-$kSelfPlayerId')))
+            .onPressed,
+        isNotNull,
+      );
+      // ★消さずに無効にして理由を出す。
+      final empty =
+          find.byKey(const ValueKey('draw-energy-$kOpponentPlayerId'));
+      expect(empty, findsOneWidget);
+      expect(tester.widget<FilledButton>(empty).onPressed, isNull);
+    });
+  });
+
   group('★ seed を画面に出す（決定 D79）', () {
     testWidgets('AppBar に seed が出る', (tester) async {
       tester.view.physicalSize = const Size(1600, 1200);

@@ -160,8 +160,10 @@ class _BoardPageState extends State<BoardPage> {
               const BoardSummaryPanel(),
               Expanded(
                 child: BoardLayout(
-                  onDrawEnergy: store.canDrawEnergy(board.viewerId)
-                      ? () => store.dispatch(DrawEnergy(playerId: board.viewerId))
+                  // ★★ 両プレイヤーぶんを渡す（決定 D87）★★
+                  //   一人回しは 1 人が両方を操作する（D77 / D84）。
+                  onDrawEnergy: (playerId) => store.canDrawEnergy(playerId)
+                      ? () => store.dispatch(DrawEnergy(playerId: playerId))
                       : null,
                 ),
               ),

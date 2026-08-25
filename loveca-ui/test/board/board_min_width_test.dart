@@ -182,10 +182,7 @@ void main() {
                       imageSource: const LocalDirectoryCardImageSource(null),
                       store: store,
                       // ★★ クランプを外して測る（本番では渡さない）★★
-                      child: const BoardLayout(
-                        onDrawEnergy: null,
-                        minWidth: 0,
-                      ),
+                      child: const BoardLayout(minWidth: 0),
                     ),
                   ),
                 ),
@@ -348,7 +345,7 @@ void main() {
                   catalog: realShapedCatalog(),
                   imageSource: const LocalDirectoryCardImageSource(null),
                   store: store,
-                  child: const BoardLayout(onDrawEnergy: null, minWidth: 0),
+                  child: const BoardLayout(minWidth: 0),
                 ),
               ),
             ),

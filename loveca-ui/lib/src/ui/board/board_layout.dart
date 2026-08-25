@@ -76,12 +76,23 @@ const double _kResolutionWidth = kBoardSlotWidth * 0.6;
 class BoardLayout extends StatelessWidget {
   const BoardLayout({
     super.key,
-    required this.onDrawEnergy,
+    this.onDrawEnergy = _noDrawEnergy,
     this.minWidth = kBoardMinWidth,
   });
 
-  /// 「エネルギーを1枚出す」（決定 D73 / D81）。null なら押せない。
-  final VoidCallback? onDrawEnergy;
+  /// 「エネルギーを1枚出す」（決定 D73 / D81 / D87）。
+  ///
+  /// ★★ 両プレイヤーぶんを受け取る ★★
+  /// M-B1 は視点側の袖にしか渡していなかった。**一人回しは 1 人が両プレイヤーを
+  /// 操作する**（D77 / D84）ので、相手側のエネルギーを手で出すには視点を
+  /// 切り替えるしかなかった。★M-B3 でメインデッキの口を両側に出したことで
+  /// この非対称が初めて目に見えるようになったため、同時に直した（決定 D87）。
+  ///
+  /// ★そのプレイヤーが出せないときは null を返す（ボタンは消さず無効になる）。
+  final VoidCallback? Function(String playerId) onDrawEnergy;
+
+  /// 既定は「どちらも押せない」。★テストが素で組むときに使う。
+  static VoidCallback? _noDrawEnergy(String playerId) => null;
 
   /// ★★ 未決 **U16** を実測するための口である ★★
   /// 既定は [kBoardMinWidth]。**本番でこれを渡さない。**
@@ -121,7 +132,8 @@ class BoardLayout extends StatelessWidget {
                     // ---- 左の袖: 相手 ----
                     _Sleeve(
                       playerId: view.opponent.playerId,
-                      onDrawEnergy: null,
+                      // ★相手側も操作できる（D77 / D84 / 決定 D87）。
+                      onDrawEnergy: onDrawEnergy(view.opponent.playerId),
                     ),
                     const SizedBox(width: 12),
 
@@ -173,7 +185,7 @@ class BoardLayout extends StatelessWidget {
                     // ---- 右の袖: 自分 ----
                     _Sleeve(
                       playerId: view.viewer.playerId,
-                      onDrawEnergy: onDrawEnergy,
+                      onDrawEnergy: onDrawEnergy(view.viewer.playerId),
                     ),
                   ],
                 ),
@@ -233,14 +245,14 @@ class _Sleeve extends StatelessWidget {
             onTap: showEnergyDeckMenu,
           ),
 
-          if (onDrawEnergy != null || player.energyDeck.isEmpty) ...[
-            const SizedBox(height: 4),
-            _DrawEnergyButton(
-              playerId: playerId,
-              onPressed: onDrawEnergy,
-              deckIsEmpty: player.energyDeck.isEmpty,
-            ),
-          ],
+          // ★★ 両プレイヤーの袖に恒久で出す（決定 D81 / D87）★★
+          //   ★条件つきで出したり消したりしない。空なら無効にして理由を出す。
+          const SizedBox(height: 4),
+          _DrawEnergyButton(
+            playerId: playerId,
+            onPressed: onDrawEnergy,
+            deckIsEmpty: player.energyDeck.isEmpty,
+          ),
 
           const SizedBox(height: 8),
           _ZonePile(
