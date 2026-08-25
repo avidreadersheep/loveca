@@ -10,7 +10,8 @@
 /// ★★ 「R2 から消えた」と「全画面に出た」を取り違えない ★★
 /// 一本化の対象は `BootNotice` を出す **7 経路**（`boot_controller.dart`）で、
 /// **1 つも消えないこと**をここで固定する。
-/// ★`MulliganNotImplemented` / `DeckNotValid` は `BoardNotice`（盤面の帯）であって
+/// ★`DeckNotValid`（と、★2026-08-26 に廃止した `MulliganNotImplemented` / D93-4）は
+/// `BoardNotice`（盤面の帯）であって
 /// `BootNotice` ではなく、R2 の帯には元から出ていない。混ぜない。
 ///
 /// ★★ 2 つの群は見ているものが違う ★★
