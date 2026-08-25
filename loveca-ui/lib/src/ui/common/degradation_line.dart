@@ -13,7 +13,7 @@
 /// |---|---|---|
 /// | 検索語ごと（`CardBrowseStore`） | `SearchDegradation` | 検索結果ヘッダ |
 /// | 編集セッションごと（`DeckEditStore`） | `DeckEditDegradation` | デッキペイン |
-/// | どの Store にも属さない（起動時に決まり以降不変） | `BootNotice` | R2 の `NoticeBar` |
+/// | どの Store にも属さない（起動時に決まり以降不変） | `BootNotice` | ★**全ルートの `NoticeBar`**（`BootGate` に一本化 / **決定 D89**） |
 ///
 /// ★★ 1 縮退 = 1 行で、対処まで書く ★★
 /// 区別がつかないと、どれも同じ「なんか出てる」になって無視される。

@@ -6,7 +6,7 @@
 /// |---|---|---|
 /// | 検索語ごと | `SearchDegradation` | 検索結果ヘッダ |
 /// | 編集セッションごと | `DeckEditDegradation` | デッキペイン |
-/// | 起動時に決まり以降不変 | `BootNotice` | R2 の `NoticeBar` |
+/// | 起動時に決まり以降不変 | `BootNotice` | ★**全ルートの `NoticeBar`**（`BootGate` に一本化 / **決定 D89**） |
 /// | ★**盤面セッションごと（新設）** | **[BoardNotice]** | 盤面の帯 |
 ///
 /// ★`sealed` を文脈ごとに分ける理由は網羅性検査である（決定 D53）。
