@@ -494,6 +494,20 @@ void main() {
     print('  ★内訳 (4): AppBar = '
         '${tester.getSize(find.byType(AppBar)).height} 論理px');
 
+    // ★★ M-B5 の段が本当にこの測定に入っていること ★★
+    //   ★「増えなかった」は「入っていなかった」と見分けがつかない（D-10）。
+    //   巻き戻しのボタンは進行バーの `Wrap` に入るので、**入っていて 48 のまま**
+    //   であることを確かめてから「変わらなかった」と書く。
+    expect(find.byKey(const ValueKey('undo-controls')), findsOneWidget,
+        reason: '★M-B5 の段が測定に入っていない');
+    //   ★U19 が動かなかった理由もここで読める —— 巻き戻しのボタンは
+    //     「次へ」と同じ高さなので、`Wrap` が 1 行のままなら段は伸びない。
+    expect(
+      tester.getSize(find.byKey(const ValueKey('progress-bar'))).height,
+      tester.getSize(find.byKey(const ValueKey('undo-controls'))).height,
+      reason: '★進行バーが 1 行のまま（折り返していれば行数ぶん高くなる）',
+    );
+
     // ★★ 溢れの下限に張りついていないこと（(1)(2) と同じ検算）★★
     expect(measured, greaterThan(121),
         reason: '★下限のすぐ上に収束している = 溢れが報告されていない');
