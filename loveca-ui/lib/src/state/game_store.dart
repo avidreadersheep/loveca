@@ -101,6 +101,23 @@ class BoardTidyLog {
   final List<String> unknownCardNumbers;
 
   bool get isEmpty => applied.isEmpty && warnings.isEmpty && excludedCount == 0;
+
+  /// 帯に出す行。★描画は `ui/board/board_notice_bar.dart` が持つ。
+  List<BoardNotice> get notices {
+    final ruleRef = cursor.step.ruleRef;
+    return [
+      if (applied.isNotEmpty)
+        RuleProcessApplied(stepRuleRef: ruleRef, kinds: applied),
+      if (warnings.isNotEmpty)
+        RuleProcessNotAutomatic(stepRuleRef: ruleRef, kinds: warnings),
+      if (excludedCount > 0)
+        TidyExcluded(
+          stepRuleRef: ruleRef,
+          count: excludedCount,
+          cardNumbers: unknownCardNumbers,
+        ),
+    ];
+  }
 }
 
 /// 盤面 1 セッションぶんの状態。

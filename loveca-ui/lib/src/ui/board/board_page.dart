@@ -1,4 +1,4 @@
-/// R7 盤面（決定 D75 / D77 / D79 / D81 / 盤面設計メモ §4 / §11）.
+/// R7 盤面（決定 D75 / D77 / D79 / D81 / D86 / 盤面設計メモ §4 / §11）.
 ///
 /// ★★ ルートを増やすのは R7 だけ ★★
 /// R3〜R6 は同じ一覧ペイン・同じ詳細ペインを器だけ替えて置いているが、
@@ -9,10 +9,17 @@
 /// **盤面は 1 ペインに縮退できない**（置き場が同時に見えないと物理操作にならない）。
 /// 使うと「1 ペインのとき盤面はどうなるか」という**答えの無い分岐**が生まれる。
 ///
-/// ★★ M-B1 の範囲 ★★
-/// 層が通ることの確認だけ。ドラッグ（M-B2）・進行（M-B3）・巻き戻し（M-B4）・
-/// 補助コマンド（M-B5）はここに書かない。
-/// 唯一の操作が「エネルギーを1枚出す」で、これは**恒久の口**である（決定 D73 / D81）。
+/// ★★ 縦の並びと、それぞれの寿命 ★★
+///
+/// | 段 | 中身 | 寿命 |
+/// |---|---|---|
+/// | 進行バー | ターン / フェイズ / ステップ / 手番 / 次へ / 直前の操作 | 毎操作 |
+/// | 直前の整理 | 10.4・10.5 で実行したもの / ★10.3・10.6 の警告 | ★**整理が起きるまで残る** |
+/// | 常設の帯 | マリガン未実装・6.1 違反・盤面から導く警告 | セッション / 盤面の状態 |
+/// | 集計 | 8.3.10 / 8.3.12 / 8.3.14 / 8.4.2 | 盤面の状態 |
+/// | 盤面 | `BoardLayout` | — |
+///
+/// ★**警告の帯は折りたためない。**畳めるのは集計だけ（黙って落とさないため）。
 library;
 
 import 'package:flutter/material.dart';
@@ -23,8 +30,9 @@ import '../../state/app_scope.dart';
 import '../../state/board_notice.dart';
 import '../../state/game_store.dart';
 import '../common/card_drag.dart';
-import '../common/degradation_line.dart';
 import 'board_layout.dart';
+import 'board_notice_bar.dart';
+import 'board_progress.dart';
 import 'board_view.dart';
 
 class BoardPage extends StatefulWidget {
@@ -88,6 +96,7 @@ class _BoardPageState extends State<BoardPage> {
   Widget build(BuildContext context) {
     final store = _store!;
     final env = AppScope.of(context).environment;
+    final scheme = Theme.of(context).colorScheme;
 
     return ValueListenableBuilder<BoardState>(
       valueListenable: store,
@@ -120,8 +129,19 @@ class _BoardPageState extends State<BoardPage> {
           body: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _ProgressBar(state: board.state),
-              if (board.notices.isNotEmpty) _BoardNoticeBar(notices: board.notices),
+              BoardProgressBar(board: board, store: store),
+              // ★整理の結果は「起きたときだけ差し替わり、次の操作では消えない」。
+              BoardNoticeBar(
+                key: const ValueKey('tidy-notices'),
+                notices: board.tidy?.notices ?? const [],
+                background: scheme.tertiaryContainer,
+                heading: '直前の整理（9.5.3 のチェックタイミング）',
+              ),
+              BoardNoticeBar(
+                key: const ValueKey('board-notices'),
+                notices: board.notices,
+                background: scheme.secondaryContainer,
+              ),
               Expanded(
                 child: BoardLayout(
                   onDrawEnergy: store.canDrawEnergy(board.viewerId)
@@ -165,86 +185,4 @@ class _SeedChip extends StatelessWidget {
           label: Text('seed $seed'),
         ),
       );
-}
-
-/// 進行バー。ターン / フェイズ / ステップ（条番号）/ 手番。
-///
-/// ★★ 手番は `turnPlayerOf` から取る。viewerId から取らない（決定 D75）★★
-/// 7.2.1.2 により手番を指定しないフェイズ（8.2 / 8.4）のアクティブプレイヤーは
-/// **先攻**であって視点ではない。
-class _ProgressBar extends StatelessWidget {
-  const _ProgressBar({required this.state});
-
-  final GameState state;
-
-  @override
-  Widget build(BuildContext context) {
-    final view = BoardView.of(context);
-    final theme = Theme.of(context);
-    final turnPlayer = turnPlayerOf(state, state.cursor.phase);
-
-    return Container(
-      color: theme.colorScheme.surfaceContainerHighest,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      child: Row(
-        key: const ValueKey('progress-bar'),
-        children: [
-          Text('ターン ${state.turnNumber}',
-              style: theme.textTheme.labelLarge),
-          const SizedBox(width: 16),
-          // ★条番号をそのまま出す。ステップ ID は条番号そのもの（3a-3）。
-          Text('${state.cursor.phase.name} / ${state.cursor.step.ruleRef}',
-              style: theme.textTheme.labelMedium),
-          const SizedBox(width: 16),
-          Text(
-            turnPlayer == null
-                ? '手番: なし（7.2.1.2）'
-                : '手番: ${view.labelOf(turnPlayer)}',
-            style: theme.textTheme.labelMedium,
-          ),
-          const SizedBox(width: 16),
-          Text('先攻: ${view.labelOf(state.firstPlayerId)}',
-              style: theme.textTheme.labelMedium),
-        ],
-      ),
-    );
-  }
-}
-
-/// 盤面の帯（盤面設計メモ §10-3 の 4 つ目の系統）。
-///
-/// ★描画は `ui/common/degradation_line.dart` を共有する。型は共有しない。
-class _BoardNoticeBar extends StatelessWidget {
-  const _BoardNoticeBar({required this.notices});
-
-  final List<BoardNotice> notices;
-
-  @override
-  Widget build(BuildContext context) => Container(
-        width: double.infinity,
-        color: Theme.of(context).colorScheme.secondaryContainer,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            for (final notice in notices) _line(notice),
-          ],
-        ),
-      );
-
-  Widget _line(BoardNotice notice) => switch (notice) {
-        MulliganNotImplemented() => const DegradationLine(
-            icon: Icons.construction_outlined,
-            severity: DegradationSeverity.report,
-            // ★暫定であることを盤面から読めるようにする。M-B5 で消す。
-            text: '6.2.1.6 のマリガンはまだありません。'
-                'この盤面は 0 枚として開始しています。',
-          ),
-        DeckNotValid(:final playerLabel, :final issues) => DegradationLine(
-            icon: Icons.rule_outlined,
-            severity: DegradationSeverity.warning,
-            text: '$playerLabelのデッキは 6.1 の構築条件を満たしていません: '
-                '${issues.map((i) => i.message).join(' / ')}',
-          ),
-      };
 }

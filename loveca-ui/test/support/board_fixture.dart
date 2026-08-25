@@ -111,14 +111,28 @@ GameState handcraftedBoard({
   Map<MemberAreaSlot, List<String>> selfMembers = const {},
   Map<MemberAreaSlot, List<String>> opponentMembers = const {},
 
+  /// ★ウェイト状態（4.3.2.2）で置くメンバー。アクティブのぶんの**後ろ**に積む。
+  ///
+  /// ★8.3.10（アクティブのみ）と 8.3.14（全員）の参照範囲の違いを見るために要る。
+  Map<MemberAreaSlot, List<String>> selfWaitMembers = const {},
+  Map<MemberAreaSlot, List<String>> opponentWaitMembers = const {},
+
   /// 各スロットの**末尾のメンバー**の下に重ねるカード（4.5.5.1）。
   Map<MemberAreaSlot, List<String>> selfBeneath = const {},
 
   /// 上にメンバーが居ないカード（4.5.5.4.1 / 4.5.5.4.2）。
   Map<MemberAreaSlot, List<String>> selfOrphans = const {},
+  Map<MemberAreaSlot, List<String>> opponentOrphans = const {},
   List<String> selfResolution = const [],
+
+  /// ★★ 解決領域は両プレイヤー共有で 1 つだけ（4.14.1）★★
+  /// 8.3.12（所有者で絞らない）と 8.3.14（絞る）の対比に**相手のカードが要る**。
+  List<String> opponentResolution = const [],
   List<String> selfFreeArea = const [],
   String firstPlayerId = kSelfPlayerId,
+
+  /// ★進行のテストは途中のステップから始めたい（先頭から 73 回進めると遅い）。
+  StepCursor cursor = const StepCursor(PhaseId.firstActive, StepId.s7_4_1),
 }) {
   final catalog = realShapedCatalog();
   final serial = <String, int>{};
@@ -141,6 +155,7 @@ GameState handcraftedBoard({
     String playerId,
     Map<Zone, List<String>> zones,
     Map<MemberAreaSlot, List<String>> members,
+    Map<MemberAreaSlot, List<String>> waitMembers,
     Map<MemberAreaSlot, List<String>> beneath,
     Map<MemberAreaSlot, List<String>> orphans,
     List<String> freeArea,
@@ -149,15 +164,21 @@ GameState handcraftedBoard({
 
     final areas = <MemberArea>[];
     for (final slot in MemberAreaSlot.values) {
-      final placed = build(members[slot] ?? const [], playerId);
+      final placed = [
+        // ★4.3.2.3: 配置状態が指定される領域なので既定はアクティブ状態。
+        for (final card in build(members[slot] ?? const [], playerId))
+          card.copyWith(orientation: CardOrientation.active),
+        // ★4.3.2.2 ウェイト状態。8.3.10 は数えず 8.3.14 は数える。
+        for (final card in build(waitMembers[slot] ?? const [], playerId))
+          card.copyWith(orientation: CardOrientation.wait),
+      ];
       final under = build(beneath[slot] ?? const [], playerId);
       areas.add(MemberArea(
         slot: slot,
         stacks: [
           for (var i = 0; i < placed.length; i++)
             MemberStack(
-              // ★4.3.2.3: 配置状態が指定される領域なので既定はアクティブ状態。
-              member: placed[i].copyWith(orientation: CardOrientation.active),
+              member: placed[i],
               // ★末尾のメンバーの下に置く（4.5.5.1）。
               beneath: i == placed.length - 1 ? under : const [],
             ),
@@ -183,13 +204,17 @@ GameState handcraftedBoard({
 
   return GameState(
     players: [
-      player(kSelfPlayerId, selfZones, selfMembers, selfBeneath, selfOrphans,
-          selfFreeArea),
-      player(kOpponentPlayerId, opponentZones, opponentMembers, const {},
-          const {}, const []),
+      player(kSelfPlayerId, selfZones, selfMembers, selfWaitMembers,
+          selfBeneath, selfOrphans, selfFreeArea),
+      player(kOpponentPlayerId, opponentZones, opponentMembers,
+          opponentWaitMembers, const {}, opponentOrphans, const []),
     ],
     firstPlayerId: firstPlayerId,
-    cursor: const StepCursor(PhaseId.firstActive, StepId.s7_4_1),
-    resolution: build(selfResolution, kSelfPlayerId),
+    cursor: cursor,
+    // ★共有 1 つ（4.14.1）。★`ownerId` で分かれるだけで領域は 1 本。
+    resolution: [
+      ...build(selfResolution, kSelfPlayerId),
+      ...build(opponentResolution, kOpponentPlayerId),
+    ],
   );
 }

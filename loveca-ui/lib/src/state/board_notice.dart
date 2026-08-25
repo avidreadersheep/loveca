@@ -34,6 +34,58 @@ final class MulliganNotImplemented extends BoardNotice {
   const MulliganNotImplemented();
 }
 
+/// ★★ 整理（9.5.3 のチェックタイミング）で実行したルール処理（M-B3）★★
+///
+/// ★★ 盤面が勝手に動いたことを黙らない ★★
+/// 10.4 / 10.5 は**アプリが自動で実行してよい**ルール処理だが、
+/// プレイヤーから見ると「次へを押したら札が控え室へ移った」ように見える。
+/// 何が起きたのかを条番号つきで出す。
+final class RuleProcessApplied extends BoardNotice {
+  const RuleProcessApplied({required this.stepRuleRef, required this.kinds});
+
+  /// どのチェックタイミングでの整理か。★条番号で出す（ステップ ID は条番号そのもの）。
+  final String stepRuleRef;
+
+  /// 実行したもの。★重複しうる（同じ種別が複数枚に当たる）。
+  final List<RuleProcessKind> kinds;
+}
+
+/// ★★ 自動実行せず警告に留めたルール処理（10.3 / 10.6）★★
+///
+/// 10.3 勝利処理 …… 決定 D10 により勝敗確定は手動。アプリが決めない
+/// 10.6 不正解決領域処理 …… 「プレイ中 / 解決中」は効果の解決状態であり
+///   観測できない（D-A）。自動で控え室へ送るとプレイヤーの作業を壊す
+///
+/// ★★ 条件が消えるまで出し続ける ★★
+/// これは「起きた出来事」ではなく「いま満たされている条件」なので、
+/// 次の操作 1 回で消えてはいけない（`state/game_store.dart` の `BoardTidyLog`）。
+final class RuleProcessNotAutomatic extends BoardNotice {
+  const RuleProcessNotAutomatic({
+    required this.stepRuleRef,
+    required this.kinds,
+  });
+
+  final String stepRuleRef;
+
+  final List<RuleProcessWarningKind> kinds;
+}
+
+/// 整理がカードマスタを引けず、種別を判定できなかった。
+///
+/// ★10.5.2 / 10.5.3 / 10.5.4 は種別で行き先が変わるので、引けないと動かせない。
+/// ★黙って残さない（A-3「痕跡を残さずデータを落とす」と同じ失敗にしない）。
+final class TidyExcluded extends BoardNotice {
+  const TidyExcluded({
+    required this.stepRuleRef,
+    required this.count,
+    required this.cardNumbers,
+  });
+
+  final String stepRuleRef;
+  final int count;
+  final List<String> cardNumbers;
+}
+
 /// デッキが 6.1 のデッキ構築条件を満たしていない。
 ///
 /// ★★ それでも回せる。ただし黙って通さない ★★
