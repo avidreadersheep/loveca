@@ -30,6 +30,35 @@ enum StepDecision {
   playerDeclared,
 }
 
+/// 進行のしかた。総合ルール 1.1.1 の「原則 2 名」に対する例外の扱い (決定 D88)。
+///
+/// ★★ モードは条文の概念ではない ★★
+///   1.1.1「このゲームは原則 2 名のプレイヤーにより対戦を行うゲームです。それ以外の
+///   プレイヤー数で行うゲームに関するルールは、現在の総合ルールでは対応していません」。
+///   だから [GameState] には置かず [ReduceContext] にだけ置く
+///   (`docs/盤面設計メモ.md` §14-3)。
+///
+/// ★★ 2 値でよい ★★
+///   オンライン対戦とローカル対戦は**進行が同一**(相手が手番を持つ) で、違うのは
+///   `redact` を誰が掛けるかだけである。3 値目を置くと、どの分岐でも同じ扱いになる
+///   **死んだ枝**ができる。★Phase 6 で足す必要が出たら、そのとき全 switch が
+///   コンパイルエラーになるのが正しい。
+///
+/// ★★ 既定は [twoPlayer] である ★★
+///   モードが条文の概念でない以上、[ReduceContext] を組むすべての経路が
+///   モードを意識する必要は無い。★UI 側の `BoardMode` は required にしてある——
+///   盤面は**モードが必ず 1 つに決まる文脈**だからで、非対称は意図的である。
+enum ProgressionMode {
+  /// 2 名で進行する。ローカル対戦とオンライン対戦 (Phase 6) の両方。
+  twoPlayer,
+
+  /// ソロ。★**自分が常に先攻**で、相手を要求する手順は通らない。
+  ///
+  /// ★[GameState.players] は 2 人のままである (1.1.1)。
+  ///   1 人の [GameState] を作らない理由は `docs/盤面設計メモ.md` §14-5。
+  soloFirstPlayer,
+}
+
 /// ステップ。ID は総合ルールの条番号そのもの。
 enum StepId {
   // ==== 7.4 アクティブフェイズ ====
@@ -101,7 +130,9 @@ enum StepId {
   s8_2_3('8.2.3', checkTiming: true),
 
   /// ★後攻プレイヤーが 8.2.2 と同様に行う。
-  s8_2_4('8.2.4'),
+  ///
+  /// ★8.2.4「**後攻プレイヤー**は、自身の手札のカードを…」= 相手を名指ししている。
+  s8_2_4('8.2.4', requiresOpponent: true),
 
   /// チェックタイミング → フェイズ終了。
   s8_2_5('8.2.5', checkTiming: true),
@@ -189,7 +220,11 @@ enum StepId {
   /// 8.4.3.3 両者あり＝比較。
   ///
   /// ★8.4.2 (合計) と 8.4.3 (比較の規約定義) と 8.4.6 (実際の比較と勝者決定) は別物。
-  s8_4_3('8.4.3'),
+  ///
+  /// ★8.4.3.1「**両方のプレイヤー**の…」/ 8.4.3.2「**一方のプレイヤー**の…もう一方の…」/
+  ///   8.4.3.3「**両方のプレイヤー**の…互いの合計スコアを比較します」
+  ///   = **2 者の比較そのもの**。
+  s8_4_3('8.4.3', requiresOpponent: true),
 
   /// ライブカード置き場にカードがあるプレイヤーに「ライブが成功した」事象が発生 (11.6)。
   ///
@@ -203,7 +238,10 @@ enum StepId {
 
   /// 合計スコアを比較しライブに勝利したプレイヤーを決定。
   /// 8.4.6.1 両者カード無し＝勝者なし / 8.4.6.2 大きい方が勝利、同点なら**両者勝利**。
-  s8_4_6('8.4.6'),
+  ///
+  /// ★8.4.6.1「**両方のプレイヤー**の…」/ 8.4.6.2「**いずれかのプレイヤー**の…
+  ///   いずれかの合計スコアが大きい場合」= 勝者は**比較の結果**として決まる。
+  s8_4_6('8.4.6', requiresOpponent: true),
 
   /// ライブに勝利したプレイヤーはライブカード置き場のカードを 1 枚選び成功ライブカード置き場へ。
   ///
@@ -239,12 +277,20 @@ enum StepId {
   ///
   /// ★★ `GameState.firstPlayerId` を書き換える唯一のステップ ★★
   ///   参照するのは 8.4.6 の勝敗ではなく 8.4.7 の移動実績。
-  s8_4_13('8.4.13'),
+  ///
+  /// ★8.4.13「そのプレイヤーが先攻プレイヤーとなり、**その相手が後攻プレイヤー**と
+  ///   なります」= 相手を名指ししている。★ソロは常に先攻なので入れ替えも起きない。
+  s8_4_13('8.4.13', requiresOpponent: true),
 
   /// このターンを終了する。
   s8_4_14('8.4.14');
 
-  const StepId(this.ruleRef, {this.checkTiming = false, this.decision});
+  const StepId(
+    this.ruleRef, {
+    this.checkTiming = false,
+    this.decision,
+    this.requiresOpponent = false,
+  });
 
   /// このステップの条番号。ステップ ID そのもの。
   final String ruleRef;
@@ -270,6 +316,24 @@ enum StepId {
   /// ★分岐を持つステップ (後続候補が 2 つ) のみ非 null。
   ///   [StepId.s8_3_6] と [StepId.s8_4_12] の 2 つだけ。
   final StepDecision? decision;
+
+  /// ★★ 条文が相手プレイヤーを名指ししているステップか (決定 D88) ★★
+  ///
+  ///   [ProgressionMode.soloFirstPlayer] では**通らない**。★**4 件だけ**——
+  ///   8.2.4 / 8.4.3 / 8.4.6 / 8.4.13 (各宣言の直上に該当句を引いてある)。
+  ///
+  /// ★★ 「相手が出てくる語を含む」ではない ★★
+  ///   飛ばさないものを対で挙げる (`docs/盤面設計メモ.md` §14-4)。
+  ///   - **8.4.2 / 8.4.4** …「…**プレイヤーは、自身の**…」= **各プレイヤーごと。比較ではない**
+  ///   - ★★**8.4.7**★★ …主文は「ライブに勝利したプレイヤーは、**自身の**ライブカード置き場の
+  ///     カードを 1 枚選び、**自身の**成功ライブカード置き場に置きます」= 各プレイヤーごと。
+  ///     2 者を見るのは **8.4.7.1 の但し書きだけ**。
+  ///     ★効果でライブカードのスコア値が増減しうるためアプリは勝敗を計算できない (D10 / D18) ので、
+  ///     **成功ライブカード置き場へ手で置くこと自体が判定である。**
+  ///     ★★**ここを飛ばすと手動判定の口ごと消える。**★★
+  ///   - 8.2.3 / 8.2.5 / 8.4.1 / 8.4.5 / 8.4.9 / 8.4.11 …9.5 の CT は**プレイヤーを名指ししない**
+  ///   - ★**8.3.6 / 8.4.12** …スキップではない。**条文が定める分岐**である ([decision])
+  final bool requiresOpponent;
 }
 
 /// ステップの後続候補。
@@ -467,4 +531,95 @@ class StepCursor {
 
   @override
   String toString() => '${phase.name}@${step.ruleRef}';
+}
+
+/// このカーソルを [mode] では通らないか (決定 D88 / `docs/盤面設計メモ.md` §14-4)。
+///
+/// ★★ 判定の規則は 2 つだけ。手で並べた一覧にしない ★★
+///   一覧にすると実装を直したとき**一覧のほうが黙って古くなる**
+///   (`ルール整合性チェック_v1.06.md` D-15)。
+///
+/// | # | 規則 | 導き方 |
+/// |---|---|---|
+/// | **R1** | [PhaseId.turnPlayerRole] が [PhaseRole.second] のフェイズを**丸ごと** | ★既存のフィールドから導ける |
+/// | **R2** | [StepId.requiresOpponent] のステップ | ★条番号の隣に置いてある。4 件だけ |
+///
+/// ★★ スキップと分岐は別物である ★★
+///   8.3.6 (ライブカード置き場が空なら早期終了) と 8.4.12 (8.4.9 へ戻る) は
+///   **条文が定める分岐**であり、モードに関係なく起きる。**混ぜて書かない。**
+bool skipsCursor(StepCursor cursor, ProgressionMode mode) => switch (mode) {
+      ProgressionMode.twoPlayer => false,
+      // R1: ソロでは自分が常に先攻なので、後攻フェイズの手番プレイヤーが存在しない。
+      // R2: 条文が相手プレイヤーを名指ししているステップ。
+      ProgressionMode.soloFirstPlayer =>
+        cursor.phase.turnPlayerRole == PhaseRole.second ||
+            cursor.step.requiresOpponent,
+    };
+
+/// 飛ばすカーソルの間だけ**実行せずに**進めた先を返す (決定 D88)。
+///
+/// 通らなかったカーソルを `skipped` に順に積んで返す。
+/// ★★ 黙って飛ばさない ★★ 1 回の「次へ」で 4 フェイズを跨ぐことがあるので、
+///   何を通らなかったかを出さないと「勝手に飛んだ」ように見える。
+///
+/// ★★ フェイズの全ステップが飛ぶなら**丸ごと**次のフェイズの先頭へ跳ぶ ★★
+///   1 ステップずつ歩くと、後攻パフォーマンスフェイズの **8.3.6 の分岐**を踏む。
+///   分岐は「どちらへ行ったか」を誰かが決めなければならず、飛ばす文脈では決められない。
+///
+/// ★★ [isSkipped] を関数で受ける理由 ★★
+///   「全フェイズが飛ぶ設定」を**テストから実際に踏ませる**ため。
+///   到達しない列挙値を [ProgressionMode] に足す (= 死んだ枝を作る) 代わりの手当てである。
+({StepCursor cursor, List<StepCursor> skipped}) skipForward(
+  StepCursor from,
+  bool Function(StepCursor) isSkipped,
+) {
+  final skipped = <StepCursor>[];
+  var cursor = from;
+  var phaseHops = 0;
+
+  StepCursor headOf(PhaseId phase) => StepCursor(phase, phase.steps.first);
+
+  void hop() {
+    phaseHops++;
+    if (phaseHops > phaseCycle.length) {
+      // ★全フェイズが飛ぶ設定を入れると無限ループになる。数えて止める。
+      throw StateError(
+        'フェイズを ${phaseCycle.length} 回より多く飛ばした。'
+        '全フェイズが飛ぶ設定になっている ($from)',
+      );
+    }
+  }
+
+  while (isSkipped(cursor)) {
+    final phase = cursor.phase;
+
+    // ---- R1: フェイズ丸ごと ----
+    if (phase.steps.every((step) => isSkipped(StepCursor(phase, step)))) {
+      for (final step in phase.steps) {
+        skipped.add(StepCursor(phase, step));
+      }
+      cursor = headOf(phase.next);
+      hop();
+      continue;
+    }
+
+    // ---- R2: ステップ単位 ----
+    // ★飛ばすステップはどれも後続候補が 1 つでなければならない。
+    //   分岐を飛ばすと「どちらへ行ったか」を誰も決めていない状態になる。
+    final candidates = stepGraph[cursor.step]!;
+    if (candidates.length != 1) {
+      throw StateError('${cursor.step.ruleRef} は分岐を持つので飛ばせない');
+    }
+    skipped.add(cursor);
+
+    final target = candidates.single.target;
+    if (target == null) {
+      cursor = headOf(phase.next);
+      hop();
+    } else {
+      cursor = StepCursor(phase, target);
+    }
+  }
+
+  return (cursor: cursor, skipped: skipped);
 }

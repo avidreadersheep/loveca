@@ -42,6 +42,7 @@ class AdvanceResult {
     required this.taken,
     this.tidy,
     this.refreshCount = 0,
+    this.skipped = const [],
   });
 
   final GameState state;
@@ -57,17 +58,35 @@ class AdvanceResult {
 
   /// このステップの実行中に割り込んだリフレッシュの回数 (10.2.1)。
   final int refreshCount;
+
+  /// ★★ 実行せずに通り越したカーソル (決定 D88) ★★
+  ///
+  ///   [ProgressionMode.soloFirstPlayer] でのみ空でなくなる。
+  ///   ★**黙って飛ばさない。** 1 回の [advance] で 4 フェイズを跨ぐことがあるので、
+  ///   何を通らなかったかを出さないと「勝手に飛んだ」ように見える。
+  ///   8.3.6 の早期終了で既に学んだ形である (決定 D86)。
+  final List<StepCursor> skipped;
 }
 
 /// ステップ進行の実行。
 class StepEngine {
-  const StepEngine({required this.cards, required this.rng});
+  const StepEngine({
+    required this.cards,
+    required this.rng,
+    this.mode = ProgressionMode.twoPlayer,
+  });
 
   /// cardNumber -> Card。集計と種別判定に要る。
   final Map<String, Card> cards;
 
   /// シャッフル (10.2.3) に使う乱数源。
   final DeterministicRng rng;
+
+  /// 進行のしかた (決定 D88)。★既定は 2 名 (1.1.1)。
+  ///
+  /// ★カーソルを**飛ばす**だけで、実行するものは 1 つも変えない。
+  ///   飛ばす規則は `step.dart` の [skipsCursor] が持つ。ここに条番号を書かない。
+  final ProgressionMode mode;
 
   Refresher get _refresher => Refresher(rng: rng);
   RuleProcessor get _processor => RuleProcessor(cards: cards);
@@ -108,12 +127,21 @@ class StepEngine {
     // ---- 4. カーソルを進める ----
     next = _moveCursor(next, taken);
 
+    // ---- 5. ★飛ばすカーソルの間は**実行せずに**進める (決定 D88) ----
+    //   ここを advance の末尾に置くので、カーソルは飛ばすステップの上に
+    //   **留まらない**。次の advance は必ず通るステップから始まる。
+    final forward = skipForward(next.cursor, (c) => skipsCursor(c, mode));
+    if (forward.skipped.isNotEmpty) {
+      next = next.copyWith(cursor: forward.cursor);
+    }
+
     return AdvanceResult(
       state: next,
       executed: step,
       taken: taken,
       tidy: tidy,
       refreshCount: executed.refreshCount,
+      skipped: forward.skipped,
     );
   }
 

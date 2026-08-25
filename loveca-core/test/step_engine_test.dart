@@ -615,4 +615,232 @@ void main() {
       expect(allFour(a).length, 4);
     });
   });
+
+  // =========================================================================
+  // ★★ ソロで飛ばすステップ (決定 D88 / `docs/盤面設計メモ.md` §14-4) ★★
+  //
+  // ★★ 番人 6 つ。どれか 1 つでも外すと「常に通る形」になる ★★
+  //   §14-4 の表をそのまま実装してある。
+  //
+  // ★★ 期待値を手で並べない (D-15) ★★
+  //   `phaseCycle` / `PhaseSteps` / `turnPlayerRole` / `requiresOpponent` から**導く**。
+  //   実際に歩くのは `stepGraph` なので、**期待値と実際が別の表から来ている。**
+  //   手で 42 行書くと、この相互検査が消える。
+  // =========================================================================
+  group('★★ ソロで飛ばすステップ (決定 D88) ★★', () {
+    /// 1 ターンぶんの全カーソル。
+    final allCursors = <StepCursor>[
+      for (final phase in phaseCycle)
+        for (final step in phase.steps) StepCursor(phase, step),
+    ];
+
+    /// ソロで通るカーソル。★R1 (後攻フェイズ) と R2 (相手を要求するステップ) を除く。
+    final soloCursors = <StepCursor>[
+      for (final phase in phaseCycle)
+        if (phase.turnPlayerRole != PhaseRole.second)
+          for (final step in phase.steps)
+            if (!step.requiresOpponent) StepCursor(phase, step),
+    ];
+
+    /// 相手を要求するステップ (R2)。
+    final opponentSteps =
+        StepId.values.where((step) => step.requiresOpponent).toList();
+
+    /// ★1 ターン回して、実行したカーソルを順に返す。
+    List<StepCursor> walk(
+      StepEngine engine,
+      GameState from, {
+      List<StepCursor>? skipped,
+    }) {
+      final visited = <StepCursor>[];
+      var state = from;
+      var guard = 0;
+      while (state.turnNumber == from.turnNumber) {
+        visited.add(state.cursor);
+        final result = engine.advance(
+          state,
+          // ★8.4.12 の宣言。遷移先は遷移表から取る。
+          choice: engine.requiresChoice(state)
+              ? stepGraph[state.cursor.step]!
+                  .firstWhere((t) => t.target == StepId.s8_4_13)
+              : null,
+        );
+        skipped?.addAll(result.skipped);
+        state = result.state;
+        if (++guard > 200) fail('進行が止まらない (${state.cursor})');
+      }
+      return visited;
+    }
+
+    /// 8.3.6 が早期終了しない盤面。★両者のライブカード置き場に札を置く。
+    GameState oneTurn() => _at(
+          PhaseId.firstActive,
+          StepId.s7_4_1,
+          a: PlayerState(
+            playerId: 'A',
+            mainDeck: _cards('M1', 5),
+            liveStage: [_on('L1')],
+          ),
+          b: PlayerState(
+            playerId: 'B',
+            mainDeck: _cards('M1', 5, ownerId: 'B'),
+            liveStage: [_on('L1', ownerId: 'B')],
+          ),
+        );
+
+    StepEngine engineFor(ProgressionMode mode) =>
+        StepEngine(cards: _master, rng: SeededRng(1), mode: mode);
+
+    test('★前提: 期待値そのものが空でない (比較の前提)', () {
+      // ★★ 0 件 / 空リストとの比較は何も証明しない ★★
+      expect(allCursors, hasLength(73), reason: '★のべ 73 ステップ');
+      expect(soloCursors, hasLength(42), reason: '★73 - 27 (R1) - 4 (R2)');
+      expect(opponentSteps, hasLength(4), reason: '★§14-4 の R2 は 4 件だけ');
+    });
+
+    test('★★ 番人 1: 飛ばすステップはどれも後続候補が 1 つ ★★', () {
+      // 分岐を飛ばすと「どちらへ行ったか」を誰も決めていない状態になる。
+      for (final step in opponentSteps) {
+        expect(stepGraph[step], hasLength(1), reason: step.ruleRef);
+        expect(step.decision, isNull, reason: step.ruleRef);
+      }
+      // ★対: 分岐を飛ばそうとしたら止まる (黙って片方へ倒れない)。
+      expect(
+        () => skipForward(
+          const StepCursor(PhaseId.firstPerformance, StepId.s8_3_6),
+          (c) => c.step == StepId.s8_3_6,
+        ),
+        throwsStateError,
+      );
+    });
+
+    test('★★ 番人 2: 飛ばすステップに checkTiming が 1 つも無い ★★', () {
+      // 9.5.3 の整理が黙って落ちる形にしない。
+      for (final step in opponentSteps) {
+        expect(step.checkTiming, isFalse, reason: step.ruleRef);
+      }
+
+      // ★★ 対: R1 (フェイズ丸ごと) では CT が落ちる。これは条文どおりである ★★
+      //   そのフェイズが存在しないのだから CT も存在しない。
+      //   ★落ちる数を導いて記録する (「落ちない」と誤読させない)。
+      final droppedCheckTimings = <StepCursor>[
+        for (final phase in phaseCycle)
+          if (phase.turnPlayerRole == PhaseRole.second)
+            for (final step in phase.steps)
+              if (step.checkTiming) StepCursor(phase, step),
+      ];
+      expect(droppedCheckTimings, hasLength(12),
+          reason: '★ソロではチェックタイミングが 1 ターンに 12 個減る (§14-4)');
+    });
+
+    test('★★ 番人 3: ソロで通るカーソル列が期待値と 1 つ残らず一致する ★★', () {
+      final skipped = <StepCursor>[];
+      final visited = walk(
+        engineFor(ProgressionMode.soloFirstPlayer),
+        oneTurn(),
+        skipped: skipped,
+      );
+
+      expect(visited, soloCursors);
+      // ★黙って飛ばしていない (31 = 27 + 4)。
+      expect(skipped, hasLength(31));
+      expect({...visited, ...skipped}, hasLength(73), reason: '★足すと全体に戻る');
+      expect(visited.toSet().intersection(skipped.toSet()), isEmpty);
+    });
+
+    test('★★ 番人 4: 陽性対照 — twoPlayer では 73 のまま ★★', () {
+      // ★不変は「無い」と「見えていない」の区別がつかない。
+      final skipped = <StepCursor>[];
+      final visited = walk(
+        engineFor(ProgressionMode.twoPlayer),
+        oneTurn(),
+        skipped: skipped,
+      );
+
+      expect(visited, allCursors);
+      expect(skipped, isEmpty);
+    });
+
+    test('★★ 番人 5: 対照 — requiresOpponent を 1 つ外すと落ちる ★★', () {
+      // 8.4.3 だけを「飛ばさない」ことにした期待値。
+      final loosened = <StepCursor>[
+        for (final phase in phaseCycle)
+          if (phase.turnPlayerRole != PhaseRole.second)
+            for (final step in phase.steps)
+              if (!step.requiresOpponent || step == StepId.s8_4_3)
+                StepCursor(phase, step),
+      ];
+      // ★対照そのものが本物と違うこと (同じなら何も検知しない)。
+      expect(loosened, hasLength(43));
+      expect(loosened, isNot(soloCursors));
+
+      final visited = walk(
+        engineFor(ProgressionMode.soloFirstPlayer),
+        oneTurn(),
+      );
+      expect(visited, isNot(loosened),
+          reason: '★8.4.3 を通っていたら、スキップ機構が働いていない');
+    });
+
+    test('★★ 番人 6: 全フェイズが飛ぶ設定なら StateError (無限ループにしない) ★★', () {
+      expect(
+        () => skipForward(
+          const StepCursor(PhaseId.firstActive, StepId.s7_4_1),
+          (_) => true,
+        ),
+        throwsStateError,
+      );
+    });
+
+    test('★★ 8.4.7 は飛ばさない — ここが手動判定の着地点である ★★', () {
+      // ★主文は「ライブに勝利したプレイヤーは、**自身の**ライブカード置き場の…」で
+      //   各プレイヤーごと。2 者を見るのは 8.4.7.1 の但し書きだけ。
+      //   ★飛ばすと、成功ライブカード置き場へ手で置く口ごと消える (D10 / D18)。
+      expect(StepId.s8_4_7.requiresOpponent, isFalse);
+      expect(
+        walk(engineFor(ProgressionMode.soloFirstPlayer), oneTurn()),
+        contains(const StepCursor(PhaseId.liveJudgement, StepId.s8_4_7)),
+      );
+      // ★対: 各プレイヤーごとの 8.4.2 / 8.4.4 も飛ばさない。
+      expect(StepId.s8_4_2.requiresOpponent, isFalse);
+      expect(StepId.s8_4_4.requiresOpponent, isFalse);
+    });
+
+    test('★ ソロでは 8.4.13 を通らないので先攻が入れ替わらない', () {
+      final state = _at(
+        PhaseId.liveJudgement,
+        StepId.s8_4_12,
+        firstPlayerId: 'A',
+        liveJudgement: const LiveJudgementRecord(movedToSuccessIds: {'B'}),
+      );
+      final exit = stepGraph[StepId.s8_4_12]!
+          .firstWhere((t) => t.target == StepId.s8_4_13);
+
+      final solo = engineFor(ProgressionMode.soloFirstPlayer)
+          .advance(state, choice: exit);
+      expect(solo.state.firstPlayerId, 'A');
+      expect(solo.state.cursor.step, StepId.s8_4_14, reason: '★8.4.13 を通り越す');
+      expect(solo.skipped,
+          [const StepCursor(PhaseId.liveJudgement, StepId.s8_4_13)]);
+
+      // ★対: twoPlayer なら 8.4.13 を通り、B が先攻になる。
+      final versus =
+          engineFor(ProgressionMode.twoPlayer).advance(state, choice: exit);
+      expect(versus.state.cursor.step, StepId.s8_4_13);
+      expect(versus.skipped, isEmpty);
+      expect(
+          engineFor(ProgressionMode.twoPlayer)
+              .advance(versus.state)
+              .state
+              .firstPlayerId,
+          'B');
+    });
+
+    test('★ 既定は twoPlayer (モードは条文の概念ではない / 1.1.1)', () {
+      expect(StepEngine(cards: const {}, rng: SeededRng(1)).mode,
+          ProgressionMode.twoPlayer);
+      expect(ReduceContext(cards: const {}, rng: SeededRng(1)).mode,
+          ProgressionMode.twoPlayer);
+    });
+  });
 }

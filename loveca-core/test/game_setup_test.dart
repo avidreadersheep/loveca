@@ -264,7 +264,7 @@ void main() {
     });
 
     test('★★ 同じデッキを両側に使っても衝突しない ★★', () {
-      // ★一人回しの既定がこれ（決定 D81）。deckId まで同じものを両側に渡す。
+      // ★ソロの既定がこれ（決定 D81 / D88）。deckId まで同じものを両側に渡す。
       final same = _deck();
       final ids = _allInstanceIds(_start(a: same, b: same));
 
@@ -436,6 +436,86 @@ void main() {
       expect(setup.stateBeforeMulligan.playerOf('A').energyField, isEmpty);
       expect(setup.stateBeforeMulligan.playerOf('A').hand.length, 6,
           reason: '★6.2.1.5 までは終わっている');
+    });
+  });
+
+  // =========================================================================
+  // ★★ ソロ: 相手側に何を入れると何が変わるか (決定 D88 / §14-5) ★★
+  //
+  // ソロでも `GameState.players` は 2 人のまま (1.1.1) で、相手側には
+  // **自分と同じデッキ**を入れる (D81 の既定)。
+  //
+  // ★★ 盤面設計メモ §14-5 は「seed が同じなら相手側に何を入れても
+  //   自分側は完全に同一」と書いていた。**実測すると誤りである**（新所見 D-17）★★
+  //   6.2.1 は**手順ごとに両プレイヤーを回す**（条文どおり）。
+  //   `begin` が 6.2.1.2 のシャッフルを**2 人ぶん**終えてから
+  //   `dealInitialEnergy` が 6.2.1.7 を回すので、
+  //   **相手のデッキ枚数が変わると、そこで消費される乱数の量が変わり、
+  //   自分のエネルギー抽出（4.9.3 の無作為）がずれる。**
+  //
+  // ★★ 「同じはず」で済ませない ★★
+  //   D86 で「同じはず」を実際に測って 1 件ずれた前例がある。ここでも 1 件ずれた。
+  // =========================================================================
+  group('★★ ソロ: 相手デッキが自分側に及ぶ範囲 (決定 D88 / 新所見 D-17) ★★', () {
+    /// 6.2.1.2 / 6.2.1.5 の産物（並びまで含める）。
+    List<String> mainAndHand(GameState state, String playerId) {
+      final player = state.playerOf(playerId);
+      return [..._ids(player.hand), ..._ids(player.mainDeck)];
+    }
+
+    /// 6.2.1.7 の産物（同上）。
+    List<String> energy(GameState state, String playerId) {
+      final player = state.playerOf(playerId);
+      return [..._ids(player.energyDeck), ..._ids(player.energyField)];
+    }
+
+    /// 枚数も種類も違う相手デッキ。
+    Deck otherDeck() => _deck(
+          deckId: 'deck-other',
+          entries: const [
+            DeckEntry(printingId: 'M1-R', count: 4),
+            DeckEntry(printingId: 'L2-R', count: 1),
+            DeckEntry(printingId: 'E1-R', count: 4),
+          ],
+        );
+
+    GameState sameOpponent() => _start(a: _deck(), b: _deck());
+    GameState otherOpponent() => _start(a: _deck(), b: otherDeck());
+
+    test('★ 6.2.1.2 / 6.2.1.5 は相手デッキに依らない（先攻から順に処理される）', () {
+      expect(mainAndHand(otherOpponent(), 'A'), mainAndHand(sameOpponent(), 'A'));
+      // ★前提: 空リスト同士の比較になっていないこと。
+      expect(mainAndHand(sameOpponent(), 'A'), isNotEmpty);
+    });
+
+    test('★★ 6.2.1.7 は相手デッキに依る（§14-5 の断定が誤り / D-17）★★', () {
+      // ★★ ここが「同じはず」を実際に測って出た 1 件である ★★
+      //   `begin` が 2 人ぶんの 6.2.1.2 を終えてから `dealInitialEnergy` が回る。
+      //   相手のメインデッキ枚数が変わると `rng.shuffled` の消費量が変わり、
+      //   自分の 4.9.3 の無作為抽出がずれる。
+      expect(energy(otherOpponent(), 'A'), isNot(energy(sameOpponent(), 'A')));
+      expect(energy(sameOpponent(), 'A'), isNotEmpty, reason: '★前提');
+    });
+
+    test('★★ だからソロは相手側に同じデッキを入れる（D81 の既定）★★', () {
+      // ★同じデッキなら seed が同じで自分側は完全に再現する。
+      //   ★空の Deck を採らない理由は別にある（§14-5）——
+      //   6.2.1.5 で手札 0 枚という条文に存在しない状態を作り、
+      //   7.6.2 が空のメインデッキ + 空の控え室で 10.2.2 を踏む経路が生まれる。
+      final same = _deck();
+      final a = _start(a: same, b: same);
+      final b = _start(a: same, b: same);
+
+      expect(mainAndHand(b, 'A'), mainAndHand(a, 'A'));
+      expect(energy(b, 'A'), energy(a, 'A'));
+      // ★対: seed が違えば変わる（比較が生きている）。
+      final other = _start(seed: 99, a: same, b: same);
+      expect(mainAndHand(other, 'A'), isNot(mainAndHand(a, 'A')));
+    });
+
+    test('★対: 相手側は当然変わる（比較が生きている）', () {
+      expect(mainAndHand(otherOpponent(), 'B'),
+          isNot(mainAndHand(sameOpponent(), 'B')));
     });
   });
 }

@@ -58,6 +58,7 @@ import 'member_area.dart';
 import 'refresh.dart';
 import 'rng.dart';
 import 'rule_process.dart';
+import 'step.dart';
 import 'step_engine.dart';
 import 'zone.dart';
 
@@ -65,7 +66,11 @@ import 'zone.dart';
 ///
 /// ★[GameState] にも [GameAction] にも入れないもの。
 class ReduceContext {
-  const ReduceContext({required this.cards, required this.rng});
+  const ReduceContext({
+    required this.cards,
+    required this.rng,
+    this.mode = ProgressionMode.twoPlayer,
+  });
 
   /// cardNumber -> Card。種別判定と集計に要る。
   final Map<String, Card> cards;
@@ -73,9 +78,23 @@ class ReduceContext {
   /// 乱数源。★seed はここにだけあり、[GameState] には無い。
   final DeterministicRng rng;
 
+  /// ★★ 進行のしかた (決定 D88)。[GameState] には置かない ★★
+  ///   1.1.1 が「原則 2 名」とし、それ以外のプレイヤー数のルールは
+  ///   「現在の総合ルールでは対応していません」と書いている。
+  ///   条文が対応しないと書いた区分を [GameState] に置くと
+  ///   **条文に無いものが盤面の状態になる**。
+  ///   ★[GameHistory] は [GameState] のスナップショット (D36) なので、
+  ///   状態に置くと **undo でモードが戻る**という意味の無い操作が型の上で可能になる。
+  ///   ★先例は seed / 乱数 (D79) —— 再現性の入力が `context` であることは既に設計に入っている。
+  ///
+  /// ★★ 代償を書いておく ★★
+  ///   同じログを**違うモードの `context` で再生すると結果が食い違う**。
+  ///   これは seed について既に成立している性質と同じである。
+  final ProgressionMode mode;
+
   Refresher get refresher => Refresher(rng: rng);
   RuleProcessor get processor => RuleProcessor(cards: cards);
-  StepEngine get engine => StepEngine(cards: cards, rng: rng);
+  StepEngine get engine => StepEngine(cards: cards, rng: rng, mode: mode);
 }
 
 /// [reduce] の副次情報。
@@ -100,6 +119,15 @@ class ReduceReport {
 
   /// このアクションの中で割り込んだリフレッシュの回数 (10.2.1)。
   final int refreshCount;
+
+  /// ★★ 実行せずに通り越したカーソル (決定 D88) ★★
+  ///
+  ///   [AdvanceStep] 以外では常に空。★**黙って飛ばさない**ための口である。
+  ///
+  /// ★★ フィールドにしない ★★
+  ///   同じ値を [advance] とここの 2 箇所に持つと必ず食い違う
+  ///   (`ルール整合性チェック_v1.06.md` D-15)。導出だけを置く。
+  List<StepCursor> get skipped => advance?.skipped ?? const [];
 }
 
 /// アクションを適用した新しい [GameState] を返す。
