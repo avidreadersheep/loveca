@@ -75,6 +75,14 @@ Widget boardNoticeLine(BoardNotice notice, {required BoardMode mode}) =>
           text: '6.2.1.6 のマリガンはまだありません。'
               'この盤面は 0 枚として開始しています。',
         ),
+      // ★★ 捨てたことを黙らない（M-B5 / 決定 D78）★★
+      //   `canUndo` は真のままなので、出さないと気づけない。
+      HistoryAtMaxDepth(:final maxDepth) => DegradationLine(
+          icon: Icons.history_toggle_off,
+          severity: DegradationSeverity.warning,
+          text: '巻き戻せるのは直前の $maxDepth 操作までです。'
+              'これより前の操作は履歴から外れており、戻せません。',
+        ),
       DeckNotValid(:final playerLabel, :final issues) => DegradationLine(
           icon: Icons.rule_outlined,
           severity: DegradationSeverity.warning,

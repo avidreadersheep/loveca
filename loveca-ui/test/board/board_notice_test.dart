@@ -23,6 +23,7 @@ import 'package:loveca_ui/src/state/board_summary.dart';
 import 'package:loveca_ui/src/state/game_store.dart';
 import 'package:loveca_ui/src/ui/board/board_page.dart';
 import 'package:loveca_ui/src/ui/board/board_start_dialog.dart';
+import 'package:loveca_ui/src/ui/board/board_view.dart';
 
 import '../support/board_fixture.dart';
 import '../support/fake_deck_repository.dart';
@@ -285,14 +286,25 @@ void main() {
   });
 
   group('★ 画面に出る（実物の経路）', () {
-    Future<void> pumpBoard(WidgetTester tester, GameState state) async {
+    Future<void> pumpBoard(
+      WidgetTester tester,
+      GameState state, {
+      // ★★ 既定の 512 は手では到達させられない（M-B5）★★
+      int historyMaxDepth = 512,
+    }) async {
       tester.view.physicalSize = const Size(1800, 1600);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
 
       await pumpInAppScope(
         tester,
-        BoardPage(initialState: state, viewerId: kSelfPlayerId, mode: BoardMode.localVersus, seed: 1),
+        BoardPage(
+          initialState: state,
+          viewerId: kSelfPlayerId,
+          mode: BoardMode.localVersus,
+          seed: 1,
+          historyMaxDepth: historyMaxDepth,
+        ),
         decks: FakeDeckRepository(),
         catalog: realShapedCatalog(),
       );
@@ -354,6 +366,51 @@ void main() {
       expect(find.textContaining('勝利処理 10.3'), findsOneWidget);
       expect(find.textContaining('不正解決領域処理 10.6'), findsOneWidget);
       expect(find.textContaining('直前の整理'), findsOneWidget);
+    });
+
+    // =====================================================================
+    // ★★ 履歴の上限（M-B5 / 決定 D78）★★
+    // =====================================================================
+
+    testWidgets('★★ 上限に達すると帯に出る（★本当に到達させる）★★', (tester) async {
+      // ★★ 押したときではなく**到達した時点**で見える必要がある ★★
+      //   `canUndo` は真のままなので、出さないと気づけない。
+      await pumpBoard(tester, handcraftedBoard(), historyMaxDepth: 2);
+
+      final store =
+          tester.widget<BoardView>(find.byType(BoardView).first).store;
+
+      // ★手前では出ない（出る側と対で見る）。
+      store.dispatch(const DrawEnergy(playerId: kSelfPlayerId));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('巻き戻せるのは直前の'), findsNothing);
+
+      store.dispatch(const DrawEnergy(playerId: kSelfPlayerId));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('board-notices')),
+          matching: find.textContaining('巻き戻せるのは直前の 2 操作までです'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('これより前の操作は履歴から外れており'), findsOneWidget);
+    });
+
+    testWidgets('★★ 対: 上限（512）に達していなければ出ない ★★', (tester) async {
+      // ★これが落ちたら、上の検査は「常に出す実装」でも通っている。
+      await pumpBoard(tester, handcraftedBoard());
+
+      final store =
+          tester.widget<BoardView>(find.byType(BoardView).first).store;
+      for (var i = 0; i < 3; i++) {
+        store.dispatch(const DrawEnergy(playerId: kSelfPlayerId));
+      }
+      await tester.pumpAndSettle();
+
+      expect(store.canUndo, isTrue, reason: '★操作はしている');
+      expect(find.textContaining('巻き戻せるのは直前の'), findsNothing);
     });
   });
 }

@@ -85,13 +85,21 @@ class BoardSummary {
 ///
 /// [labelOf] は「自分」「相手」を返す。★playerId を画面に出さないため、
 /// 対応づけは `BoardView.labelOf` 1 か所に置いて**ここでは持たない**。
+///
+/// ★★ [historyAtMaxDepth] もここに置く（M-B5）★★
+/// 「巻き戻せる履歴が上限に達している」は**出来事ではなく状態**である。
+/// 到達した時点から、そうでなくなるまで出続けるのが正しい。
 List<BoardNotice> derivedBoardNotices({
   required GameState state,
   required Map<String, Card> cards,
   required List<PlayerState> players,
   required String Function(String playerId) labelOf,
+  bool historyAtMaxDepth = false,
+  int historyMaxDepth = 0,
 }) {
-  final notices = <BoardNotice>[];
+  final notices = <BoardNotice>[
+    if (historyAtMaxDepth) HistoryAtMaxDepth(maxDepth: historyMaxDepth),
+  ];
 
   var sharedDrawReported = false;
 

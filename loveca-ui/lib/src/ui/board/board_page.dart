@@ -47,6 +47,7 @@ class BoardPage extends StatefulWidget {
     required this.seed,
     this.notices = const [],
     this.dragStartMode = DragStartMode.immediate,
+    this.historyMaxDepth = 512,
   });
 
   /// ★6.2.1 を通した初期状態（`GameSetup` / 決定 D79）。
@@ -74,6 +75,14 @@ class BoardPage extends StatefulWidget {
   /// `test/board/board_drag_test.dart` が両値を通す口としてここを開けてある。
   final DragStartMode dragStartMode;
 
+  /// 巻き戻せる操作の上限（M-B5 / `GameHistory.maxDepth`）。
+  ///
+  /// ★★ [dragStartMode] と同じ「テストのために開けてある口」である ★★
+  /// 既定の 512 は**手では到達させられない**。到達したことを帯に出す
+  /// （決定 D78「捨てたことを黙らない」）以上、**到達を本当に起こす**検査が要る。
+  /// ★`test/board/board_notice_test.dart` がここを下げて画面まで通す。
+  final int historyMaxDepth;
+
   @override
   State<BoardPage> createState() => _BoardPageState();
 }
@@ -98,6 +107,7 @@ class _BoardPageState extends State<BoardPage> {
       //   「seed を控えれば同じ盤面が出る」は成立する（開始手順は決定的）。
       rng: SeededRng(widget.seed),
       notices: widget.notices,
+      historyMaxDepth: widget.historyMaxDepth,
     );
   }
 
@@ -191,6 +201,10 @@ class _BoardScaffold extends StatelessWidget {
                 players: view.drawnPlayers,
                 // ★「自分 / 相手」の対応づけは `BoardView` 1 か所に置く。
                 labelOf: view.labelOf,
+                // ★★ 履歴が上限に達したら出す（M-B5 / 決定 D78）★★
+                //   押したときではなく**到達した時点**で見える必要がある。
+                historyAtMaxDepth: store.isHistoryAtMaxDepth,
+                historyMaxDepth: store.historyMaxDepth,
               ),
             ],
             mode: board.mode,

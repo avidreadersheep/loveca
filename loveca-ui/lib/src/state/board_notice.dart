@@ -160,3 +160,19 @@ final class DeckNotValid extends BoardNotice {
   /// `DeckValidator` が出した違反。★件数だけにしない（何が足りないか言えなくなる）。
   final List<DeckIssue> issues;
 }
+
+/// ★★ 巻き戻せる履歴が上限に達している（M-B5 / 決定 D78）★★
+///
+/// ★★ 黙って捨てられていることを黙らない ★★
+/// `GameHistory` は上限（既定 512）を超えると**古いものから捨てる**。
+/// `canUndo` は真のままなので、押しても戻れるうちは何も起きたように見えない。
+/// **「これより前へは戻せない」ことに気づけるのは、到達した時点だけである。**
+///
+/// ★これは「押したときに分かる」ものではなく**いまそうなっている状態**なので、
+/// ボタンの Tooltip ではなく盤面の帯に出す（盤面設計メモ §10-2 の 1 系統目）。
+final class HistoryAtMaxDepth extends BoardNotice {
+  const HistoryAtMaxDepth({required this.maxDepth});
+
+  /// 保持している操作の件数の上限。★UI に 512 を直接書かないため値で渡す。
+  final int maxDepth;
+}
