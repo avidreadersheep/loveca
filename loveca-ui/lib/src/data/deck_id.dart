@@ -27,7 +27,15 @@ import 'dart:typed_data';
 /// テストで固定値を入れられるようにするため。
 typedef DeckIdGenerator = String Function();
 
-/// ★UI 層で乱数を引く唯一の場所。
+/// ★UI 層で乱数を引く場所の 1 つ（ほかに `state/board_seed.dart`）。
+///
+/// ★★ ここに「唯一」「N 箇所」と書かない ★★
+/// 2026-08-24 の時点では本当に唯一で、その日の走査もそう記録している。
+/// だが M-B1 で `board_seed.dart` が増えたとき、**この行だけが「唯一の場所」のまま残り**、
+/// 同じリポジトリの `board_seed.dart` と正反対のことを書いていた
+/// （`ルール整合性チェック_v1.06.md` **D-15**。2026-08-25 に訂正）。
+/// ★★**一覧の正は `docs/決定事項一覧.md` の D81 詳細 1 箇所だけである。**★★
+/// 3 箇所目を足すなら、そこを直す。**ここには数を書かない。**
 final Random _secureRandom = Random.secure();
 
 const String _hex = '0123456789abcdef';
