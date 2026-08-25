@@ -96,3 +96,100 @@ GameState boardFixtureState({
     // ★ここに 6.2.1.6（マリガン）が入る（M-B5）。順を入れ替えないこと。
   ).dealInitialEnergy(rng: rng);
 }
+
+/// ★★ 領域ごとに刷りを指定して盤面を手で組む（M-B2）★★
+///
+/// `GameSetup` の出力ではシャッフルの結果に依存するので、
+/// 「ライブの札がライブカード置き場にある」といった**特定の配置**を作れない。
+/// D46 の帯（絵の外・箱の中）を掴む試験は種別ごとに置き場を決める必要がある。
+///
+/// ★[zones] のキーに [Zone.memberArea] / [Zone.stage] / [Zone.resolution] は使えない
+///   （それぞれ [members] / 実体無し / [resolution] が受け持つ）。
+GameState handcraftedBoard({
+  Map<Zone, List<String>> selfZones = const {},
+  Map<Zone, List<String>> opponentZones = const {},
+  Map<MemberAreaSlot, List<String>> selfMembers = const {},
+  Map<MemberAreaSlot, List<String>> opponentMembers = const {},
+
+  /// 各スロットの**末尾のメンバー**の下に重ねるカード（4.5.5.1）。
+  Map<MemberAreaSlot, List<String>> selfBeneath = const {},
+
+  /// 上にメンバーが居ないカード（4.5.5.4.1 / 4.5.5.4.2）。
+  Map<MemberAreaSlot, List<String>> selfOrphans = const {},
+  List<String> selfResolution = const [],
+  List<String> selfFreeArea = const [],
+  String firstPlayerId = kSelfPlayerId,
+}) {
+  final catalog = realShapedCatalog();
+  final serial = <String, int>{};
+
+  CardInstance make(String printingId, String playerId) {
+    final n = (serial[playerId] ?? 0) + 1;
+    serial[playerId] = n;
+    return CardInstance(
+      instanceId: '$playerId:$printingId:$n',
+      printingId: printingId,
+      cardNumber: catalog.printings[printingId]!.cardNumber,
+      ownerId: playerId,
+    );
+  }
+
+  List<CardInstance> build(List<String> ids, String playerId) =>
+      [for (final id in ids) make(id, playerId)];
+
+  PlayerState player(
+    String playerId,
+    Map<Zone, List<String>> zones,
+    Map<MemberAreaSlot, List<String>> members,
+    Map<MemberAreaSlot, List<String>> beneath,
+    Map<MemberAreaSlot, List<String>> orphans,
+    List<String> freeArea,
+  ) {
+    List<CardInstance> zone(Zone z) => build(zones[z] ?? const [], playerId);
+
+    final areas = <MemberArea>[];
+    for (final slot in MemberAreaSlot.values) {
+      final placed = build(members[slot] ?? const [], playerId);
+      final under = build(beneath[slot] ?? const [], playerId);
+      areas.add(MemberArea(
+        slot: slot,
+        stacks: [
+          for (var i = 0; i < placed.length; i++)
+            MemberStack(
+              // ★4.3.2.3: 配置状態が指定される領域なので既定はアクティブ状態。
+              member: placed[i].copyWith(orientation: CardOrientation.active),
+              // ★末尾のメンバーの下に置く（4.5.5.1）。
+              beneath: i == placed.length - 1 ? under : const [],
+            ),
+        ],
+        orphans: build(orphans[slot] ?? const [], playerId),
+      ));
+    }
+
+    return PlayerState(
+      playerId: playerId,
+      memberAreas: areas,
+      hand: zone(Zone.hand),
+      mainDeck: zone(Zone.mainDeck),
+      energyDeck: zone(Zone.energyDeck),
+      energyField: zone(Zone.energyField),
+      liveStage: zone(Zone.liveStage),
+      successLive: zone(Zone.successLive),
+      waitingRoom: zone(Zone.waitingRoom),
+      exile: zone(Zone.exile),
+      freeArea: build(freeArea, playerId),
+    );
+  }
+
+  return GameState(
+    players: [
+      player(kSelfPlayerId, selfZones, selfMembers, selfBeneath, selfOrphans,
+          selfFreeArea),
+      player(kOpponentPlayerId, opponentZones, opponentMembers, const {},
+          const {}, const []),
+    ],
+    firstPlayerId: firstPlayerId,
+    cursor: const StepCursor(PhaseId.firstActive, StepId.s7_4_1),
+    resolution: build(selfResolution, kSelfPlayerId),
+  );
+}

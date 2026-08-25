@@ -99,9 +99,9 @@ Widget _wrapped({
                 background: Colors.grey,
                 onDrop: onDrop,
                 builder: (context, hovering) {
-                  onHover?.call(hovering);
+                  onHover?.call(hovering?.edge);
                   return Center(
-                    child: Text(switch (hovering) {
+                    child: Text(switch (hovering?.edge) {
                       null => 'ここへ',
                       DropEdge.leading => '手前に入る',
                       DropEdge.trailing => '後ろに入る',

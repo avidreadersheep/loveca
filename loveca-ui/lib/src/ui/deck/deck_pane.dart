@@ -422,10 +422,10 @@ class _EntryRow extends StatelessWidget {
         //   出さないと利用者は前に入るのか後ろに入るのか分からない。
         decoration: BoxDecoration(
           border: Border(
-            top: hovering == DropEdge.leading
+            top: hovering?.edge == DropEdge.leading
                 ? BorderSide(color: theme.colorScheme.primary, width: 3)
                 : BorderSide.none,
-            bottom: hovering == DropEdge.trailing
+            bottom: hovering?.edge == DropEdge.trailing
                 ? BorderSide(color: theme.colorScheme.primary, width: 3)
                 : BorderSide.none,
           ),

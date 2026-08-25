@@ -24,28 +24,43 @@
 /// ★★ 「上から見る」の口をエネルギーデッキに作らない ★★
 /// 5.7.1 / 5.7.2 / 10.2.2.2 はいずれも**メインデッキ置き場**についての規定であり、
 /// エネルギーデッキ置き場を対象にした条は存在しない（決定 D73 / 盤面設計メモ §2-5）。
+///
+/// ★★ 落とすことはできる（M-B2）★★
+/// 中身を**出さない**ことと、そこへ**戻せない**ことは別である。
+/// 10.5.4 はエネルギーカードがエネルギーデッキ置き場へ戻ることを定めており、
+/// 手で戻す口が無いとサンドボックスとして成立しない。
+/// ★4.8 は順番が管理される（4.8.2）ので上下の帯が出る。4.9 は出ない（4.9.2）。
+/// **どちらも `board_drag.dart` の写像から自動的に決まる**（`board_drop.dart`）。
 library;
 
 import 'package:flutter/material.dart';
+import 'package:loveca_core/loveca_core.dart' hide Card;
 
+import 'board_drag.dart';
+import 'board_drop.dart';
 import 'board_slot.dart';
 
 class HiddenPile extends StatelessWidget {
   const HiddenPile({
     super.key,
+    required this.playerId,
+    required this.zone,
     required this.title,
-    required this.ruleRef,
     required this.count,
     this.width = kBoardSlotWidth,
   });
 
+  /// この山の持ち主。★落とす先を決めるためだけに要る。
+  final String playerId;
+
+  /// [Zone.mainDeck] / [Zone.energyDeck]。★条番号もここから取る。
+  final Zone zone;
+
   /// 「メインデッキ」/「エネルギーデッキ」。
   final String title;
 
-  /// 「4.8」/「4.9」。★条番号を画面にも出す（根拠が追えるように）。
-  final String ruleRef;
-
-  /// ★★ このウィジェットが知っている唯一のこと（4.1.2.2）★★
+  /// ★★ このウィジェットが受け取る唯一の中身（4.1.2.2）★★
+  /// ★[CardInstance] を 1 つも受け取らない。**出したくても材料が無い。**
   final int count;
 
   final double width;
@@ -58,8 +73,10 @@ class HiddenPile extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        BoardSlot(
+        BoardDropSlot(
           width: width,
+          resolve: (drag, edge) =>
+              moveToZone(drag, toPlayerId: playerId, to: zone, edge: edge),
           child: Center(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -81,7 +98,7 @@ class HiddenPile extends StatelessWidget {
         SizedBox(
           width: width,
           child: Text(
-            '$title\n$ruleRef',
+            '$title\n${zone.ruleRef}',
             textAlign: TextAlign.center,
             style: theme.textTheme.labelSmall,
           ),

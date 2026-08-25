@@ -68,6 +68,7 @@ class BoardSlot extends StatelessWidget {
     this.child,
     this.label,
     this.emphasis = false,
+    this.overlay,
   });
 
   final double width;
@@ -79,9 +80,15 @@ class BoardSlot extends StatelessWidget {
   /// ★共有解決領域など、他と区別したいスロット。
   final bool emphasis;
 
+  /// 落ちる意味を出す帯（`board_drop.dart` の `_EdgeOverlay` / 決定 D47）。
+  ///
+  /// ★[child] の**上**に重ねる。札の絵で隠れると出す意味が無い。
+  final Widget? overlay;
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final radius = BorderRadius.circular(4);
 
     final box = SizedBox(
       width: width,
@@ -89,15 +96,30 @@ class BoardSlot extends StatelessWidget {
       height: width / kCardAspectRatio,
       child: DecoratedBox(
         // ★ColoredBox 相当の塗りを必ず持たせる（決定 D46）。
-        //   透明にすると M-B2 でヒットテストが通らない。
+        //   透明にするとヒットテストが通らない。
         decoration: BoxDecoration(
           color: emphasis
               ? scheme.tertiaryContainer.withValues(alpha: 0.35)
               : scheme.surfaceContainerHighest.withValues(alpha: 0.55),
-          border: Border.all(color: scheme.outlineVariant),
-          borderRadius: BorderRadius.circular(4),
+          borderRadius: radius,
         ),
-        child: child,
+        // ★★ 枠線は前景に描く ★★
+        //   札（`BoardPiece`）は D46 のために**箱いっぱいの不透明な矩形**になる。
+        //   枠線を背景側に描くと札に覆われ、スロットの境目が消える。
+        child: DecoratedBox(
+          position: DecorationPosition.foreground,
+          decoration: BoxDecoration(
+            border: Border.all(color: scheme.outlineVariant),
+            borderRadius: radius,
+          ),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              ?child,
+              ?overlay,
+            ],
+          ),
+        ),
       ),
     );
 
@@ -145,7 +167,7 @@ class BoardCard extends StatelessWidget {
 
     // 4.3.3.2: 裏向きのカードは情報が書かれている面が見えない。
     if (card.face == FaceState.faceDown) {
-      return _FaceDown(width: width);
+      return BoardFaceDown(width: width);
     }
 
     final printing = view.catalog.printings[card.printingId];
@@ -166,11 +188,15 @@ class BoardCard extends StatelessWidget {
 
 /// 裏向きの札。総合ルール 4.3.3.2。
 ///
+/// ★★ ドラッグ中の feedback からも使う ★★
+/// feedback は `Overlay` に載るので `BoardView` が祖先にならない。
+/// **カタログを引く前の値だけで描ける**ことがここでは要る。
+///
 /// ★★ 絵を要求しない ★★
 /// `CardImageSource.provider` を呼ばないので、**裏向きの札の画像は
 /// デコードもキャッシュもされない。**
-class _FaceDown extends StatelessWidget {
-  const _FaceDown({required this.width});
+class BoardFaceDown extends StatelessWidget {
+  const BoardFaceDown({super.key, required this.width});
 
   final double width;
 

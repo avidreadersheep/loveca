@@ -16,6 +16,17 @@
 /// | 3 | 落下点の上半分／下半分を撃ち分ける | D47 / 同 §6-3 | [CardDropTarget] が `globalToLocal` で [DropEdge] を出す |
 /// | 4 | `onDragEnd` は当てにならない（落下先が元の行を作り直すと呼ばれない） | D46 / 同 §6-6 | ★**API に出さない。**確定は [CardDropTarget.onDrop] だけ |
 /// | 5 | タッチは長押し起点にする（スクロールとアリーナを奪い合う） | D46 / 同 §7-2 | [DragStartMode] で開始ジェスチャだけ差し替える |
+/// | 6 | ★**落ちる意味は「どこへ」だけでなく「何を」でも変わる** | D47 / M-B2 | [CardDropTarget.builder] へ [DropHover]（乗っている札 + [DropEdge]）を渡す |
+///
+/// ★★ 6 は M-B2 で足した ★★
+/// R3 では落ちてくるものが 2 種（一覧の刷り / デッキの行）で、
+/// **どちらでも上下の意味が同じ**だったので [DropEdge] だけで足りていた。
+/// 盤面はそうではない —— 同じメンバーエリアのスロットでも、
+/// 手札の札なら「上に置く（4.5.1）/ 下に置く（4.5.5）」の 2 通り、
+/// 他のエリアのメンバーなら `MoveMemberBetweenAreas` の 1 通りしかない。
+/// **乗っている札を見ずに帯を出すと、出ている文言が嘘になる。**
+/// D47 が「どちらの意味で落ちるかを出す」と定めた以上、
+/// 出す側が意味を決められる材料を渡さなければならない。
 ///
 /// ★★ `ReorderableListView` を採らない（D46 / 同 §6-2）★★
 /// 行のドラッグを自分で握るため行を `Draggable` にできず、
@@ -41,6 +52,20 @@ enum DragStartMode { immediate, longPress }
 /// 縦に並ぶリストなら「上半分＝手前に差し込む」「下半分＝後ろに差し込む」。
 /// ★盤面（Phase 3b）の重ね置き（4.5.5）でも同じ判定を使う。
 enum DropEdge { leading, trailing }
+
+/// いま乗っているもの（決定 D47 / 知見 6）.
+///
+/// ★[data] を渡すのは、**落ちる意味が札の種類でも変わる**ため。
+/// 盤面のメンバーエリアがその例で、手札の札とメンバーとで上下の意味が違う。
+class DropHover<T extends Object> {
+  const DropHover({required this.data, required this.edge});
+
+  /// 乗っている札。
+  final T data;
+
+  /// 落下点が上半分か下半分か。
+  final DropEdge edge;
+}
 
 /// 掴む側。
 ///
@@ -154,7 +179,9 @@ class CardDropTarget<T extends Object> extends StatefulWidget {
   final void Function(T data, DropEdge edge) onDrop;
 
   /// [hovering] が null なら乗っていない。
-  final Widget Function(BuildContext context, DropEdge? hovering) builder;
+  ///
+  /// ★[DropHover.data] も渡す。落ちる意味が札の種類で変わる場合に要る（知見 6）。
+  final Widget Function(BuildContext context, DropHover<T>? hovering) builder;
 
   /// 受け取れるかどうか。null なら何でも受け取る。
   final bool Function(T data)? accepts;
@@ -164,7 +191,7 @@ class CardDropTarget<T extends Object> extends StatefulWidget {
 }
 
 class _CardDropTargetState<T extends Object> extends State<CardDropTarget<T>> {
-  DropEdge? _hovering;
+  DropHover<T>? _hovering;
 
   /// 落下点が上半分か下半分か（決定 D47）。
   ///
@@ -179,16 +206,23 @@ class _CardDropTargetState<T extends Object> extends State<CardDropTarget<T>> {
         : DropEdge.trailing;
   }
 
-  void _setHovering(DropEdge? edge) {
-    if (_hovering == edge) return;
-    setState(() => _hovering = edge);
+  void _setHovering(DropHover<T>? next) {
+    if (_hovering?.edge == next?.edge && identical(_hovering?.data, next?.data)) {
+      return;
+    }
+    setState(() => _hovering = next);
   }
 
   @override
   Widget build(BuildContext context) => DragTarget<T>(
         onWillAcceptWithDetails: (details) =>
             widget.accepts?.call(details.data) ?? true,
-        onMove: (details) => _setHovering(_edgeOf(details.offset)),
+        onMove: (details) {
+          final edge = _edgeOf(details.offset);
+          _setHovering(
+            edge == null ? null : DropHover(data: details.data, edge: edge),
+          );
+        },
         onLeave: (_) => _setHovering(null),
         onAcceptWithDetails: (details) {
           final edge = _edgeOf(details.offset) ?? DropEdge.leading;

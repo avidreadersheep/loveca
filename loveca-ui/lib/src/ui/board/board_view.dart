@@ -22,6 +22,8 @@ import 'package:loveca_core/loveca_core.dart';
 
 import '../../data/card_image_source.dart';
 import '../../data/master_catalog.dart';
+import '../../state/game_store.dart';
+import '../common/card_drag.dart';
 
 class BoardView extends InheritedWidget {
   const BoardView({
@@ -30,10 +32,26 @@ class BoardView extends InheritedWidget {
     required this.viewerId,
     required this.catalog,
     required this.imageSource,
+    required this.store,
+    this.dragStartMode = DragStartMode.immediate,
     required super.child,
   });
 
   final GameState state;
+
+  /// ★★ `reduce` を呼ぶ唯一の場所（決定 D53）★★
+  /// 盤面の各所は写像の答え（`board_drag.dart`）をここへ渡すだけで、
+  /// **自分で `GameState` を書き換えない。**
+  final GameStore store;
+
+  /// ドラッグの開始方法（決定 D46 / D52 (d)）。
+  ///
+  /// ★PC（マウス）は 3 方式とも成立するので既定の [DragStartMode.immediate] でよい
+  /// （`docs/UI技術検証メモ.md` §6-4）。
+  /// ★[DragStartMode.longPress] は PC では使われない。**使われない経路は
+  /// `spike/` と同じ性質で静かに腐る**ので、`test/board/board_drag_test.dart` が
+  /// 両値を通している。ここを差し替えられる形にしてあるのはそのためである。
+  final DragStartMode dragStartMode;
 
   /// ★下段に出るプレイヤー。盤面の向きはこれ 1 つで決まる。
   final String viewerId;
@@ -64,6 +82,20 @@ class BoardView extends InheritedWidget {
   static List<MemberAreaSlot> get opponentRow =>
       [for (final slot in viewerRow) slot.opposing];
 
+  /// ★★ ダイアログへ同じ視点を配り直す ★★
+  /// `showDialog` は `Navigator` の別のサブツリーに載るので、
+  /// このウィジェットは**祖先にならない**。フィールドを 1 つずつ書き写す形に
+  /// すると増えたときに片方だけ直されるので、ここ 1 か所にまとめる。
+  BoardView provideTo(Widget child) => BoardView(
+        state: state,
+        viewerId: viewerId,
+        catalog: catalog,
+        imageSource: imageSource,
+        store: store,
+        dragStartMode: dragStartMode,
+        child: child,
+      );
+
   static BoardView of(BuildContext context) {
     final view = context.dependOnInheritedWidgetOfExactType<BoardView>();
     assert(view != null, 'BoardView が上に無い。盤面の内側で使うこと。');
@@ -74,5 +106,6 @@ class BoardView extends InheritedWidget {
   bool updateShouldNotify(BoardView oldWidget) =>
       !identical(oldWidget.state, state) ||
       oldWidget.viewerId != viewerId ||
+      oldWidget.dragStartMode != dragStartMode ||
       !identical(oldWidget.catalog, catalog);
 }

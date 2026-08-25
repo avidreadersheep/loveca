@@ -22,6 +22,7 @@ import 'package:loveca_core/loveca_core.dart';
 import '../../state/app_scope.dart';
 import '../../state/board_notice.dart';
 import '../../state/game_store.dart';
+import '../common/card_drag.dart';
 import '../common/degradation_line.dart';
 import 'board_layout.dart';
 import 'board_view.dart';
@@ -33,6 +34,7 @@ class BoardPage extends StatefulWidget {
     required this.viewerId,
     required this.seed,
     this.notices = const [],
+    this.dragStartMode = DragStartMode.immediate,
   });
 
   /// ★6.2.1 を通した初期状態（`GameSetup` / 決定 D79）。
@@ -42,6 +44,13 @@ class BoardPage extends StatefulWidget {
   final String viewerId;
   final int seed;
   final List<BoardNotice> notices;
+
+  /// ドラッグの開始方法（決定 D46 / D52 (d)）。
+  ///
+  /// ★PC は既定の [DragStartMode.immediate] でよい。
+  /// ★**使われない `longPress` の経路が静かに腐らないように**、
+  /// `test/board/board_drag_test.dart` が両値を通す口としてここを開けてある。
+  final DragStartMode dragStartMode;
 
   @override
   State<BoardPage> createState() => _BoardPageState();
@@ -87,6 +96,11 @@ class _BoardPageState extends State<BoardPage> {
         viewerId: board.viewerId,
         catalog: env.catalog,
         imageSource: env.imageSource,
+        // ★★ `reduce` を呼ぶ唯一の場所を盤面の各所へ配る（決定 D53）★★
+        //   落とす側は写像の答えを `dispatch` へ渡すだけで、
+        //   **自分で `GameState` を書き換えない。**
+        store: store,
+        dragStartMode: widget.dragStartMode,
         child: Scaffold(
           appBar: AppBar(
             title: const Text('一人回し'),
