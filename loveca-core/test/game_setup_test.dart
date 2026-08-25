@@ -84,6 +84,59 @@ GameState _start({
   ).dealInitialEnergy(rng: rng);
 }
 
+/// ★6.2.1.6 の途中まで（[GameSetup.mulligan] を呼ぶ側が要る）。
+GameSetup _beginWith(
+  DeterministicRng rng, {
+  Deck? deck,
+  String firstPlayerId = 'A',
+}) =>
+    GameSetup.begin(
+      players: [
+        PlayerDeck(playerId: 'A', deck: deck ?? _deck()),
+        PlayerDeck(playerId: 'B', deck: deck ?? _deck(deckId: 'deck-2')),
+      ],
+      cards: _cards,
+      printings: _printings,
+      rng: rng,
+      firstPlayerId: firstPlayerId,
+    );
+
+/// ★メインデッキが手札より少ないデッキ（メイン 8 枚 → 手札 6 / 山 2）。
+///
+/// ★★ 6.2.1.6 の「引いてから戻す」順を検査するのに要る ★★
+///   山が手札より多いと、順を入れ替えた実装でも**たまたま**旧手札が
+///   引き直されないことがある。少なくしておけば**枚数で必ず割れる**。
+Deck _smallMainDeck() => Deck(
+      deckId: 'small-main',
+      name: '山が少ない',
+      entries: const [
+        DeckEntry(printingId: 'M1-R', count: 4),
+        DeckEntry(printingId: 'L1-R', count: 4),
+        DeckEntry(printingId: 'E1-R', count: 6),
+      ],
+      createdAt: _epoch,
+      updatedAt: _epoch,
+    );
+
+/// ★`nextInt` の回数を数える包み。
+///
+/// ★★ 「乱数を消費したか」を列挙ではなく実測で見る（決定 D90-1 と同じ手法）★★
+///   6.2.1.6 の「1 枚以上移動した場合はシャッフルします」は
+///   **0 枚なら乱数を 1 つも消費しない**という観測できる性質を持つ。
+class _CountingRng implements DeterministicRng {
+  _CountingRng(this._inner);
+
+  final DeterministicRng _inner;
+
+  int count = 0;
+
+  @override
+  int nextInt(int max) {
+    count++;
+    return _inner.nextInt(max);
+  }
+}
+
 List<String> _ids(List<CardInstance> cards) =>
     cards.map((c) => c.instanceId).toList();
 
@@ -222,7 +275,7 @@ void main() {
       );
 
       final energyDeck = _ids(
-          setup.stateBeforeMulligan.playerOf('A').energyDeck);
+          setup.pendingState.playerOf('A').energyDeck);
 
       expect(energyDeck, equals(listOrder('A', energy: true)),
           reason: '★条文に無いシャッフルを足していないこと（決定 D73）');
@@ -433,8 +486,8 @@ void main() {
       );
 
       // ★この盤面は 6.2.1 のどの時点とも一致しない。盤面に出さないこと。
-      expect(setup.stateBeforeMulligan.playerOf('A').energyField, isEmpty);
-      expect(setup.stateBeforeMulligan.playerOf('A').hand.length, 6,
+      expect(setup.pendingState.playerOf('A').energyField, isEmpty);
+      expect(setup.pendingState.playerOf('A').hand.length, 6,
           reason: '★6.2.1.5 までは終わっている');
     });
   });
@@ -516,6 +569,288 @@ void main() {
     test('★対: 相手側は当然変わる（比較が生きている）', () {
       expect(mainAndHand(otherOpponent(), 'B'),
           isNot(mainAndHand(sameOpponent(), 'B')));
+    });
+  });
+
+  // =========================================================================
+  // ★★ 6.2.1.6 マリガン（決定 D93 / M-B6）★★
+  //
+  // > 6.2.1.6 先攻プレイヤーから順に、各プレイヤーは自身の手札のカードを
+  // > 任意の枚数選んで裏向きに脇に置き、置いた枚数と同じ枚数のカードを
+  // > 自身のメインデッキ置き場の上から自身の手札に移動し、
+  // > 脇に置いたカードをメインデッキ置き場に移動し、
+  // > 1 枚以上移動した場合はシャッフルします。
+  //
+  // ★★ 分岐が 3 つある。出る側と出ない側を対で置く（D-10）★★
+  //   「0 枚選べる」「N 枚選べる」「1 枚以上戻したらシャッフル」。
+  //   ★**シャッフルが起きる側と起きない側を対で固定する。**
+  //   0 枚なら乱数を消費しないことは**列挙ではなく実測**で見る（決定 D90-1 と同じ手法）。
+  // =========================================================================
+  group('★★ 6.2.1.6 マリガン（決定 D93）★★', () {
+    test('★★ 0 枚 —— 乱数を 1 つも消費しない ★★', () {
+      final rng = _CountingRng(SeededRng(1));
+      final setup = _beginWith(rng);
+      final before = rng.count;
+
+      final after = setup.mulligan(choices: const [], rng: rng);
+
+      expect(rng.count, before, reason: '★6.2.1.6 は「1 枚以上移動した場合は」と限っている');
+      expect(_ids(after.pendingState.playerOf('A').hand),
+          _ids(setup.pendingState.playerOf('A').hand));
+      expect(_ids(after.pendingState.playerOf('A').mainDeck),
+          _ids(setup.pendingState.playerOf('A').mainDeck),
+          reason: '★1 枚も動かないのでメインデッキの並びも変わらない');
+    });
+
+    test('★★対 1 枚以上 —— 乱数を消費する ★★', () {
+      final rng = _CountingRng(SeededRng(1));
+      final setup = _beginWith(rng);
+      final before = rng.count;
+
+      setup.mulligan(
+        choices: [
+          MulliganChoice(
+            playerId: 'A',
+            instanceIds: [setup.pendingState.playerOf('A').hand.first.instanceId],
+          ),
+        ],
+        rng: rng,
+      );
+
+      expect(rng.count, greaterThan(before), reason: '★5.5.1 のシャッフルが走る');
+    });
+
+    test('★★ 0 枚のマリガンは 6.2.1.7 の結果を 1 枚も動かさない ★★', () {
+      // ★D-17 と同じ型の確認 —— 6.2.1 は手順ごとに両プレイヤーを回すので、
+      //   どこかで乱数の消費量が変わると自分のエネルギー抽出がずれる。
+      final withMulligan = () {
+        final rng = SeededRng(7);
+        return _beginWith(rng)
+            .mulligan(choices: const [], rng: rng)
+            .dealInitialEnergy(rng: rng);
+      }();
+      final without = () {
+        final rng = SeededRng(7);
+        return _beginWith(rng).dealInitialEnergy(rng: rng);
+      }();
+
+      expect(_allInstanceIds(withMulligan), _allInstanceIds(without));
+    });
+
+    test('★対: 1 枚以上のマリガンなら 6.2.1.7 の結果はずれる', () {
+      final mulliganed = () {
+        final rng = SeededRng(7);
+        final setup = _beginWith(rng);
+        return setup
+            .mulligan(
+              choices: [
+                MulliganChoice(
+                  playerId: 'A',
+                  instanceIds: [
+                    setup.pendingState.playerOf('A').hand.first.instanceId,
+                  ],
+                ),
+              ],
+              rng: rng,
+            )
+            .dealInitialEnergy(rng: rng);
+      }();
+      final plain = () {
+        final rng = SeededRng(7);
+        return _beginWith(rng).dealInitialEnergy(rng: rng);
+      }();
+
+      expect(_allInstanceIds(mulliganed), isNot(_allInstanceIds(plain)));
+    });
+
+    test('★★ 捨てた札は引き直しで戻ってこない（手順 2 と 3 の順）★★', () {
+      // ★★ この検査が「メインデッキへ戻す前に引いている」ことの証拠である ★★
+      //   メインデッキを手札より少なくしてあるので、順を入れ替えた実装なら
+      //   **引ける枚数が増え、旧手札の札が戻ってきうる。**
+      final rng = SeededRng(3);
+      final setup = _beginWith(rng, deck: _smallMainDeck());
+      final oldHand = _ids(setup.pendingState.playerOf('A').hand);
+      expect(oldHand.length, 6);
+      expect(setup.pendingState.playerOf('A').mainDeck.length, 2,
+          reason: '★手札より少ないメインデッキを用意してある');
+
+      final after = setup.mulligan(
+        choices: [MulliganChoice(playerId: 'A', instanceIds: oldHand)],
+        rng: rng,
+      );
+
+      final newHand = _ids(after.pendingState.playerOf('A').hand);
+      expect(newHand.length, 2, reason: '★足りなければあるだけ（D28）');
+      expect(newHand.toSet().intersection(oldHand.toSet()), isEmpty,
+          reason: '★捨てた 6 枚は引き直しの時点でメインデッキに戻っていない');
+      expect(after.pendingState.playerOf('A').mainDeck.length, 6,
+          reason: '★2 枚引いたあとに 6 枚が戻る');
+      expect(after.pendingState.playerOf('A').mulliganAside, isEmpty,
+          reason: '★脇置きは 6.2.1.6 の手順内にしか存在しない');
+    });
+
+    test('N 枚 —— 手札の枚数は変わらず、選んだ札だけが入れ替わる', () {
+      final rng = SeededRng(5);
+      final setup = _beginWith(rng);
+      final oldHand = _ids(setup.pendingState.playerOf('A').hand);
+      final chosen = oldHand.take(2).toList();
+      final deckBefore = setup.pendingState.playerOf('A').mainDeck.length;
+
+      final after = setup.mulligan(
+        choices: [MulliganChoice(playerId: 'A', instanceIds: chosen)],
+        rng: rng,
+      );
+
+      final newHand = _ids(after.pendingState.playerOf('A').hand);
+      expect(newHand.length, 6);
+      expect(newHand.toSet().intersection(chosen.toSet()), isEmpty);
+      expect(newHand.toSet().containsAll(oldHand.skip(2)), isTrue,
+          reason: '★選ばなかった 4 枚は残る');
+      expect(after.pendingState.playerOf('A').mainDeck.length, deckBefore);
+    });
+
+    test('★★ 1 枚以上戻したら本当にシャッフルする（移動しただけではない）★★', () {
+      final rng = SeededRng(11);
+      final setup = _beginWith(rng);
+      final deckBefore = _ids(setup.pendingState.playerOf('A').mainDeck);
+      final chosen = setup.pendingState.playerOf('A').hand.first.instanceId;
+
+      final after = setup.mulligan(
+        choices: [
+          MulliganChoice(playerId: 'A', instanceIds: [chosen]),
+        ],
+        rng: rng,
+      );
+      final deckAfter = _ids(after.pendingState.playerOf('A').mainDeck);
+
+      // ★シャッフルしなかった場合の並び（上から 1 枚引いて、戻す 1 枚を一番下へ）。
+      final unshuffled = [...deckBefore.skip(1), chosen];
+      expect(deckAfter.toSet(), unshuffled.toSet(), reason: '★中身は同じ');
+      expect(deckAfter, isNot(unshuffled),
+          reason: '★★並びが変わっている = 5.5.1 が走った★★');
+    });
+
+    test('★★ 脇に置く順は手札のリスト順（選んだ順に依らない）★★', () {
+      // ★依らせると 5.5.1 の入力列が変わり、同じ seed でも盤面が再現できない。
+      List<String> run(bool reversed) {
+        final rng = SeededRng(13);
+        final setup = _beginWith(rng);
+        final hand =
+            _ids(setup.pendingState.playerOf('A').hand).take(3).toList();
+        return _ids(setup
+            .mulligan(
+              choices: [
+                MulliganChoice(
+                  playerId: 'A',
+                  instanceIds: reversed ? hand.reversed.toList() : hand,
+                ),
+              ],
+              rng: rng,
+            )
+            .pendingState
+            .playerOf('A')
+            .mainDeck);
+      }
+
+      expect(run(true), run(false));
+    });
+
+    test('★ choices の並びは結果に影響しない（処理順は先攻から / 6.2.1.6）', () {
+      List<String> run(bool reversed) {
+        final rng = SeededRng(17);
+        final setup = _beginWith(rng);
+        final a = MulliganChoice(
+          playerId: 'A',
+          instanceIds: [setup.pendingState.playerOf('A').hand.first.instanceId],
+        );
+        final b = MulliganChoice(
+          playerId: 'B',
+          instanceIds: [setup.pendingState.playerOf('B').hand.first.instanceId],
+        );
+        return _allInstanceIds(setup
+            .mulligan(choices: reversed ? [b, a] : [a, b], rng: rng)
+            .pendingState);
+      }
+
+      expect(run(true), run(false));
+    });
+
+    test('★ handsForMulligan は先攻が先（6.2.1.6「先攻プレイヤーから順に」）', () {
+      expect(
+          _beginWith(SeededRng(1), firstPlayerId: 'B')
+              .handsForMulligan
+              .first
+              .playerId,
+          'B');
+      final hands = _beginWith(SeededRng(1)).handsForMulligan;
+      expect(hands.first.playerId, 'A');
+      expect(hands.length, 2);
+      expect(hands.first.hand.length, 6);
+    });
+
+    group('★ 取り違えは投げる（黙って落とさない / D35）', () {
+      test('この盤面に居ないプレイヤー', () {
+        final rng = SeededRng(1);
+        expect(
+          () => _beginWith(rng).mulligan(
+            choices: const [MulliganChoice(playerId: 'Z', instanceIds: [])],
+            rng: rng,
+          ),
+          throwsA(isA<GameSetupException>()),
+        );
+      });
+
+      test('同じプレイヤーの選択が 2 つ', () {
+        final rng = SeededRng(1);
+        expect(
+          () => _beginWith(rng).mulligan(
+            choices: const [
+              MulliganChoice(playerId: 'A', instanceIds: []),
+              MulliganChoice(playerId: 'A', instanceIds: []),
+            ],
+            rng: rng,
+          ),
+          throwsA(isA<GameSetupException>()),
+        );
+      });
+
+      test('★手札に無いカード（理由に instanceId が載る）', () {
+        final rng = SeededRng(1);
+        expect(
+          () => _beginWith(rng).mulligan(
+            choices: const [
+              MulliganChoice(playerId: 'A', instanceIds: ['A:ghost:1']),
+            ],
+            rng: rng,
+          ),
+          throwsA(isA<GameSetupException>()
+              .having((e) => e.toString(), 'message', contains('A:ghost:1'))),
+        );
+      });
+
+      test('同じカードを 2 回選んでいる', () {
+        final rng = SeededRng(1);
+        final setup = _beginWith(rng);
+        final id = setup.pendingState.playerOf('A').hand.first.instanceId;
+        expect(
+          () => setup.mulligan(
+            choices: [
+              MulliganChoice(playerId: 'A', instanceIds: [id, id]),
+            ],
+            rng: rng,
+          ),
+          throwsA(isA<GameSetupException>()),
+        );
+      });
+
+      test('★★ 2 回目の mulligan（6.2.1.6 は 1 回だけ）★★', () {
+        final rng = SeededRng(1);
+        final once = _beginWith(rng).mulligan(choices: const [], rng: rng);
+        expect(
+          () => once.mulligan(choices: const [], rng: rng),
+          throwsA(isA<GameSetupException>()),
+        );
+      });
     });
   });
 }
