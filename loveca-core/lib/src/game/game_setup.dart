@@ -9,7 +9,7 @@
 /// ```
 ///   GameSetup.begin(...)            6.2.1.1 〜 6.2.1.5
 ///        ↓
-///   ★ここに 6.2.1.6（マリガン）が入る★   ← ★M-B5 で実装する。まだ無い★
+///   ★ここに 6.2.1.6（マリガン）が入る★   ← ★M-B6 で実装する。まだ無い★
 ///        ↓
 ///   setup.dealInitialEnergy(...)    6.2.1.7   → GameState
 /// ```
@@ -51,7 +51,7 @@ import 'zone.dart';
 /// どのプレイヤーがどのデッキを使うか。総合ルール 6.2.1.1。
 ///
 /// ★[Deck] は playerId を持たない（デッキ構築の産物であってゲームの産物ではない）。
-/// ★一人回しでは**同じ [Deck] を両方に渡せる**。instanceId は playerId を含むので
+/// ★ソロでは相手側にも**同じ [Deck] を渡す**（決定 D81 / D88）。instanceId は playerId を含むので
 ///   衝突しない（`game_setup_test.dart` が固定している）。
 class PlayerDeck {
   const PlayerDeck({required this.playerId, required this.deck});
@@ -88,7 +88,7 @@ class GameSetupException implements Exception {
 class GameSetup {
   const GameSetup._(this.stateBeforeMulligan);
 
-  /// ★マリガン待ちの盤面。M-B5 のマリガン UI が手札を見せるために読む。
+  /// ★マリガン待ちの盤面。M-B6 のマリガン UI が手札を見せるために読む。
   final GameState stateBeforeMulligan;
 
   /// 総合ルール 6.2.1.1 〜 6.2.1.5。
@@ -187,7 +187,7 @@ class GameSetup {
   /// エネルギー置き場へ移動します」。
   ///
   /// ★★ この呼び出しの**前**に 6.2.1.6（マリガン）が入る ★★
-  ///   M-B5 で `GameSetup mulligan(...)` を足したら
+  ///   M-B6 で `GameSetup mulligan(...)` を足したら
   ///   `begin(...).mulligan(...).dealInitialEnergy(...)` の順になる。
   ///   **順を入れ替えないこと**（乱数の消費順が条文と変わる）。
   ///

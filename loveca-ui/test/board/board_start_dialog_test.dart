@@ -70,8 +70,9 @@ void main() {
 
       expect(find.text('ソロ'), findsOneWidget);
       expect(find.text('ローカル対戦'), findsOneWidget);
-      // ★★ 廃止した語が残っていないこと（決定 D88-1）★★
-      expect(find.text('一人回し'), findsNothing);
+      // ★廃止した語が画面にもコードにも残っていないことは
+      //   `test/board/abolished_term_test.dart` が走査で見ている
+      //   （★ここに literal を書くと、その走査自身が 0 件にならない）。
     });
 
     testWidgets('「ローカル対戦」からダイアログが開く', (tester) async {

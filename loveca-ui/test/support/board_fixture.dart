@@ -93,7 +93,7 @@ GameState boardFixtureState({
     rng: rng,
     firstPlayerId: firstPlayerId,
     config: resolved.config,
-    // ★ここに 6.2.1.6（マリガン）が入る（M-B5）。順を入れ替えないこと。
+    // ★ここに 6.2.1.6（マリガン）が入る（M-B6）。順を入れ替えないこと。
   ).dealInitialEnergy(rng: rng);
 }
 

@@ -33,7 +33,7 @@ void main() {
   group('★ DB を要らない（決定 D55）', () {
     test('リポジトリを 1 つも受け取らない', () {
       // ★引数は値だけ（GameState / cards / rng）。
-      //   一人回しは保存も同期もしないので、盤面が DB へ行く用事が無い。
+      //   盤面は保存も同期もしないので、DB へ行く用事が無い。
       final store = storeWith();
       expect(store.value.state.players.length, 2);
       store.dispose();
@@ -90,7 +90,7 @@ void main() {
       store.dispose();
     });
 
-    test('★履歴に積まれる（M-B4 の undo がそのまま効く）', () {
+    test('★履歴に積まれる（M-B5 の undo がそのまま効く）', () {
       final store = storeWith();
       expect(store.value.session.canUndo, isFalse);
 
@@ -280,7 +280,7 @@ void main() {
 
   group('★★ 「エネルギーを1枚出す」は両プレイヤーの袖に出る（決定 D87）★★', () {
     // ★★ M-B1 は視点側の袖にしか渡していなかった ★★
-    //   一人回しは 1 人が両プレイヤーを操作する（D77 / D84）のに、相手側の
+    //   ローカル対戦は 1 人が両プレイヤーを操作する（D77 / D84）のに、相手側の
     //   エネルギーを手で出すには視点を切り替えるしかなかった。
     //   ★M-B3 でメインデッキの口を両側に出したことでこの非対称が見えたので直した。
     Future<void> pumpBoard(WidgetTester tester, GameState state) async {

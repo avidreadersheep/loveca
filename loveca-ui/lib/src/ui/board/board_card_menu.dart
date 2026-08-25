@@ -102,7 +102,7 @@ Future<void> showBeneathCardMenu(
 ///
 /// ★★ できることが無い。だからこそ理由を出す ★★
 /// 解消は 10.5.3 / 10.5.4 のルール処理であり、10.1.2 により
-/// **チェックタイミングでのみ**実行される。整理は M-B5。
+/// **チェックタイミングでのみ**実行される。整理は M-B6。
 Future<void> showOrphanCardMenu(BuildContext context) => _present(context, const [
       _MenuEntry(
         label: '★上にメンバーが居ないカードです（4.5.5.4.1 / 4.5.5.4.2）。'

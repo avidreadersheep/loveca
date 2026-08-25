@@ -149,7 +149,7 @@ class _BoardScaffold extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        // ★モードを名乗る。★「一人回し」という語は使わない（決定 D88-1）。
+        // ★モードを名乗る（★旧称は決定 D88-1 で廃止した）。
         title: Text(board.mode.label),
         actions: [
           // ★★ 視点の切替（決定 D75）★★

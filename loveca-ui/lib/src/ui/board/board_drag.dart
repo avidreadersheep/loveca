@@ -36,7 +36,7 @@ import '../common/card_drag.dart';
 ///     孤児（`MemberArea.orphans`）は掴ませない ★★
 ///   それらを動かす [GameAction] は [DetachFromMember] しか無く、
 ///   **落とす先を持たないドラッグ**を作ることになる。剥がすのはメニュー
-///   （`board_card_menu.dart`）であり、解消は 10.5.3 / 10.5.4 のルール処理（M-B5）。
+///   （`board_card_menu.dart`）であり、解消は 10.5.3 / 10.5.4 のルール処理（M-B6）。
 sealed class BoardDrag {
   const BoardDrag();
 

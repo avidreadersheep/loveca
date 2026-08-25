@@ -8,7 +8,7 @@
 /// ★★ M-B3 で `apply` から `reduceWithReport` + `record` に分けた（決定 D86）★★
 /// 10.2.1 の割り込みリフレッシュ回数と整理の結果（10.3 / 10.6 の警告）を
 /// **黙って落とさない**ためには [ReduceReport] が要るが、`GameSession.apply` は
-/// `GameState` しか返さない。★これは盤面設計メモ §8-2 が M-B4 / M-B5 の
+/// `GameState` しか返さない。★これは盤面設計メモ §8-2 が M-B5 の
 /// 合成コマンド向けに定めた形（`reduce` を回して `record` を 1 回だけ呼ぶ）と同じで、
 /// **`loveca_core` の変更は要らない。**
 ///
@@ -237,7 +237,7 @@ class GameStore extends Store<BoardState> {
   ///
   /// ★複数のアクションを 1 操作として戻したい場合（11.10 / 11.11 の補助コマンド、
   /// ライブカードセット）は、`reduce` を N 回回して `record` を 1 回だけ呼ぶ
-  /// （決定 D78 / 盤面設計メモ §8-2 / M-B5）。ここはその 1 回版である。
+  /// （決定 D78 / 盤面設計メモ §8-2 / M-B5 の巻き戻し）。ここはその 1 回版である。
   void dispatch(GameAction action) {
     final before = value.state;
 

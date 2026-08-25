@@ -37,6 +37,7 @@ int newBoardSeed() => _secureRandom.nextInt(1000000000);
 /// ★★ 2 段目（選ばれた人が先攻を選ぶ）はここでやらない ★★
 /// 条文は「無作為にどちらかのプレイヤーを選択し、**そのプレイヤーが
 /// どちらが先攻プレイヤーとなるかを選びます**」の 2 段である。
-/// 一人回しでは形骸化するが、**UI が 2 段を 1 段に潰すと Phase 6 で組み直しになる**。
+/// ローカル対戦では形骸化するが、**UI が 2 段を 1 段に潰すと Phase 6 で組み直しになる**。
+/// ★ソロでは 6.2.1.4 そのものを出さない（1 人では手順が成立しない / 決定 D88）。
 T pickAtRandom<T>(List<T> candidates) =>
     candidates[_secureRandom.nextInt(candidates.length)];
