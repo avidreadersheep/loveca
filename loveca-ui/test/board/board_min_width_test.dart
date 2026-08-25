@@ -28,10 +28,20 @@
 /// | 1 | 置き場 11 + 共有 1 が**横スクロールなしで**収まる幅 | `BoardLayout(minWidth: 0)` を幅で挟む |
 /// | 2 | 盤面以外（`AppBar` / 進行バー / 帯）が溢れない幅 | `BoardPage` を窓幅で挟む |
 ///
+/// ★★ 2026-08-25 追記（M-B3）: 縦も測る ★★
+/// M-B3 で進行バーに 2 行目（直前の操作）・整理の帯・集計の帯が増えた。
+/// 盤面本体（`BoardLayout`）は縦にもスクロールするので溢れないが、
+/// **`Expanded` の上に積まれた固定の段は溢れうる。**
+/// ★M-B2 までは縦を 1 度も測っていない。「増えないはず」で済ませない。
+/// → 測定 (4) を足した。溢れるなら**どこで溢れたか**まで記録する
+/// （次に判断する人が測り直さずに済むように）。
+///
 /// ★★ 測る前に「削らないもの」を決めてある ★★
 /// 置き場 11 + 共有 1 + ルール外 2（盤面設計メモ §4-1）。
 /// **収まるよう表示を削ってから測ると検算にならない。**
 library;
+
+import 'dart:convert';
 
 import 'package:flutter/material.dart' hide Card;
 import 'package:flutter_test/flutter_test.dart';
@@ -109,22 +119,38 @@ GameState _crowded() => handcraftedBoard(
 /// ★これは D-10（検知手段自身が同じ罠を踏む）の実例である。
 /// **手当て: 毎回ツリーを捨ててから組み直す。** `RenderObject` が作り直され、
 /// `_overflowReportNeeded` が true に戻る。
-Future<bool> _overflows(WidgetTester tester, Future<void> Function() pump) async {
+Future<bool> _overflows(WidgetTester tester, Future<void> Function() pump) async =>
+    (await _overflowsWhere(tester, pump)).isNotEmpty;
+
+/// ★★ 「溢れた」だけでなく**どこで溢れたか**を返す（M-B3）★★
+/// 事実だけ記録しても、次に判断する人が測り直すことになる。
+Future<List<String>> _overflowsWhere(
+  WidgetTester tester,
+  Future<void> Function() pump,
+) async {
   // ★★ ここが要（上の doc を参照）★★
   await tester.pumpWidget(const SizedBox.shrink());
 
-  var overflowed = false;
+  final where = <String>[];
   final previous = FlutterError.onError;
   FlutterError.onError = (details) {
-    if (details.exceptionAsString().contains('overflowed')) {
-      overflowed = true;
+    final text = details.exceptionAsString();
+    if (text.contains('overflowed')) {
+      // ★1 行目だけでは「どこで」が分からない。向きと寸法まで取る。
+      //   （1 行目 = A RenderFlex overflowed by N pixels on the bottom.
+      //     続く行 = The overflowing RenderFlex has an orientation of Axis.vertical.）
+      where.add(const LineSplitter()
+          .convert(text)
+          .where((line) =>
+              line.contains('overflow') || line.contains('orientation'))
+          .join(' '));
     } else {
       previous?.call(details);
     }
   };
   await pump();
   FlutterError.onError = previous;
-  return overflowed;
+  return where;
 }
 
 /// 下限は溢れる幅、上限は溢れない幅であることを先に確かめてから挟む。
@@ -212,7 +238,9 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
 
-    Future<bool> overflowsAt(double width) => _overflows(tester, () async {
+    var lastWhere = const <String>[];
+    Future<bool> overflowsAt(double width) async {
+      final where = await _overflowsWhere(tester, () async {
           tester.view.physicalSize = Size(width, 1400);
           await pumpInAppScope(
             tester,
@@ -229,13 +257,44 @@ void main() {
             decks: FakeDeckRepository(),
             catalog: realShapedCatalog(),
           );
-        });
+      });
+      if (where.isNotEmpty) lastWhere = where;
+      return where.isNotEmpty;
+    }
 
     final measured = await _search(overflowsAt, low: 200, high: 1600);
 
     // ignore: avoid_print
     print('★U16 測定 (2)（テスト用フォント）: '
-        '盤面以外が溢れない最小幅 = $measured 論理px');
+        '盤面以外が溢れない最小幅 = $measured 論理px'
+        '（直前に溢れた向き: ${lastWhere.join(' / ')}）');
+
+    // ★★ 「溢れた」だけでは次の人が測り直すことになる ★★
+    //   どの部品が幅を決めているのかを内訳で残す。
+    //   ★集計の 1 項目は `Wrap` の子なので、それ自体が窓より広いと折り返せずに溢れる。
+    await _overflows(tester, () async {
+      tester.view.physicalSize = const Size(2400, 1400);
+      await pumpInAppScope(
+        tester,
+        BoardPage(
+          initialState: _crowded(),
+          viewerId: kSelfPlayerId,
+          seed: 1234567890,
+        ),
+        decks: FakeDeckRepository(),
+        catalog: realShapedCatalog(),
+      );
+    });
+    for (final key in const [
+      'summary-blade-$kSelfPlayerId',
+      'summary-hearts-$kSelfPlayerId',
+      'summary-score-$kSelfPlayerId',
+      'summary-draw',
+    ]) {
+      // ignore: avoid_print
+      print('  ★内訳 (2): $key = '
+          '${tester.getSize(find.byKey(ValueKey(key))).width} 論理px');
+    }
 
     expect(measured, lessThanOrEqualTo(kBoardMinWidth));
     expect(measured, greaterThan(201),
@@ -288,6 +347,71 @@ void main() {
     }
     expect(find.byKey(const ValueKey('resolution-shared')), findsOneWidget);
     expect(find.textContaining('脇置き 6.2.1.6'), findsOneWidget);
+  });
+
+  testWidgets('★★ U16 (4): 盤面以外が縦に溢れない最小の高さ（M-B3 で新設）★★',
+      (tester) async {
+    // ★★ M-B2 まで縦は 1 度も測っていない ★★
+    //   M-B3 で進行バーの 2 行目・整理の帯・集計の帯が増えたので測る。
+    //   盤面本体は縦にもスクロールするが、`Expanded` の上の段は溢れうる。
+    //   ★溢れた場所も記録する（事実だけでは次の人が測り直すことになる）。
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    final crowded = _crowded();
+    // ★整理の帯にも出させる（10.3 / 10.6 の両方が立つ盤面にしてある）。
+    var lastWhere = const <String>[];
+
+    Future<bool> overflowsAt(double height) async {
+      final where = await _overflowsWhere(tester, () async {
+        tester.view.physicalSize = Size(kBoardMinWidth, height);
+        await pumpInAppScope(
+          tester,
+          BoardPage(
+            initialState: crowded,
+            viewerId: kSelfPlayerId,
+            seed: 1234567890,
+            notices: const [
+              MulliganNotImplemented(),
+              DeckNotValid(playerLabel: '自分', issues: []),
+            ],
+          ),
+          decks: FakeDeckRepository(),
+          catalog: realShapedCatalog(),
+        );
+      });
+      if (where.isNotEmpty) lastWhere = where;
+      return where.isNotEmpty;
+    }
+
+    final measured = await _search(overflowsAt, low: 120, high: 1400);
+
+    // ignore: avoid_print
+    print('★U16 測定 (4)（テスト用フォント）: '
+        '盤面以外が縦に溢れない最小の高さ = $measured 論理px'
+        '（直前に溢れた向き: ${lastWhere.join(' / ')}）');
+
+    // ★★ どの段が高さを食っているかを内訳で残す ★★
+    //   ★次に判断する人が測り直さずに済むように。
+    await overflowsAt(measured);
+    for (final key in const [
+      'progress-bar',
+      'tidy-notices',
+      'board-notices',
+      'summary-panel',
+    ]) {
+      final finder = find.byKey(ValueKey(key));
+      // ignore: avoid_print
+      print('  ★内訳 (4): $key = '
+          '${finder.evaluate().isEmpty ? '出ていない' : '${tester.getSize(finder).height} 論理px'}');
+    }
+    // ignore: avoid_print
+    print('  ★内訳 (4): AppBar = '
+        '${tester.getSize(find.byType(AppBar)).height} 論理px');
+
+    // ★★ 溢れの下限に張りついていないこと（(1)(2) と同じ検算）★★
+    expect(measured, greaterThan(121),
+        reason: '★下限のすぐ上に収束している = 溢れが報告されていない');
   });
 
   testWidgets('★★ U16 (3): 6.2.1.5 の初期手札 6 枚が同時に見える最小幅 ★★',

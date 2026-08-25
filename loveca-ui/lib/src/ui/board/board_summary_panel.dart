@@ -173,6 +173,7 @@ class _SharedDraw extends StatelessWidget {
             child: Text('共有', style: theme.textTheme.labelMedium),
           ),
           _Metric(
+            key: const ValueKey('summary-draw'),
             ruleRef: '8.3.12',
             name: 'エールのドロー',
             // ★★ ここだけ絞らない。8.3.14 との違いを書く ★★
@@ -208,13 +209,18 @@ class _Metric extends StatelessWidget {
     final theme = Theme.of(context);
     return Tooltip(
       message: '$name $ruleRef — $scope',
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+      // ★★ `Row` にしない ★★
+      //   `Wrap` の子は「窓幅」を上限に配られるので、1 項目が窓より広いと
+      //   **折り返せずに溢れる**。8.3.14 の行は参照範囲の文言が長く、実測で
+      //   843 論理px あった（`board_min_width_test.dart` の内訳）。
+      //   ★盤面と違って進行バー・帯・集計は横スクロールしないので、
+      //   ここが溢れると窓を狭めた瞬間に黄色い縞が出る。
+      child: Wrap(
+        spacing: 4,
+        crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           Text('$name $ruleRef', style: theme.textTheme.labelSmall),
-          const SizedBox(width: 4),
           value,
-          const SizedBox(width: 4),
           // ★★ ツールチップだけにしない ★★
           //   範囲を隠すと、並んだ 2 つの数字を同じ範囲だと読んでしまう。
           Text('（$scope）',
