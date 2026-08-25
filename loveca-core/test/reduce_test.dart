@@ -138,6 +138,39 @@ void main() {
     });
   });
 
+  group('★★ LookAtTop が乱数を消費する（D-19 の裏取り）★★', () {
+    // 10.2.2.2「メインデッキ置き場を上から見る指示があり、
+    //   枚数が指示された数値未満である」→ リフレッシュ (10.2.3 のシャッフル)。
+    // ★列挙は「見るだけなので盤面を変えない」と読んで LookAtTop を落としていた。
+    GameState look(int seed, int count) => reduce(
+          _state(
+            mainDeck: _cards('M1', 1, prefix: 'd'),
+            waitingRoom: _cards('M1', 6, prefix: 'w'),
+          ),
+          LookAtTop(playerId: 'A', count: count),
+          context: _ctx(seed),
+        );
+
+    test('★★ 枚数が足りないと消費する（seed を変えると結果が変わる）★★', () {
+      // ★先に「リフレッシュが実際に起きた」ことを確かめる。
+      //   起きていなければ seed の比較は何も証明しない。
+      final refreshed = look(1, 3);
+      expect(cardsIn(refreshed, 'A', Zone.waitingRoom), isEmpty,
+          reason: '★前提: 10.2.3 が走って控え室が空になっている');
+
+      expect(_fingerprint(look(1, 3)), isNot(_fingerprint(look(2, 3))),
+          reason: '★seed で結果が変わる = 乱数を消費している');
+    });
+
+    test('★対: 枚数が足りていれば消費しない（seed を変えても同じ）', () {
+      // ★これが無いと「常に消費する」実装でも上が通る。
+      expect(cardsIn(look(1, 1), 'A', Zone.waitingRoom), hasLength(6),
+          reason: '★前提: リフレッシュが起きていない');
+
+      expect(_fingerprint(look(1, 1)), _fingerprint(look(2, 1)));
+    });
+  });
+
   group('★★リプレイ再現性★★', () {
     List<GameAction> actions() => const [
           ShuffleZone(playerId: 'A', zone: Zone.mainDeck),
