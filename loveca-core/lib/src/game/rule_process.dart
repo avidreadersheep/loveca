@@ -192,8 +192,8 @@ class RuleProcessor {
           card.cardType == CardType.energy ? Zone.energyDeck : Zone.waitingRoom;
       // 4.1.2.1: 控え室 (4.12.2) は公開領域、エネルギーデッキ置き場 (4.9.2) は
       //   非公開領域。★行き先で表示面が割れるので `placedIn` に決めさせる。
-      final cleaned =
-          placedIn(instance.copyWith(clearOrientation: true), zone);
+      // 4.3.1: 向きもあわせて落ちる（どちらの行き先も向きを持たない）。
+      final cleaned = placedIn(instance, zone);
       next = replaceZone(
         next,
         instance.ownerId,

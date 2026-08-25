@@ -465,9 +465,9 @@ GameState _moveMemberOut(GameState state, MoveMemberOut a) {
     a.to,
     insertInto(
       cardsIn(next, a.toPlayerId, a.to),
-      // 移動先が配置状態を持たない領域なら向きを落とす（4.3.1）。
-      // 4.1.2.1: あわせて移動先の領域の規定に表示面を合わせる。
-      [placedIn(stack.member.copyWith(clearOrientation: true), a.to)],
+      // 4.3.1 / 4.1.2.1: 移動先の領域の規定に向きと表示面を合わせる。
+      // ★4.5.4 の向きは移動先には引き継がれない（4.7 以外は向きを持たない）。
+      [placedIn(stack.member, a.to)],
       a.position,
     ),
   );

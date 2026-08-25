@@ -1,6 +1,12 @@
-/// 領域に置かれるカードの表示面（総合ルール 4.1.2.1）を**画面で**見る。
+/// 領域に置かれるカードの配置状態を**画面で**見る。
 ///
-/// ★★ 条文の系は 2 段である ★★
+/// 総合ルール 4.3.1「配置状態には、**向きを示す状態**と、**表示面を表す状態**が
+/// あります」→ 2 つの軸をそれぞれ別の条文が決める。
+///
+///   表示面 … 4.1.2.1（領域の公開 / 非公開から導く）
+///   向き   … 4.3.1（持つのは 4.5.4 と 4.7.3 だけ）/ 4.3.2.3（既定はアクティブ）
+///
+/// ★★ 表示面の条文の系は 2 段である ★★
 ///   4.1.2.1「公開領域にカードが置かれる場合、そのカードは公開状態 (4.2.2) で
 ///   置かれます。非公開領域にカードが置かれる場合、そのカードは非公開状態 (4.2.3)
 ///   で置かれます」
@@ -20,6 +26,7 @@ import 'package:flutter/material.dart' hide Card;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loveca_core/loveca_core.dart' hide Card;
 import 'package:loveca_ui/src/state/board_mode.dart';
+import 'package:loveca_ui/src/state/game_store.dart';
 import 'package:loveca_ui/src/ui/board/board_page.dart';
 import 'package:loveca_ui/src/ui/board/board_slot.dart';
 import 'package:loveca_ui/src/ui/board/board_start_dialog.dart';
@@ -32,6 +39,7 @@ import '../support/pump_app.dart';
 import '../support/real_shaped_catalog.dart';
 
 const _live = drawLivePrinting;
+const _energy = energyPrinting;
 
 /// 札の絵そのもの（枠）。★裏向きの札には存在しない。
 Finder _art(String instanceId) => find.descendant(
@@ -48,6 +56,13 @@ Finder _slotOf(String instanceId) => find
 
 Finder _zone(Zone zone, [String playerId = kSelfPlayerId]) =>
     find.byKey(ValueKey('zone-${zone.name}-$playerId'));
+
+/// 4.3.2.2 のウェイト状態として**実際に回して描かれている**札。
+///
+/// ★状態ではなく描画を見る。`board_slot.dart` は `orientation == wait` の
+///   ときだけこの key を持つ `Transform` を挟む。
+Finder _rotated(String instanceId) =>
+    find.byKey(ValueKey('board-card-wait-$instanceId'));
 
 /// [zone] の中に裏面が何枚出ているか。★画面で見えているものだけを数える。
 Finder _faceDownIn(Zone zone) =>
@@ -100,8 +115,13 @@ Future<void> _pumpBoard(WidgetTester tester, GameState state) async {
   );
 }
 
-GameState _state(WidgetTester tester) =>
-    tester.widget<BoardView>(find.byType(BoardView).first).state;
+BoardView _view(WidgetTester tester) =>
+    tester.widget<BoardView>(find.byType(BoardView).first);
+
+GameState _state(WidgetTester tester) => _view(tester).state;
+
+/// ★盤面が実際に配っている `GameStore`（＝ `reduce` へ届く唯一の口 / D53 / D85）。
+GameStore _store(WidgetTester tester) => _view(tester).store;
 
 String _first(WidgetTester tester, Zone zone) =>
     cardsIn(_state(tester), kSelfPlayerId, zone).first.instanceId;
@@ -257,6 +277,71 @@ void main() {
       );
       expect(_faceOf(tester, Zone.liveStage, id), FaceState.faceDown);
       expect(_faceDownIn(Zone.liveStage), findsOneWidget);
+    });
+  });
+
+  group('★★ 4.3.1 / 4.3.2.3 — 領域に置かれるカードの向き ★★', () {
+    /// エネルギーを 1 枚置いて、5.2.1 でウェイト状態にした盤面。
+    ///
+    /// ★★ 向きは `SetOrientation` で立てる ★★
+    ///   `handcraftedBoard` は 4.1.2.1 / 4.3.2.3 を通すので、
+    ///   4.7 の札は必ずアクティブ状態で生まれる（条文どおり）。
+    ///   横向きの札は**盤面のメニュー（5.2.1）と同じ経路**で作る。
+    Future<String> waitingEnergy(WidgetTester tester) async {
+      await _pumpBoard(
+        tester,
+        handcraftedBoard(selfZones: const {
+          Zone.energyField: [_energy],
+        }),
+      );
+
+      final id = _first(tester, Zone.energyField);
+      expect(_rotated(id), findsNothing,
+          reason: '★前提: 4.3.2.3 により置いた直後はアクティブ状態');
+
+      _store(tester).dispatch(SetOrientation(
+        instanceId: id,
+        playerId: kSelfPlayerId,
+        zone: Zone.energyField,
+        orientation: CardOrientation.wait,
+      ));
+      await tester.pumpAndSettle();
+      return id;
+    }
+
+    testWidgets('★対: エネルギー置き場では横向きに描かれる（4.7.3 は向きを持つ）',
+        (tester) async {
+      // ★「常に向きを落とす」実装だとここで落ちる。
+      final id = await waitingEnergy(tester);
+
+      expect(_rotated(id), findsOneWidget);
+      expect(
+          cardsIn(_state(tester), kSelfPlayerId, Zone.energyField)
+              .single
+              .orientation,
+          CardOrientation.wait);
+    });
+
+    testWidgets('★実害の再現: ウェイトのエネルギーを控え室へ移すと縦向きに戻る',
+        (tester) async {
+      // ★★ `BoardCard` は `orientation == wait` のときだけ中身を 90 度回す ★★
+      //   4.12 に向きの規定は無い (4.3.1) のに、引き継ぐと控え室で横向きのまま残る。
+      final id = await waitingEnergy(tester);
+      expect(_rotated(id), findsOneWidget, reason: '★動かす前は横向き');
+
+      await _drag(
+        tester,
+        from: tester.getCenter(_slotOf(id)),
+        to: tester.getCenter(_zone(Zone.waitingRoom)),
+      );
+
+      expect(
+          cardsIn(_state(tester), kSelfPlayerId, Zone.waitingRoom)
+              .single
+              .orientation,
+          isNull,
+          reason: '★4.12 に向きの規定は無い（4.3.1）');
+      expect(_rotated(id), findsNothing, reason: '★控え室で横向きのまま残っている');
     });
   });
 }

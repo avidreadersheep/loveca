@@ -383,8 +383,8 @@ class StepEngine {
         Zone.waitingRoom,
         insertInto(
             cardsIn(state, card.ownerId, Zone.waitingRoom),
-            // 4.1.2.1 / 4.12.2: 控え室は公開領域。
-            [placedIn(card.copyWith(clearOrientation: true), Zone.waitingRoom)],
+            // 4.1.2.1 / 4.12.2: 控え室は公開領域。4.3.1: 向きは持たない。
+            [placedIn(card, Zone.waitingRoom)],
             ZonePosition.top),
       );
 

@@ -147,7 +147,11 @@ List<CardInstance> insertInto(
       ZonePosition.bottom => [...zone, ...cards],
     };
 
-/// [zone] に置かれるカードの表示面を、その領域の規定に合わせる。総合ルール 4.1.2.1。
+/// [zone] に置かれるカードの配置状態を、その領域の規定に合わせる。
+///
+/// 総合ルール 4.3.1「一部の領域において、カードの配置状態が指定される場合が
+/// あります。配置状態には、**向きを示す状態**と、**表示面を表す状態**があります」
+/// → 2 つの軸をそれぞれ別の条文から決める。
 ///
 /// ★★ 4.1.2.1 は「表示面」を直接には定めない。導出は 2 段である ★★
 ///   4.1.2.1「公開領域にカードが置かれる場合、そのカードは公開状態 (4.2.2) で
@@ -178,20 +182,46 @@ List<CardInstance> insertInto(
 ///   既定だけを実装し、違えたいときは 5.3.1 ([FlipCard]) で手動で反転する。
 ///
 /// ★4.1.2.1 は「置かれる**場合**」の規定であって、置いたあとの反転 (5.3.1) を禁じない。
-CardInstance placedIn(CardInstance card, Zone zone) => switch (zone) {
-      // ★4.5 に表示面の条文は無いが 4.5.3 が公開領域と定めるので表向きになる。
-      //   ただし向き (4.5.4) と重ね置き (4.5.5.2) で扱いが割れるため、
-      //   メンバーエリアへの配置は `reduce.dart` の専用経路が持つ。
-      Zone.memberArea => throw ArgumentError(
-          'メンバーエリアは 4.5.4 / 4.5.5.2 で扱いが割れる。reduce の専用経路を使う'),
-      Zone.stage => throw ArgumentError(
-          'ステージはメンバーエリアの統合ビューで実体を持たない (4.4.1)'),
-      // 4.6.2: 公開領域だが一時的に裏向きに置かれることがある。★引き継ぐ。
-      Zone.liveStage => card,
-      _ => switch (zone.visibility!) {
-          // 4.1.2.1 → 4.2.2 → 4.3.3.1
-          ZoneVisibility.public => card.copyWith(face: FaceState.faceUp),
-          // 4.1.2.1 → 4.2.3 → 4.3.3.2
-          ZoneVisibility.private => card.copyWith(face: FaceState.faceDown),
-        },
-    };
+CardInstance placedIn(CardInstance card, Zone zone) {
+  // ★4.5 に表示面の条文は無いが 4.5.3 が公開領域と定めるので表向きになる。
+  //   ただし向き (4.5.4) と重ね置き (4.5.5.2) で扱いが割れるため、
+  //   メンバーエリアへの配置は `reduce.dart` の専用経路が持つ。
+  if (zone == Zone.memberArea) {
+    throw ArgumentError(
+        'メンバーエリアは 4.5.4 / 4.5.5.2 で扱いが割れる。reduce の専用経路を使う');
+  }
+  if (zone == Zone.stage) {
+    throw ArgumentError('ステージはメンバーエリアの統合ビューで実体を持たない (4.4.1)');
+  }
+
+  // ---- 向き。総合ルール 4.3.1 / 4.3.2.3 ----
+  //
+  // ★★ 向きを持つと条文が定めるのは 2 つだけ ★★
+  //   4.5.4「メンバーエリアのメンバーカードは向きを示す配置状態を持ちます」
+  //   4.7.3「エネルギー置き場のカードは向きを示す配置状態を持ちます」
+  //   ★4 章の全条を確認した。他の領域には向きの規定が無い。
+  //   メンバーエリアは上で弾いてあるので、ここに残るのは 4.7 だけである。
+  //
+  // 4.3.2.3「配置状態が指定される領域にカードが置かれる場合、
+  //   特に指定がないかぎりアクティブ状態で置かれます」
+  //   ★★「特に指定がある場合」は総合ルールに 1 つも無い ★★
+  //     指定はカードテキスト由来であり、本アプリは効果を自動処理しない
+  //     (CLAUDE.md §1)。既定だけを実装し、違う向きにしたいときは
+  //     5.2.1 ([SetOrientation]) で手動で変える。
+  //     ★メンバーは登場時に向きを指定できる口がある (`PlaceMemberInArea`)。
+  final oriented = zone == Zone.energyField
+      ? card.copyWith(orientation: CardOrientation.active)
+      : card.copyWith(clearOrientation: true);
+
+  // ---- 表示面。総合ルール 4.1.2.1 ----
+  //
+  // 4.6.2: 公開領域だが一時的に裏向きに置かれることがある。★表示面は引き継ぐ。
+  if (zone == Zone.liveStage) return oriented;
+
+  return switch (zone.visibility!) {
+    // 4.1.2.1 → 4.2.2 → 4.3.3.1
+    ZoneVisibility.public => oriented.copyWith(face: FaceState.faceUp),
+    // 4.1.2.1 → 4.2.3 → 4.3.3.2
+    ZoneVisibility.private => oriented.copyWith(face: FaceState.faceDown),
+  };
+}

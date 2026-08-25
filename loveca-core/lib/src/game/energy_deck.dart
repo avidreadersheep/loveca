@@ -30,7 +30,6 @@
 ///   無作為と指定を片方に畳まないこと（決定 D73 の変更 #3）。
 library;
 
-import 'card_instance.dart';
 import 'card_move.dart';
 import 'game_state.dart';
 import 'rng.dart';
@@ -68,13 +67,9 @@ GameState drawEnergyRandomly(
     // ★4.9.2: 順番が管理されない領域なので、位置に意味を持たせない。
     final index = rng.nextInt(deck.length);
 
-    // 4.7.3: エネルギー置き場のカードは向きを示す配置状態を持つ。
-    // 4.3.2.3: 特に指定がないかぎりアクティブ状態で置かれる。
+    // 4.7.3 / 4.3.2.3: エネルギー置き場は向きを持ち、既定はアクティブ状態。
     // 4.1.2.1 / 4.7.2: エネルギー置き場は公開領域なので表向き。
-    final moved = placedIn(
-      deck[index].copyWith(orientation: CardOrientation.active),
-      Zone.energyField,
-    );
+    final moved = placedIn(deck[index], Zone.energyField);
 
     next = replaceZone(next, playerId, Zone.energyDeck, [
       ...deck.sublist(0, index),

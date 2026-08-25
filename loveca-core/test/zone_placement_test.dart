@@ -398,6 +398,89 @@ void main() {
     });
   });
 
+  group('★★ 4.3.1 / 4.3.2.3 — 領域に置かれるカードの向き ★★', () {
+    // 4.3.1「一部の領域において、カードの配置状態が指定される場合があります」
+    // ★向きを持つと条文が定めるのは 4.5.4（メンバーエリアのメンバーカード）と
+    //   4.7.3（エネルギー置き場）の 2 つだけ。
+    test('★★ 陽性対照: 向きを持つ領域は 4.7 ちょうど 1 つ（MoveCard の範囲で）★★', () {
+      // ★これが空なら、下の行列テストは「常に向きを落とす」実装でも通る。
+      const oriented = {Zone.energyField};
+      expect(oriented.intersection(_movable.toSet()), isNotEmpty);
+      for (final zone in _movable) {
+        expect(placedIn(_on('x', orientation: CardOrientation.wait), zone)
+                .orientation !=
+            null,
+            oriented.contains(zone),
+            reason: '★${zone.ruleRef} の向きの扱いが条文と違う');
+      }
+    });
+
+    test('★★ すべての (移動元, 移動先) で向きが移動先の規定に従う ★★', () {
+      for (final from in _movable) {
+        for (final to in _movable) {
+          if (from == to) continue;
+
+          // ★出どころで向きを持たせる。4.7 以外では条文上ありえない状態だが、
+          //   「引き継いでいないこと」を見るには入力側に付いていないと意味が無い。
+          final start =
+              _with(from, [_on('x', orientation: CardOrientation.wait)]);
+          final landed = cardsIn(_move(start, from, to), 'A', to).single;
+
+          if (to == Zone.energyField) {
+            // 4.7.3 / 4.3.2.3: 向きを持つ領域。既定はアクティブ状態。
+            expect(landed.orientation, CardOrientation.active,
+                reason: '★${from.ruleRef} → 4.7 でウェイトが引き継がれている');
+          } else {
+            // 4.3.1: 配置状態が指定されるのは一部の領域だけ。
+            expect(landed.orientation, isNull,
+                reason: '★${from.ruleRef} → ${to.ruleRef} で向きが残っている');
+          }
+        }
+      }
+    });
+
+    test('★実害の再現: ウェイトのエネルギーを控え室へ移すと縦向きに戻る', () {
+      final start = _with(Zone.energyField,
+          [_on('x', cardNumber: 'E1', orientation: CardOrientation.wait)]);
+      // ★先に「動かす前は横向き」を確かめる。そうでなければ何も証明しない。
+      expect(cardsIn(start, 'A', Zone.energyField).single.orientation,
+          CardOrientation.wait);
+
+      final moved = _move(start, Zone.energyField, Zone.waitingRoom);
+      expect(cardsIn(moved, 'A', Zone.waitingRoom).single.orientation, isNull,
+          reason: '★4.12 に向きの規定は無い（4.3.1）');
+    });
+
+    test('★対: 手札から 4.7 へ置くとアクティブ状態が立つ（null のままではない）', () {
+      // 4.3.2「どの状態も持たなかったりすることはありません」= 4.7 では null 禁止。
+      final start = _with(Zone.hand, [_on('x', cardNumber: 'E1')]);
+      expect(cardsIn(start, 'A', Zone.hand).single.orientation, isNull,
+          reason: '★4.11 は向きを持たない');
+
+      final moved = _move(start, Zone.hand, Zone.energyField);
+      expect(cardsIn(moved, 'A', Zone.energyField).single.orientation,
+          CardOrientation.active);
+    });
+
+    test('★対: 置いたあとの 5.2.1 は効く（4.3.2.3 は既定であって固定ではない）', () {
+      final start = _with(Zone.hand, [_on('x', cardNumber: 'E1')]);
+      final moved = _move(start, Zone.hand, Zone.energyField);
+      final waited = reduce(
+        moved,
+        const SetOrientation(
+          instanceId: 'x',
+          playerId: 'A',
+          zone: Zone.energyField,
+          orientation: CardOrientation.wait,
+        ),
+        context: _ctx(),
+      );
+
+      expect(cardsIn(waited, 'A', Zone.energyField).single.orientation,
+          CardOrientation.wait);
+    });
+  });
+
   group('★★ placedIn が受け付けない領域 ★★', () {
     test('メンバーエリアは専用経路が持つ (4.5.4 / 4.5.5.2)', () {
       expect(() => placedIn(_on('x'), Zone.memberArea), throwsArgumentError);
