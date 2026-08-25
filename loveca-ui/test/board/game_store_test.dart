@@ -152,6 +152,59 @@ void main() {
     });
   });
 
+  group('★★ reduce が投げたら履歴に積まない（決定 D86）★★', () {
+    // ★★ 「同じはず」で済ませない ★★
+    //   M-B3 で `session.apply`（= `record(reduce(...))`）を
+    //   `reduceWithReport` + `record` に分けた。Dart は引数を先に評価するので
+    //   順序は変わらない**はず**だが、分けた以上その事実を固定しておく。
+    test('例外が出ても盤面も履歴も動かない', () {
+      final store = storeWith();
+      final before = store.value.session;
+
+      expect(
+        // ★存在しない instanceId は呼び出し側のバグ（`reduce.dart` の `_takeOut`）。
+        () => store.dispatch(const MoveCard(
+          instanceId: 'no-such-instance',
+          fromPlayerId: kSelfPlayerId,
+          from: Zone.hand,
+          toPlayerId: kSelfPlayerId,
+          to: Zone.waitingRoom,
+        )),
+        throwsArgumentError,
+      );
+
+      expect(identical(store.value.session, before), isTrue,
+          reason: '★record に到達していない');
+      expect(store.value.session.canUndo, isFalse);
+      expect(store.value.operation, isNull, reason: '★直前の操作も残らない');
+      store.dispose();
+    });
+
+    test('★対: 通る操作なら履歴が 1 件増えて直前の操作が残る', () {
+      final store = storeWith();
+
+      store.dispatch(const DrawEnergy(playerId: kSelfPlayerId));
+
+      expect(store.value.session.history.depth, 1);
+      expect(store.value.operation, isNotNull);
+      expect(store.value.operation!.cursorBefore,
+          const StepCursor(PhaseId.firstActive, StepId.s7_4_1));
+      // ★DrawEnergy は進行ではないので遷移も整理も無い。
+      expect(store.value.operation!.taken, isNull);
+      expect(store.value.tidy, isNull);
+      store.dispose();
+    });
+  });
+
+  group('★ 分岐の判定は StepEngine に委ねる（決定 D86）', () {
+    test('7.4.1 では宣言が要らず、後続候補は 1 つ', () {
+      final store = storeWith();
+      expect(store.requiresChoice, isFalse);
+      expect(store.transitions, hasLength(1));
+      store.dispose();
+    });
+  });
+
   group('★ 画面から dispatch が通る（実物の経路）', () {
     testWidgets('ボタンを押すとエネルギーが増える', (tester) async {
       tester.view.physicalSize = const Size(1600, 1200);
