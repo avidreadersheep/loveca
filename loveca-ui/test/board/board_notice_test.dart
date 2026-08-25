@@ -179,7 +179,7 @@ void main() {
 
       store.dispatch(const AdvanceStep());
 
-      expect(store.value.tidy!.warnings,
+      expect(store.value.tidies.single.warnings,
           contains(RuleProcessWarningKind.victory));
     });
 
@@ -194,7 +194,7 @@ void main() {
 
       store.dispatch(const AdvanceStep());
 
-      expect(store.value.tidy!.warnings,
+      expect(store.value.tidies.single.warnings,
           isNot(contains(RuleProcessWarningKind.victory)));
     });
 
@@ -207,7 +207,7 @@ void main() {
 
       store.dispatch(const AdvanceStep());
 
-      expect(store.value.tidy!.warnings,
+      expect(store.value.tidies.single.warnings,
           contains(RuleProcessWarningKind.invalidResolution));
     });
 
@@ -217,7 +217,7 @@ void main() {
 
       store.dispatch(const AdvanceStep());
 
-      expect(store.value.tidy!.warnings, isEmpty);
+      expect(store.value.tidies.single.warnings, isEmpty);
     });
 
     test('★★ 別の操作をしても消えない（黙って落とさない）★★', () {
@@ -231,7 +231,7 @@ void main() {
       addTearDown(store.dispose);
 
       store.dispatch(const AdvanceStep());
-      expect(store.value.tidy!.warnings, isNotEmpty);
+      expect(store.value.tidies.single.warnings, isNotEmpty);
 
       // ★整理を伴わない操作（手札 → 控え室）。
       final card = store.value.state.playerOf(kSelfPlayerId).hand.single;
@@ -243,7 +243,7 @@ void main() {
         to: Zone.waitingRoom,
       ));
 
-      expect(store.value.tidy!.warnings,
+      expect(store.value.tidies.single.warnings,
           contains(RuleProcessWarningKind.victory),
           reason: '★ドラッグ 1 回で勝利処理の警告が消えてはいけない');
     });
@@ -261,7 +261,7 @@ void main() {
 
       store.dispatch(const AdvanceStep());
 
-      expect(store.value.tidy!.applied,
+      expect(store.value.tidies.single.applied,
           contains(RuleProcessKind.orphanMember));
       // ★対: 実際に盤面が動いている（表示だけではない）。
       expect(store.value.state.playerOf(kSelfPlayerId).waitingRoom,
@@ -280,8 +280,8 @@ void main() {
 
       store.dispatch(const AdvanceStep());
 
-      expect(store.value.tidy!.excludedCount, 1);
-      expect(store.value.tidy!.unknownCardNumbers, [_ghostCardNumber]);
+      expect(store.value.tidies.single.excludedCount, 1);
+      expect(store.value.tidies.single.unknownCardNumbers, [_ghostCardNumber]);
     });
   });
 

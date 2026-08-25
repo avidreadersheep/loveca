@@ -83,6 +83,9 @@ class BoardProgressBar extends StatelessWidget {
               // ★★ 巻き戻しは進行の逆操作なので隣に置く（M-B5 / 決定 D78）★★
               //   段を増やさない（`Wrap` なので狭い窓では縦へ折り返す / U19）。
               _UndoControls(store: store),
+              // ★★ 整理は 9.5.3 のチェックタイミングと同じことを手で回す（M-B6）★★
+              //   結果はこのすぐ下の「直前の整理」の帯に出るので、隣に置く。
+              _TidyButton(store: store),
             ],
           ),
           if (board.operation case final operation?) ...[
@@ -143,6 +146,52 @@ class _AdvanceControls extends StatelessWidget {
       ],
     );
   }
+}
+
+/// ★★ 整理を手で回す（M-B6 / 決定 D93 / 総合ルール 10.4 / 10.5）★★
+///
+/// ★★ なぜ手で回す口が要るのか ★★
+/// 整理はチェックタイミング（9.5.3）で自動的に走るが、
+/// **ソロは 1 ターンに CT が 12 個減る**（後攻フェイズが無い / §14-4）ので、
+/// 孤児カード（4.5.5.4.1）や重複メンバー（10.4）が残る時間が長い。
+/// ★これは条文どおりの帰結であって不具合ではない。だから**消す口**を別に置く。
+///
+/// ★★ 10.3 と 10.6 は実行しない ★★
+/// 10.3（勝利処理）は決定 D10 により手動、10.6（不正解決領域処理）は
+/// 「プレイ中 / 解決中」が観測できない（D-A）ため。**警告に留まる。**
+/// ★出さないものを Tooltip に書く —— 押した人が「勝ちになるはずでは」と迷わないように。
+///
+/// ★★ 当たるものが無くても黙らない ★★
+/// `BoardTidyLog.manual` が立つので `TidyFoundNothing` の行が出る。
+/// **押して何も起きない形にしない。**
+///
+/// ★★ 無効にしない ★★
+/// 「当たるものがあるか」を先に計算して無効化すると、
+/// **押す前に整理を 1 回走らせる**ことになり、毎 build のコストが増える。
+/// ★`undo` と違って**着地先を先に見せる価値も薄い**（結果は帯に出る）。
+class _TidyButton extends StatelessWidget {
+  const _TidyButton({required this.store});
+
+  final GameStore store;
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+        message: 'いまの盤面にルール処理（10.4 重複メンバー / 10.5 不正なカード）を'
+            '1 回適用します。\n'
+            '★10.3 勝利処理と 10.6 不正解決領域処理は実行しません（警告だけ出します）。\n'
+            '★当たるものが無ければ「ありませんでした」と出ます。',
+        child: OutlinedButton.icon(
+          key: const ValueKey('tidy-button'),
+          onPressed: () => store.dispatch(const Tidy()),
+          icon: const Icon(Icons.cleaning_services_outlined, size: 18),
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            textStyle: Theme.of(context).textTheme.labelMedium,
+          ),
+          // ★条番号はラベルに出す（D90-3。Tooltip はマウスを乗せないと出ない）。
+          label: const Text('整理する 10.4 / 10.5'),
+        ),
+      );
 }
 
 /// ★★ 巻き戻し（決定 D78 / 盤面設計メモ §8-1）★★

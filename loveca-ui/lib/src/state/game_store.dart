@@ -87,12 +87,20 @@ class BoardOperationLog {
       taken == null && refreshCount == 0 && skipped.isEmpty;
 }
 
-/// 直前の整理（チェックタイミング 9.5.3）の結果（M-B3 / 決定 D86）。
+/// 直前の整理（チェックタイミング 9.5.3）の結果（M-B3 / 決定 D86 / D93）。
 ///
 /// ★★ 整理が起きたときだけ差し替える ★★
 /// ドラッグ 1 回で 10.3（勝利処理）の警告が消えると、**黙って落とした**のと同じになる。
-/// → [GameStore.dispatch] は `report.tidy == null` のとき**前の値を残す。**
+/// → [GameStore.dispatchAll] は整理が 1 件も起きなかったとき**前の値を残す。**
 /// 見出しに「直前の整理」と条番号を出すので、古い値が現在の状態に見えることはない。
+///
+/// ★★ 1 押下で**複数件**出る（決定 D93-5 / 盤面設計メモ §14-7 の持ち越し 4 つ目）★★
+/// 手で押した [Tidy] は 1 件しか出さないが、**M-B7 の自動進行は 1 押下で
+/// 複数のチェックタイミングを通る**ので N 件出る。
+/// → [BoardState.tidies] は **`List`** である。★M-B6 の完成条件ではないが、
+/// 単数で作り込むと M-B7 で作り直しになる（§15-12 の根拠 3）。
+/// ★各件が自分の [cursor] を持つので、平坦に並べても**どの CT のものかが読める**
+/// （§15-10「CT 単位に 1 行。フェイズ単位にまとめない」）。
 class BoardTidyLog {
   const BoardTidyLog({
     required this.cursor,
@@ -100,6 +108,7 @@ class BoardTidyLog {
     this.warnings = const [],
     this.excludedCount = 0,
     this.unknownCardNumbers = const [],
+    this.manual = false,
   });
 
   /// どのチェックタイミングでの整理か。
@@ -116,11 +125,24 @@ class BoardTidyLog {
 
   final List<String> unknownCardNumbers;
 
+  /// ★★ プレイヤーが「整理する」を押して起きた整理か（M-B6 / 決定 D93-5）★★
+  ///
+  /// ★★ 当たるものが無かったときの扱いが変わる ★★
+  ///   自動（チェックタイミング）の整理は**ほとんど毎回空**なので、
+  ///   空でも行を出すと帯が出っぱなしになる。
+  ///   手で押したときは違う —— **押したのに何も出ないと「壊れている」と読まれる。**
+  ///   → [manual] のときだけ [TidyFoundNothing] を出す。
+  final bool manual;
+
   bool get isEmpty => applied.isEmpty && warnings.isEmpty && excludedCount == 0;
 
   /// 帯に出す行。★描画は `ui/board/board_notice_bar.dart` が持つ。
   List<BoardNotice> get notices {
     final ruleRef = cursor.step.ruleRef;
+    // ★手で押して何も当たらなかったことを黙らない（黙って効かないボタンにしない）。
+    if (isEmpty) {
+      return manual ? [TidyFoundNothing(stepRuleRef: ruleRef)] : const [];
+    }
     return [
       if (applied.isNotEmpty)
         RuleProcessApplied(stepRuleRef: ruleRef, kinds: applied),
@@ -183,12 +205,15 @@ class BoardRewindLog {
 class _AppliedLog {
   const _AppliedLog({
     required this.operation,
-    required this.tidy,
+    required this.tidies,
     required this.rngConsumed,
   });
 
   final BoardOperationLog? operation;
-  final BoardTidyLog? tidy;
+
+  /// ★1 押下で起きた整理**全件**（決定 D93-5）。
+  final List<BoardTidyLog> tidies;
+
   final bool rngConsumed;
 }
 
@@ -201,7 +226,7 @@ class BoardState {
     required this.seed,
     this.notices = const [],
     this.operation,
-    this.tidy,
+    this.tidies = const [],
     this.rewind,
     this.log = const [],
   });
@@ -228,8 +253,11 @@ class BoardState {
   /// 直前の 1 操作の結果。★まだ何もしていなければ null。
   final BoardOperationLog? operation;
 
-  /// 直前の整理の結果。★整理が起きるまで null。
-  final BoardTidyLog? tidy;
+  /// ★★ 直前の 1 押下で起きた整理**全件**（M-B6 / 決定 D93-5）★★
+  ///
+  /// ★整理が 1 件も起きるまで空。★**単数にしない** —— M-B7 の自動進行は
+  /// 1 押下で複数のチェックタイミングを通るので N 件出る（盤面設計メモ §14-7）。
+  final List<BoardTidyLog> tidies;
 
   /// 直前の巻き戻しの結果（M-B5）。★次の操作で消える。
   final BoardRewindLog? rewind;
@@ -259,8 +287,8 @@ class BoardState {
     String? viewerId,
     BoardOperationLog? operation,
     bool clearOperation = false,
-    BoardTidyLog? tidy,
-    bool clearTidy = false,
+    List<BoardTidyLog>? tidies,
+    bool clearTidies = false,
     BoardRewindLog? rewind,
     bool clearRewind = false,
     List<BoardLogEntry>? log,
@@ -273,8 +301,8 @@ class BoardState {
         notices: notices,
         operation: clearOperation ? null : (operation ?? this.operation),
         // ★null を渡すと「前の整理を残す」（[BoardTidyLog] の doc）。
-        //   消すのは巻き戻しのときだけなので、明示の [clearTidy] で行う。
-        tidy: clearTidy ? null : (tidy ?? this.tidy),
+        //   消すのは巻き戻しのときだけなので、明示の [clearTidies] で行う。
+        tidies: clearTidies ? const [] : (tidies ?? this.tidies),
         rewind: clearRewind ? null : (rewind ?? this.rewind),
         log: log ?? this.log,
       );
@@ -388,17 +416,33 @@ class GameStore extends Store<BoardState> {
 
     var next = before;
     var refreshCount = 0;
-    RuleProcessResult? tidy;
+    final tidies = <BoardTidyLog>[];
     AdvanceResult? advance;
     var skipped = const <StepCursor>[];
 
     for (final action in actions) {
+      final cursorBefore = next.cursor;
       // ★★ 投げたらここで終わる。下の record にも state の代入にも到達しない ★★
       final report = reduceWithReport(next, action, context: _context);
       next = report.state;
       refreshCount += report.refreshCount;
-      // ★整理と進行は「最後に起きたもの」を採る。起きていなければ前の値を保つ。
-      tidy = report.tidy ?? tidy;
+      // ★★ 整理は**全件**積む（M-B6 / 決定 D93-5 / 新所見 D-21 の器）★★
+      //   最後の 1 件で上書きすると、M-B7 の自動進行が複数の CT を通ったときに
+      //   途中の 10.3 / 10.6 の警告が黙って落ちる。
+      if (report.tidy case final result?) {
+        tidies.add(BoardTidyLog(
+          cursor: cursorBefore,
+          applied: result.applied,
+          warnings: result.warnings,
+          excludedCount: result.excludedCount,
+          unknownCardNumbers: result.unknownCardNumbers,
+          // ★手で押した [Tidy] だけが「何も当たらなかった」を出す。
+          manual: action is Tidy,
+        ));
+      }
+      // ★★ 進行はまだ「最後に起きたもの」を採る（新所見 D-21 の本体は M-B7）★★
+      //   いま合成に [AdvanceStep] が入る経路は無い（1 件版からしか渡らない）。
+      //   ★自動進行はこれを直接踏むので、そのとき同じ形へ直す。
       advance = report.advance ?? advance;
       if (report.skipped.isNotEmpty) skipped = report.skipped;
     }
@@ -411,23 +455,13 @@ class GameStore extends Store<BoardState> {
       // ★飛ばしたカーソルを黙って落とさない（決定 D88）。
       skipped: skipped,
     );
-    final tidyLog = tidy == null
-        ? null
-        : BoardTidyLog(
-            cursor: before.cursor,
-            applied: tidy.applied,
-            warnings: tidy.warnings,
-            excludedCount: tidy.excludedCount,
-            unknownCardNumbers: tidy.unknownCardNumbers,
-          );
-
     final session = value.session.record(next);
-    // ★整理が起きていないときは前の値を残す（[BoardTidyLog] の doc）。
+    // ★整理が 1 件も起きていないときは前の値を残す（[BoardTidyLog] の doc）。
     _pushApplied(
       session,
       _AppliedLog(
         operation: operation,
-        tidy: tidyLog ?? value.tidy,
+        tidies: tidies.isEmpty ? value.tidies : tidies,
         rngConsumed: _rng.count > rngBefore,
       ),
     );
@@ -435,7 +469,7 @@ class GameStore extends Store<BoardState> {
     state = value.copyWith(
       session: session,
       operation: operation,
-      tidy: tidyLog,
+      tidies: tidies.isEmpty ? null : tidies,
       // ★巻き戻しの行は次の操作で消す（寿命は「次の操作まで」）。
       clearRewind: true,
       log: [...value.log, Act(actions)],
@@ -479,8 +513,8 @@ class GameStore extends Store<BoardState> {
       session: next,
       operation: restored?.operation,
       clearOperation: restored?.operation == null,
-      tidy: restored?.tidy,
-      clearTidy: restored?.tidy == null,
+      tidies: restored?.tidies,
+      clearTidies: restored == null || restored.tidies.isEmpty,
       rewind: BoardRewindLog(
         wholeStep: wholeStep,
         entriesPopped: popped,

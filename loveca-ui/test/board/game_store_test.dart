@@ -201,7 +201,7 @@ void main() {
           const StepCursor(PhaseId.firstActive, StepId.s7_4_1));
       // ★DrawEnergy は進行ではないので遷移も整理も無い。
       expect(store.value.operation!.taken, isNull);
-      expect(store.value.tidy, isNull);
+      expect(store.value.tidies, isEmpty);
       store.dispose();
     });
   });

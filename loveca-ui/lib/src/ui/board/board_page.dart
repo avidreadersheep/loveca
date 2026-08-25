@@ -181,9 +181,14 @@ class _BoardScaffold extends StatelessWidget {
         children: [
           BoardProgressBar(board: board, store: store),
           // ★整理の結果は「起きたときだけ差し替わり、次の操作では消えない」。
+          //   ★★ 1 押下で複数件出る（M-B6 / 決定 D93-5）★★
+          //   平坦に並べてよい —— 各行が自分のチェックタイミングの条番号を
+          //   持っているので、**どの時点のものかが行ごとに読める**（§15-10）。
           BoardNoticeBar(
             key: const ValueKey('tidy-notices'),
-            notices: board.tidy?.notices ?? const [],
+            notices: [
+              for (final tidy in board.tidies) ...tidy.notices,
+            ],
             mode: board.mode,
             background: scheme.tertiaryContainer,
             heading: '直前の整理（9.5.3 のチェックタイミング）',

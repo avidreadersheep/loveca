@@ -59,6 +59,19 @@ final class RuleProcessNotAutomatic extends BoardNotice {
   final List<RuleProcessWarningKind> kinds;
 }
 
+/// ★★ 手で押した整理（10.4 / 10.5）に当たるものが 1 つも無かった（M-B6 / 決定 D93-5）★★
+///
+/// ★★ 押したのに何も出ないと「壊れている」と読まれる ★★
+/// このリポジトリで一貫している「黙って効かないボタンを作らない」の裏返しである。
+/// ★**自動（チェックタイミング）の整理では出さない** —— そちらはほとんど毎回空なので、
+/// 出すと帯が出っぱなしになって、本当に何か起きたときに気づけなくなる。
+/// 撃ち分けは `state/game_store.dart` の `BoardTidyLog.manual`。
+final class TidyFoundNothing extends BoardNotice {
+  const TidyFoundNothing({required this.stepRuleRef});
+
+  final String stepRuleRef;
+}
+
 /// 整理がカードマスタを引けず、種別を判定できなかった。
 ///
 /// ★10.5.2 / 10.5.3 / 10.5.4 は種別で行き先が変わるので、引けないと動かせない。

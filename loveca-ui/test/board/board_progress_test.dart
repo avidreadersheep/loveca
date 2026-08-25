@@ -195,7 +195,7 @@ void main() {
       addTearDown(store.dispose);
 
       store.dispatch(const AdvanceStep());
-      expect(store.value.tidy, isNull, reason: '★7.7.3 に終了時チェックタイミングは無い');
+      expect(store.value.tidies, isEmpty, reason: '★7.7.3 に終了時チェックタイミングは無い');
     });
 
     test('★対: 7.6.3 では整理が走る', () {
@@ -205,8 +205,8 @@ void main() {
       addTearDown(store.dispose);
 
       store.dispatch(const AdvanceStep());
-      expect(store.value.tidy, isNotNull);
-      expect(store.value.tidy!.cursor.step, StepId.s7_6_3);
+      expect(store.value.tidies, hasLength(1));
+      expect(store.value.tidies.single.cursor.step, StepId.s7_6_3);
     });
   });
 

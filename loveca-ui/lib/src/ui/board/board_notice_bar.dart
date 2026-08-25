@@ -96,6 +96,13 @@ Widget boardNoticeLine(BoardNotice notice, {required BoardMode mode}) =>
               'アプリは実行しません（手で処理してください）: '
               '${kinds.map((k) => _warningLabel(k, mode)).join(' / ')}',
         ),
+      // ★★ 手で押して何も当たらなかったことを黙らない（M-B6 / 決定 D93-5）★★
+      TidyFoundNothing(:final stepRuleRef) => DegradationLine(
+          icon: Icons.check_circle_outline,
+          severity: DegradationSeverity.report,
+          text: '$stepRuleRef の時点では、当たるルール処理が'
+              'ありませんでした（10.4 / 10.5）。盤面は変わっていません。',
+        ),
       TidyExcluded(:final stepRuleRef, :final count, :final cardNumbers) =>
         DegradationLine(
           icon: Icons.help_outline,
