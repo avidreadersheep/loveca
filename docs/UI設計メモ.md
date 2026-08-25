@@ -612,14 +612,24 @@ loveca-ui/lib/src/data/
 | `printingId` | `String` | 一覧の一意キー。**デッキが保持する単位**（D11） |
 | `cardNumber` | `String` | **4 枚制限の単位**（D11 / 6.1.1.2）。カード詳細への鍵 |
 | `name` | `String` | 表示 |
-| `cardType` | **`CardType`** | 絞り込み。★**`String` にしない**（下記） |
+| `cardType` | **`CardType`** | 絞り込み ＋ ★**絵の枠**（`cardAspectRatioOf` / 決定 D72）。★**`String` にしない**（下記） |
 | `expansion` | `String` | 絞り込みと既定の並び順 |
-| `rarity` | `String` | 表示・絞り込み |
+| `rarity` | `String` | 表示（★**絞り込みには使っていない**。下記） |
 | `isParallel` | `bool` | パラレル表示 OFF の判定（CLAUDE.md §5-(4)） |
 | `imageHash` | `String` | 画像の解決。★**空文字がありうる**（§5-2(4)） |
 | `cost` | `int?` | 絞り込み。★**メンバーにしか値が無い**（下記） |
 
 並びは `expansion`, `printingId`（`ORDER BY p.expansion, p.printing_id`）。
+
+★★**`rarity` は投影に来ているが、絞り込みには使っていない（2026-08-25 訂正）**★★
+ここは長く「表示・**絞り込み**」と書かれていたが、**`CardListFilter` に `rarity` の条件は無い。**
+`git log -S` で確かめたところ **`filter_panel.dart` に `rarity` が現れたことは一度も無い。**
+この列表（`2d78228` / 2026-08-23）は実装（`0dd36f4` / 2026-08-24）より**先に書かれた設計意図**で、
+実装は表示だけを作った。★経緯と型は `ルール整合性チェック_v1.06.md` **D-15 (h)**。
+
+★**ただし「投影に既に来ている」ことは捨てない。**
+詳細検索（**U21** / §12-1）を入れるとき、`rarity` は
+**行を増やさず `CardListFilter` に条件を 1 つ足すだけで済む＝追加費用が最も小さい軸**である。
 
 ★**`cardType` は `loveca_core` の `CardType` enum で持つ。**
 `spike` は `String` で持っており、`entry.row.cardType == 'energy'` という
