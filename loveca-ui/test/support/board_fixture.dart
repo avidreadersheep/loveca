@@ -160,7 +160,14 @@ GameState handcraftedBoard({
     Map<MemberAreaSlot, List<String>> orphans,
     List<String> freeArea,
   ) {
-    List<CardInstance> zone(Zone z) => build(zones[z] ?? const [], playerId);
+    // ★★ 4.1.2.1 を通す。手で組んだ盤面でも `reduce` が作れる状態だけを作る ★★
+    //   通さないと、たとえば手札 (4.11.2 非公開領域) の札が**表向き**で生まれ、
+    //   「手札 → 控え室で表向きになる」試験が**素通しで緑になる**。
+    //   `docs/...` D-10「0 件は『無い』と『見えていない』の区別がつかない」と同じ形。
+    //   ★4.6 ライブカード置き場は `placedIn` が触らない (4.6.2) ので表向きのまま。
+    //     裏向きの札が要る試験は 5.3.1 (`FlipCard`) で作ること。
+    List<CardInstance> zone(Zone z) =>
+        [for (final c in build(zones[z] ?? const [], playerId)) placedIn(c, z)];
 
     final areas = <MemberArea>[];
     for (final slot in MemberAreaSlot.values) {
@@ -172,6 +179,8 @@ GameState handcraftedBoard({
         for (final card in build(waitMembers[slot] ?? const [], playerId))
           card.copyWith(orientation: CardOrientation.wait),
       ];
+      // ★4.1.2.1 / 4.5.3: メンバーエリアは公開領域なので表向き（`make` の既定）。
+      //   4.5.5.2 により向きは持たない。`placedIn` はメンバーエリアを受けない。
       final under = build(beneath[slot] ?? const [], playerId);
       areas.add(MemberArea(
         slot: slot,
@@ -213,8 +222,11 @@ GameState handcraftedBoard({
     cursor: cursor,
     // ★共有 1 つ（4.14.1）。★`ownerId` で分かれるだけで領域は 1 本。
     resolution: [
-      ...build(selfResolution, kSelfPlayerId),
-      ...build(opponentResolution, kOpponentPlayerId),
+      // 4.14.2: 解決領域は公開領域 → 4.1.2.1 により表向き。
+      for (final c in build(selfResolution, kSelfPlayerId))
+        placedIn(c, Zone.resolution),
+      for (final c in build(opponentResolution, kOpponentPlayerId))
+        placedIn(c, Zone.resolution),
     ],
   );
 }

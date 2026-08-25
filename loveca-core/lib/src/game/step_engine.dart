@@ -290,8 +290,13 @@ class StepEngine {
     final taken = _refresher.takeFromMainDeck(state, playerId, count);
     final hand = cardsIn(taken.state, playerId, Zone.hand);
     return _Executed(
-      replaceZone(taken.state, playerId, Zone.hand,
-          insertInto(hand, taken.drawn, ZonePosition.bottom)),
+      replaceZone(
+          taken.state,
+          playerId,
+          Zone.hand,
+          // 4.1.2.1: 4.11.2 により手札は非公開領域。
+          insertInto(hand, [for (final c in taken.drawn) placedIn(c, Zone.hand)],
+              ZonePosition.bottom)),
       refreshCount: taken.refreshCount,
     );
   }
@@ -313,7 +318,10 @@ class StepEngine {
           next,
           card.ownerId,
           Zone.waitingRoom,
-          insertInto(cardsIn(next, card.ownerId, Zone.waitingRoom), [card],
+          insertInto(
+              cardsIn(next, card.ownerId, Zone.waitingRoom),
+              // 4.1.2.1 / 4.12.2: 控え室は公開領域。
+              [placedIn(card, Zone.waitingRoom)],
               ZonePosition.top),
         );
       } else {
@@ -337,9 +345,9 @@ class StepEngine {
 
     final taken = _refresher.takeFromMainDeck(state, playerId, blades);
 
-    // 4.14.2: 解決領域は公開領域。
+    // 4.14.2: 解決領域は公開領域。→ 4.1.2.1 により公開状態 = 表向き。
     final revealed = [
-      for (final card in taken.drawn) card.copyWith(face: FaceState.faceUp),
+      for (final card in taken.drawn) placedIn(card, Zone.resolution),
     ];
 
     return _Executed(
@@ -373,8 +381,11 @@ class StepEngine {
         state,
         card.ownerId, // 4.1.7
         Zone.waitingRoom,
-        insertInto(cardsIn(state, card.ownerId, Zone.waitingRoom),
-            [card.copyWith(clearOrientation: true)], ZonePosition.top),
+        insertInto(
+            cardsIn(state, card.ownerId, Zone.waitingRoom),
+            // 4.1.2.1 / 4.12.2: 控え室は公開領域。
+            [placedIn(card.copyWith(clearOrientation: true), Zone.waitingRoom)],
+            ZonePosition.top),
       );
 
   /// 8.4.13: 先攻入れ替え。

@@ -51,12 +51,12 @@ class Refresher {
     final waitingRoom = cardsIn(state, playerId, Zone.waitingRoom);
     if (waitingRoom.isEmpty) return state;
 
-    // 非公開状態にする (4.8.2 によりメインデッキ置き場は非公開領域)。
+    // 4.1.2.1: 非公開状態にする (4.8.2 によりメインデッキ置き場は非公開領域)。
     // ★あわせて向きを落とす。4.3.1 により配置状態が指定されるのは一部の領域だけで、
     //   メインデッキ置き場は含まれない。
     final hidden = [
       for (final card in waitingRoom)
-        card.copyWith(face: FaceState.faceDown, clearOrientation: true),
+        placedIn(card.copyWith(clearOrientation: true), Zone.mainDeck),
     ];
 
     final shuffled = rng.shuffled(hidden);

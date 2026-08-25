@@ -70,9 +70,10 @@ GameState drawEnergyRandomly(
 
     // 4.7.3: エネルギー置き場のカードは向きを示す配置状態を持つ。
     // 4.3.2.3: 特に指定がないかぎりアクティブ状態で置かれる。
-    final moved = deck[index].copyWith(
-      orientation: CardOrientation.active,
-      face: FaceState.faceUp,
+    // 4.1.2.1 / 4.7.2: エネルギー置き場は公開領域なので表向き。
+    final moved = placedIn(
+      deck[index].copyWith(orientation: CardOrientation.active),
+      Zone.energyField,
     );
 
     next = replaceZone(next, playerId, Zone.energyDeck, [

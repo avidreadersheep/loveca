@@ -226,8 +226,9 @@ GameState _moveCard(GameState state, MoveCard a) {
     next,
     a.toPlayerId,
     a.to,
-    insertInto(
-        cardsIn(next, a.toPlayerId, a.to), [taken.card], a.position),
+    insertInto(cardsIn(next, a.toPlayerId, a.to),
+        // 4.1.2.1: 移動先の領域の規定に合わせる。
+        [placedIn(taken.card, a.to)], a.position),
   );
 }
 
@@ -235,9 +236,9 @@ GameState _moveToResolution(GameState state, MoveToResolution a) {
   final from = cardsIn(state, a.fromPlayerId, a.from);
   final taken = _takeOut(from, a.instanceId, a.from.name);
   final next = replaceZone(state, a.fromPlayerId, a.from, taken.rest);
-  // 4.14.2: 解決領域は公開領域。
+  // 4.14.2: 解決領域は公開領域。→ 4.1.2.1 により公開状態 = 表向き。
   return replaceResolution(
-      next, [...next.resolution, taken.card.copyWith(face: FaceState.faceUp)]);
+      next, [...next.resolution, placedIn(taken.card, Zone.resolution)]);
 }
 
 GameState _moveFromResolution(GameState state, MoveFromResolution a) {
@@ -247,7 +248,9 @@ GameState _moveFromResolution(GameState state, MoveFromResolution a) {
     next,
     a.toPlayerId,
     a.to,
-    insertInto(cardsIn(next, a.toPlayerId, a.to), [taken.card], a.position),
+    // 4.1.2.1: 移動先の領域の規定に合わせる。
+    insertInto(cardsIn(next, a.toPlayerId, a.to),
+        [placedIn(taken.card, a.to)], a.position),
   );
 }
 
@@ -267,7 +270,9 @@ GameState _moveFromOutOfRule(GameState state, MoveFromOutOfRule a) {
     next,
     a.playerId,
     a.to,
-    insertInto(cardsIn(next, a.playerId, a.to), [taken.card], a.position),
+    // ★4.1.2.1: 出どころはルール外の置き場だが、**着地先は 4 章の領域**なので効く。
+    insertInto(cardsIn(next, a.playerId, a.to),
+        [placedIn(taken.card, a.to)], a.position),
   );
 }
 
@@ -320,7 +325,8 @@ ReduceReport _draw(GameState state, DrawCards a, ReduceContext ctx) {
       Zone.hand,
       insertInto(
           cardsIn(taken.state, a.playerId, Zone.hand),
-          taken.drawn,
+          // 4.1.2.1: 4.11.2 により手札は非公開領域。
+          [for (final c in taken.drawn) placedIn(c, Zone.hand)],
           ZonePosition.bottom),
     ),
     refreshCount: taken.refreshCount,
@@ -387,6 +393,8 @@ GameState _placeMember(GameState state, PlaceMemberInArea a) {
       ...area.stacks,
       MemberStack(
         // 4.3.2.3: 配置状態が指定される領域なので既定はアクティブ状態。
+        // ★4.1.2.1 / 4.5.3: メンバーエリアは公開領域なので表向きで置かれる。
+        //   4.5 に表示面の条文は無く、根拠は 4.5.3 の「公開領域」である。
         member: taken.card
             .copyWith(orientation: a.orientation, face: FaceState.faceUp),
       ),
@@ -458,7 +466,8 @@ GameState _moveMemberOut(GameState state, MoveMemberOut a) {
     insertInto(
       cardsIn(next, a.toPlayerId, a.to),
       // 移動先が配置状態を持たない領域なら向きを落とす（4.3.1）。
-      [stack.member.copyWith(clearOrientation: true)],
+      // 4.1.2.1: あわせて移動先の領域の規定に表示面を合わせる。
+      [placedIn(stack.member.copyWith(clearOrientation: true), a.to)],
       a.position,
     ),
   );
@@ -495,7 +504,13 @@ GameState _stackUnder(GameState state, StackUnderMember a) {
           stack.copyWith(beneath: [
             ...stack.beneath,
             // ★4.5.5.2: 下に重ねられたカードは向きを示す配置状態を持たない。
-            taken.card.copyWith(clearOrientation: true),
+            // ★★ 4.5.5.2 が奪うのは**向きだけ**である ★★
+            //   4.1.2.1 / 4.5.3 によりメンバーエリアは公開領域なので、
+            //   下に重ねられたカードも表向きで置かれる。
+            //   `redact` はメンバーエリアを秘匿しない (4.5.3) ので、
+            //   裏向きのまま残すと「見えるはずの札が裏面で見える」ことになる。
+            taken.card
+                .copyWith(clearOrientation: true, face: FaceState.faceUp),
           ])
         else
           stack,
