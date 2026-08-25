@@ -22,7 +22,7 @@
 ///
 /// ★★ UI はここより下（DAO / drift）を直接呼ばない（決定 D55）★★
 /// この Store は `Deck` と `MasterCatalog` を**値として受け取る**だけで、
-/// リポジトリも DB も持たない。**一人回しは保存も同期もしない**ので、
+/// リポジトリも DB も持たない。**盤面は保存も同期もしない**ので、
 /// 盤面が DB へ行く用事がそもそも無い。
 ///
 /// ★★ 視点（[BoardState.viewerId]）は `GameAction` ではない ★★
@@ -33,14 +33,21 @@
 /// `ReduceContext` にだけ置く。ここが `SeededRng` を 1 つ持ち、
 /// 盤面セッションのあいだ**同じインスタンスを使い続ける**。
 ///
-/// ★★ `redact` を掛けない（決定 D77）★★
-/// 一人回しは 1 人が両プレイヤーを操作するので、掛けると相手側を操作できなくなる。
+/// ★★ `redact` を掛けない（決定 D77 / D88 の訂正）★★
+/// ★**ソロとローカル対戦で理由が違う。**ローカル対戦は 1 人が両プレイヤーを操作するので
+/// 掛けると相手側を操作できなくなる。ソロは**隠す相手が居ない**。
 /// **4.8 / 4.9 の秘匿は盤面 UI の責務**であり、この Store は隠さない。
 /// 隠すのは `ui/board/hidden_pile.dart`（枚数しか受け取らない形）。
+///
+/// ★★ モードは [BoardState] ではなく [ReduceContext] へ渡す（決定 D88 / §14-3）★★
+/// モードは条文の概念ではなく（1.1.1）、`GameState` に置くと **undo でモードが戻る**
+/// という意味の無い操作が型の上で可能になる。★[BoardMode] はこの Store が
+/// **セッションの設定として**持ち、`reduce` へは `ReduceContext.mode` で渡す。
 library;
 
 import 'package:loveca_core/loveca_core.dart';
 
+import 'board_mode.dart';
 import 'board_notice.dart';
 import 'store.dart';
 
@@ -53,6 +60,7 @@ class BoardOperationLog {
     this.executed,
     this.taken,
     this.refreshCount = 0,
+    this.skipped = const [],
   });
 
   /// その操作を行った時点の進行位置。
@@ -67,8 +75,14 @@ class BoardOperationLog {
   /// この操作の中で割り込んだリフレッシュの回数（総合ルール 10.2.1）。
   final int refreshCount;
 
+  /// ★★ 実行せずに通り越したカーソル（決定 D88）★★
+  /// ソロでのみ空でなくなる。**黙って飛ばさない** —— 1 回の「次へ」で
+  /// 4 フェイズを跨ぐことがあるので、出さないと「勝手に飛んだ」ように見える。
+  final List<StepCursor> skipped;
+
   /// 見せるものが何も無いか。
-  bool get isEmpty => taken == null && refreshCount == 0;
+  bool get isEmpty =>
+      taken == null && refreshCount == 0 && skipped.isEmpty;
 }
 
 /// 直前の整理（チェックタイミング 9.5.3）の結果（M-B3 / 決定 D86）。
@@ -125,6 +139,7 @@ class BoardState {
   const BoardState({
     required this.session,
     required this.viewerId,
+    required this.mode,
     required this.seed,
     this.notices = const [],
     this.operation,
@@ -140,6 +155,10 @@ class BoardState {
   /// ★手番（`turnPlayerOf`）とは別物。混ぜると 8.4.13 の入れ替え後に手番が誤る。
   final String viewerId;
 
+  /// ★★ 盤面のモード（決定 D88）。開始時に決まり以降不変 ★★
+  /// 切り替えると 6.2.1 をやり直すことになり「同じ seed で同じ盤面」が崩れる。
+  final BoardMode mode;
+
   /// この盤面を作った seed（決定 D79）。★画面に出す。
   final int seed;
 
@@ -154,9 +173,14 @@ class BoardState {
 
   GameState get state => session.state;
 
-  /// [viewerId] の相手。★2 人ちょうどなので必ず定まる。
-  String get opponentId =>
-      state.players.firstWhere((p) => p.playerId != viewerId).playerId;
+  /// [viewerId] の相手。★★ソロでは null★★（決定 D88 / §14-5）。
+  ///
+  /// ★`GameState.players` は 3 モードとも 2 人のままである（1.1.1）。
+  /// **2 人居ることと、ソロに相手が居ることは別**なので、ここで型を落とす。
+  /// ★これにより視点切替（[setViewer]）の呼び出し側がコンパイルエラーになる。
+  String? get opponentId => mode.hasOpponent
+      ? state.players.firstWhere((p) => p.playerId != viewerId).playerId
+      : null;
 
   BoardState copyWith({
     GameSession? session,
@@ -167,6 +191,7 @@ class BoardState {
       BoardState(
         session: session ?? this.session,
         viewerId: viewerId ?? this.viewerId,
+        mode: mode,
         seed: seed,
         notices: notices,
         operation: operation ?? this.operation,
@@ -176,17 +201,27 @@ class BoardState {
 }
 
 class GameStore extends Store<BoardState> {
+  /// ★★ [mode] は required である（core の既定 `twoPlayer` との非対称）★★
+  /// `loveca_core` の [ProgressionMode] が既定を持つのは、モードが条文の概念ではなく
+  /// （1.1.1）、[ReduceContext] を組むすべての経路がモードを意識する必要が無いため。
+  /// ★**盤面はモードが必ず 1 つに決まる文脈**なので required にできる。
+  /// 既定値は「指定し忘れがコンパイルで止まらない」= 漏れうる構造であり、
+  /// D49 / D77 / D80 が一貫して退けてきた形である。
+  /// ★利得: **どのテストがどのモードを試しているかが型で見える。**
   GameStore({
     required GameState initialState,
     required String viewerId,
+    required BoardMode mode,
     required int seed,
     required Map<String, Card> cards,
     required DeterministicRng rng,
     List<BoardNotice> notices = const [],
-  })  : _context = ReduceContext(cards: cards, rng: rng),
+  })  : _context =
+            ReduceContext(cards: cards, rng: rng, mode: mode.progression),
         super(BoardState(
           session: GameSession(state: initialState),
           viewerId: viewerId,
+          mode: mode,
           seed: seed,
           notices: notices,
         ));
@@ -217,6 +252,8 @@ class GameStore extends Store<BoardState> {
         executed: report.advance?.executed,
         taken: report.advance?.taken,
         refreshCount: report.refreshCount,
+        // ★飛ばしたカーソルを黙って落とさない（決定 D88）。
+        skipped: report.skipped,
       ),
       // ★整理が起きていないときは前の値を残す（[BoardTidyLog] の doc）。
       tidy: tidy == null
@@ -232,6 +269,8 @@ class GameStore extends Store<BoardState> {
   }
 
   /// 盤面の向きを変える（決定 D75）。★`GameAction` ではない。
+  ///
+  /// ★★ ソロでは呼ばれない ★★ 切替先が無いので画面にボタンを出さない（D88）。
   void setViewer(String playerId) {
     if (playerId == value.viewerId) return;
     state = value.copyWith(viewerId: playerId);

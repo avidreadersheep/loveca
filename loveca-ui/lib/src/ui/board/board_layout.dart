@@ -47,6 +47,13 @@
 /// **素の `Draggable` / `DragTarget` をここに書かない。**
 ///
 /// ★4.8 / 4.9 は落とせるが中身は出さない（[HiddenPile] は枚数しか受け取らない / D77）。
+///
+/// ## ★★ M-B4: 描くプレイヤーは `BoardView.drawnPlayers` から取る（決定 D88）★★
+///
+/// ソロは**自分側だけ**を描く。★「描かないだけ」ではなく「**そもそも参照しない**」——
+/// このファイルは `GameState` からプレイヤーを引き直さず、
+/// 下位ウィジェットは **`PlayerState` を受け取る**（playerId ではない）。
+/// ★走査テスト `test/board/board_player_access_test.dart` が機械で塞いでいる。
 library;
 
 import 'package:flutter/material.dart';
@@ -80,13 +87,14 @@ class BoardLayout extends StatelessWidget {
     this.minWidth = kBoardMinWidth,
   });
 
-  /// 「エネルギーを1枚出す」（決定 D73 / D81 / D87）。
+  /// 「エネルギーを1枚出す」（決定 D73 / D81 / D87 / D88）。
   ///
-  /// ★★ 両プレイヤーぶんを受け取る ★★
-  /// M-B1 は視点側の袖にしか渡していなかった。**一人回しは 1 人が両プレイヤーを
+  /// ★★ 描くプレイヤーぶんを受け取る ★★
+  /// M-B1 は視点側の袖にしか渡していなかった。**ローカル対戦は 1 人が両プレイヤーを
   /// 操作する**（D77 / D84）ので、相手側のエネルギーを手で出すには視点を
   /// 切り替えるしかなかった。★M-B3 でメインデッキの口を両側に出したことで
   /// この非対称が初めて目に見えるようになったため、同時に直した（決定 D87）。
+  /// ★**ソロは袖が 1 つ**なので、渡る playerId も 1 つだけになる（D88 のモード条件）。
   ///
   /// ★そのプレイヤーが出せないときは null を返す（ボタンは消さず無効になる）。
   final VoidCallback? Function(String playerId) onDrawEnergy;
@@ -129,52 +137,51 @@ class BoardLayout extends StatelessWidget {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // ---- 左の袖: 相手 ----
-                    _Sleeve(
-                      playerId: view.opponent.playerId,
-                      // ★相手側も操作できる（D77 / D84 / 決定 D87）。
-                      onDrawEnergy: onDrawEnergy(view.opponent.playerId),
-                    ),
-                    const SizedBox(width: 12),
+                    // ---- 左の袖: 相手。★ソロには無い（決定 D88）----
+                    if (view.opponent case final opponent?) ...[
+                      _Sleeve(
+                        player: opponent,
+                        // ★相手側も操作できる（D77 / D84 / 決定 D87）。
+                        onDrawEnergy: onDrawEnergy(opponent.playerId),
+                      ),
+                      const SizedBox(width: 12),
+                    ],
 
                     Expanded(
                       child: Column(
                         children: [
                           // ---- 相手 後列 → 前列（★上段は相手）----
-                          _BackRow(
-                            playerId: view.opponent.playerId,
-                            mirrored: true,
-                          ),
-                          const SizedBox(height: 8),
-                          _MemberRow(
-                            playerId: view.opponent.playerId,
-                            slots: BoardView.opponentRow,
-                          ),
+                          //   ★ソロでは上段が「空」ではなく**存在しない**（D88 / D75）。
+                          if (view.opponent case final opponent?) ...[
+                            _BackRow(player: opponent, mirrored: true),
+                            const SizedBox(height: 8),
+                            _MemberRow(
+                              player: opponent,
+                              slots: BoardView.opponentRow,
+                            ),
+                            const SizedBox(height: 10),
+                          ],
 
-                          const SizedBox(height: 10),
                           // ---- ★共有解決領域は中央に 1 本だけ（4.14.1）----
                           const _ResolutionRow(),
                           const SizedBox(height: 10),
 
                           // ---- 自分 前列 → 後列 ----
                           _MemberRow(
-                            playerId: view.viewer.playerId,
+                            player: view.viewer,
                             slots: BoardView.viewerRow,
                           ),
                           const SizedBox(height: 8),
-                          _BackRow(
-                            playerId: view.viewer.playerId,
-                            mirrored: false,
-                          ),
+                          _BackRow(player: view.viewer, mirrored: false),
 
                           const SizedBox(height: 10),
-                          // ---- 自分の手札（4.11）----
-                          _HandStrip(playerId: view.viewer.playerId),
-                          const SizedBox(height: 6),
-                          // ---- ★相手の手札。一人回しでは中身も見える（D77 / D84）----
-                          _HandStrip(playerId: view.opponent.playerId),
+                          // ---- 手札（4.11）。★描くプレイヤーぶんだけ ----
+                          for (final player in view.drawnPlayers) ...[
+                            _HandStrip(player: player),
+                            const SizedBox(height: 6),
+                          ],
 
-                          const SizedBox(height: 10),
+                          const SizedBox(height: 4),
                           // ---- ★ルール外の 2 置き場は盤の外 ----
                           const _OutOfRuleRow(),
                         ],
@@ -184,7 +191,7 @@ class BoardLayout extends StatelessWidget {
                     const SizedBox(width: 12),
                     // ---- 右の袖: 自分 ----
                     _Sleeve(
-                      playerId: view.viewer.playerId,
+                      player: view.viewer,
                       onDrawEnergy: onDrawEnergy(view.viewer.playerId),
                     ),
                   ],
@@ -201,15 +208,17 @@ class BoardLayout extends StatelessWidget {
 /// 袖: メインデッキ（4.8）/ エネルギーデッキ（4.9）/ エネルギー置き場（4.7）/
 /// 控え室（4.12）/ 除外領域（4.13）。
 class _Sleeve extends StatelessWidget {
-  const _Sleeve({required this.playerId, required this.onDrawEnergy});
+  const _Sleeve({required this.player, required this.onDrawEnergy});
 
-  final String playerId;
+  /// ★playerId ではなく [PlayerState] を受け取る（決定 D88 / §14-5）。
+  /// **描く相手を自分で引きに行かない。**
+  final PlayerState player;
   final VoidCallback? onDrawEnergy;
 
   @override
   Widget build(BuildContext context) {
     final view = BoardView.of(context);
-    final player = view.state.playerOf(playerId);
+    final playerId = player.playerId;
     final label = view.labelOf(playerId);
 
     return SizedBox(
@@ -229,7 +238,7 @@ class _Sleeve extends StatelessWidget {
             title: 'メインデッキ',
             count: player.mainDeck.length,
             // ★★ 引く / シャッフル / 上から見るは 4.8 の規定（M-B3）★★
-            //   ★両プレイヤーの袖に出す。一人回しは 1 人が両方を操作する（D77 / D84）。
+            //   ★描くプレイヤーの袖に出す。ローカル対戦は 1 人が両方を操作する（D77 / D84）。
             onTap: (context) => showMainDeckMenu(context, playerId: playerId),
           ),
           const SizedBox(height: 8),
@@ -326,25 +335,22 @@ class _DrawEnergyButton extends StatelessWidget {
 /// ★[mirrored] のときは左右を入れ替える。★これは 4.5.7.1 の要求ではなく、
 /// 「相手の盤面は自分から見て上下逆さに置かれている」という物理の写しである。
 class _BackRow extends StatelessWidget {
-  const _BackRow({required this.playerId, required this.mirrored});
+  const _BackRow({required this.player, required this.mirrored});
 
-  final String playerId;
+  final PlayerState player;
   final bool mirrored;
 
   @override
   Widget build(BuildContext context) {
-    final view = BoardView.of(context);
-    final player = view.state.playerOf(playerId);
-
     final cells = <Widget>[
       _ZonePile(
-        playerId: playerId,
+        playerId: player.playerId,
         zone: Zone.liveStage,
         title: 'ライブ 4.6',
         cards: player.liveStage,
       ),
       _ZonePile(
-        playerId: playerId,
+        playerId: player.playerId,
         zone: Zone.successLive,
         title: '成功ライブ 4.10',
         cards: player.successLive,
@@ -371,16 +377,13 @@ class _BackRow extends StatelessWidget {
 ///
 /// ★[slots] の並びが列の並びである。上段は `BoardView.opponentRow`（= 鏡像）。
 class _MemberRow extends StatelessWidget {
-  const _MemberRow({required this.playerId, required this.slots});
+  const _MemberRow({required this.player, required this.slots});
 
-  final String playerId;
+  final PlayerState player;
   final List<MemberAreaSlot> slots;
 
   @override
   Widget build(BuildContext context) {
-    final view = BoardView.of(context);
-    final player = view.state.playerOf(playerId);
-
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       // ★★ 箱の上端を揃える（上の `_BackRow` と同じ理由）★★
@@ -390,7 +393,7 @@ class _MemberRow extends StatelessWidget {
       children: [
         for (final slot in slots) ...[
           _MemberSlot(
-            playerId: playerId,
+            playerId: player.playerId,
             area: player.memberAreas.firstWhere(
               (a) => a.slot == slot,
               orElse: () => MemberArea(slot: slot),
@@ -461,7 +464,7 @@ class _MemberSlot extends StatelessWidget {
 /// |---|---|
 /// | ほかのメンバー（10.4 待ち） | ○ `MoveMemberBetweenAreas` / `MoveMemberOut` |
 /// | 下に重ねられたカード（4.5.5.1） | ★**✗** —— 動かす `GameAction` は `DetachFromMember` だけで、落とす先が無い |
-/// | 孤児（上にメンバーが居ない） | ★**✗** —— 解消は 10.5.3 / 10.5.4 のルール処理（整理 / M-B5） |
+/// | 孤児（上にメンバーが居ない） | ★**✗** —— 解消は 10.5.3 / 10.5.4 のルール処理（整理 / M-B6） |
 class _AreaContents extends StatelessWidget {
   const _AreaContents({required this.playerId, required this.area});
 
@@ -503,7 +506,7 @@ class _AreaContents extends StatelessWidget {
         _MiniCard(
           card: orphan,
           tag: '孤児',
-          // ★できることが無い。だからこそ理由を出す（整理は M-B5）。
+          // ★できることが無い。だからこそ理由を出す（整理は M-B6）。
           onTap: showOrphanCardMenu,
         ),
     ];
@@ -528,9 +531,15 @@ class _ResolutionRow extends StatelessWidget {
     final mine = view.state.resolution
         .where((c) => c.ownerId == view.viewerId)
         .toList();
-    final theirs = view.state.resolution
-        .where((c) => c.ownerId != view.viewerId)
-        .toList();
+    // ★★ ソロでは「相手のカード」の側を描かない（決定 D88 / §14-5）★★
+    //   4.14 の箱そのものは残す（共有 1 つという事実はモードで変わらない）が、
+    //   相手が居ない以上この列は**常に空**であり、見出しだけが幽霊として残る。
+    //   `DeckNotValid(playerLabel: '相手')` をソロで出さないのと同じ理由。
+    final theirs = view.opponent == null
+        ? null
+        : view.state.resolution
+            .where((c) => c.ownerId != view.viewerId)
+            .toList();
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -544,8 +553,10 @@ class _ResolutionRow extends StatelessWidget {
           children: [
             Text('解決領域 4.14\n★共有 1 つ', style: theme.textTheme.labelSmall),
             const SizedBox(width: 10),
-            Expanded(child: _OwnerSide(label: '相手のカード', cards: theirs)),
-            const SizedBox(width: 8),
+            if (theirs != null) ...[
+              Expanded(child: _OwnerSide(label: '相手のカード', cards: theirs)),
+              const SizedBox(width: 8),
+            ],
             Expanded(child: _OwnerSide(label: '自分のカード', cards: mine)),
           ],
         ),
@@ -664,10 +675,14 @@ class _ZonePile extends StatelessWidget {
 
 /// 手札（4.11）の帯。
 ///
-/// ★★ 一人回しでは両者の手札が見える（決定 D77 / D84）★★
+/// ★★ ローカル対戦では両者の手札が見える（決定 D77 / D84 / D88 の訂正）★★
 /// 4.11.2 は「自分の手札のカードは自分のみが自由に確認できます」だが、
-/// **一人回しは 1 人が両プレイヤーを操作する**。`redact` を掛けると
-/// 相手側を操作できなくなる。対戦（Phase 6）ではサーバが `redact` を掛けて配る。
+/// **ローカル対戦は 1 人が両プレイヤーを操作する**。`redact` を掛けると
+/// 相手側を操作できなくなる。オンライン対戦（Phase 6）ではサーバが `redact` を掛けて配る。
+///
+/// ★★ ソロでは相手の帯そのものが無い（決定 D88）★★
+/// 「中身を隠す」のではなく**そもそも並べない**。呼び出し側が
+/// `BoardView.drawnPlayers` を回すので、この帯はモードを知らない。
 ///
 /// ★★ 秘匿に `viewerId` を使っていない ★★
 /// この帯は上段でも下段でも同じものを出す。**視点は向きだけを決める**（D75 / D77）。
@@ -682,14 +697,14 @@ class _ZonePile extends StatelessWidget {
 /// 何を描くかは**まだ決めていない**（判断時期は Phase 6 / 盤面設計メモ §13）。
 /// ★決めていないことを書いておかないと、Phase 6 で「話が違う」になる。
 class _HandStrip extends StatelessWidget {
-  const _HandStrip({required this.playerId});
+  const _HandStrip({required this.player});
 
-  final String playerId;
+  final PlayerState player;
 
   @override
   Widget build(BuildContext context) {
     final view = BoardView.of(context);
-    final player = view.state.playerOf(playerId);
+    final playerId = player.playerId;
     final theme = Theme.of(context);
 
     return BoardDropRegion(
@@ -769,7 +784,9 @@ class _HandStrip extends StatelessWidget {
 ///
 /// ★★ 落とせるのはフリーエリアだけ（M-B2）★★
 /// 6.2.1.6 の脇置きは**その手順の中にしか存在しない**（`zone.dart`）。
-/// マリガンは M-B5 なので、いまは枚数だけ出す。
+/// マリガンは M-B6 なので、いまは枚数だけ出す。
+///
+/// ★★ 描くプレイヤーぶんだけ（決定 D88）★★ ソロでは自分のフリーエリアだけが出る。
 class _OutOfRuleRow extends StatelessWidget {
   const _OutOfRuleRow();
 
@@ -778,27 +795,26 @@ class _OutOfRuleRow extends StatelessWidget {
     final view = BoardView.of(context);
     final theme = Theme.of(context);
 
-    int asideCount(String playerId) =>
-        cardsInOutOfRule(view.state, playerId, OutOfRuleZone.mulliganAside)
-            .length;
+    final aside = [
+      for (final player in view.drawnPlayers)
+        cardsInOutOfRule(
+                view.state, player.playerId, OutOfRuleZone.mulliganAside)
+            .length,
+    ].fold(0, (a, b) => a + b);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          '盤の外（ルールの領域ではありません）: '
-          '脇置き 6.2.1.6 = ${asideCount(view.viewerId) + asideCount(view.opponent.playerId)} 枚',
+          '盤の外（ルールの領域ではありません）: 脇置き 6.2.1.6 = $aside 枚',
           style: theme.textTheme.labelSmall
               ?.copyWith(color: theme.colorScheme.outline),
         ),
         const SizedBox(height: 4),
         Row(
           children: [
-            for (final playerId in [
-              view.viewer.playerId,
-              view.opponent.playerId,
-            ]) ...[
-              Expanded(child: _FreeArea(playerId: playerId)),
+            for (final player in view.drawnPlayers) ...[
+              Expanded(child: _FreeArea(player: player)),
               const SizedBox(width: 8),
             ],
           ],
@@ -810,14 +826,15 @@ class _OutOfRuleRow extends StatelessWidget {
 
 /// フリーエリア。★ルールにはまったく存在しない置き場（`zone.dart`）。
 class _FreeArea extends StatelessWidget {
-  const _FreeArea({required this.playerId});
+  const _FreeArea({required this.player});
 
-  final String playerId;
+  final PlayerState player;
 
   @override
   Widget build(BuildContext context) {
     final view = BoardView.of(context);
     final theme = Theme.of(context);
+    final playerId = player.playerId;
     final cards =
         cardsInOutOfRule(view.state, playerId, OutOfRuleZone.freeArea);
 

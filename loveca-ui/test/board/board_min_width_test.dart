@@ -46,6 +46,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart' hide Card;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loveca_core/loveca_core.dart' hide Card;
+import 'package:loveca_ui/src/state/board_mode.dart';
 import 'package:loveca_ui/src/data/card_image_source.dart';
 import 'package:loveca_ui/src/state/board_notice.dart';
 import 'package:loveca_ui/src/state/game_store.dart';
@@ -186,6 +187,7 @@ void main() {
     final store = GameStore(
       initialState: state,
       viewerId: kSelfPlayerId,
+      mode: BoardMode.localVersus,
       seed: 1,
       cards: realShapedCatalog().cards,
       rng: SeededRng(1),
@@ -204,6 +206,7 @@ void main() {
                     child: BoardView(
                       state: state,
                       viewerId: kSelfPlayerId,
+                      mode: BoardMode.localVersus,
                       catalog: realShapedCatalog(),
                       imageSource: const LocalDirectoryCardImageSource(null),
                       store: store,
@@ -247,6 +250,7 @@ void main() {
             BoardPage(
               initialState: _crowded(),
               viewerId: kSelfPlayerId,
+              mode: BoardMode.localVersus,
               seed: 1234567890,
               // ★帯 2 本（最も混む状態）。
               notices: const [
@@ -279,6 +283,7 @@ void main() {
         BoardPage(
           initialState: _crowded(),
           viewerId: kSelfPlayerId,
+          mode: BoardMode.localVersus,
           seed: 1234567890,
         ),
         decks: FakeDeckRepository(),
@@ -313,6 +318,7 @@ void main() {
         BoardPage(
           initialState: _crowded(),
           viewerId: kSelfPlayerId,
+          mode: BoardMode.localVersus,
           seed: 1,
           notices: const [MulliganNotImplemented()],
         ),
@@ -370,6 +376,7 @@ void main() {
           BoardPage(
             initialState: crowded,
             viewerId: kSelfPlayerId,
+            mode: BoardMode.localVersus,
             seed: 1234567890,
             notices: const [
               MulliganNotImplemented(),
@@ -447,6 +454,7 @@ void main() {
     final store = GameStore(
       initialState: state,
       viewerId: kSelfPlayerId,
+      mode: BoardMode.localVersus,
       seed: 1,
       cards: realShapedCatalog().cards,
       rng: SeededRng(1),
@@ -466,6 +474,7 @@ void main() {
                 child: BoardView(
                   state: state,
                   viewerId: kSelfPlayerId,
+                  mode: BoardMode.localVersus,
                   catalog: realShapedCatalog(),
                   imageSource: const LocalDirectoryCardImageSource(null),
                   store: store,

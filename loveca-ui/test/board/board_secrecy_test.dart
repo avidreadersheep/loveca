@@ -41,6 +41,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loveca_core/loveca_core.dart' hide Card;
+import 'package:loveca_ui/src/state/board_mode.dart';
 import 'package:loveca_ui/src/ui/board/board_page.dart';
 import 'package:loveca_ui/src/ui/board/board_start_dialog.dart';
 
@@ -67,7 +68,12 @@ void main() {
 
     await pumpInAppScope(
       tester,
-      BoardPage(initialState: resolved, viewerId: viewerId, seed: 1),
+      BoardPage(
+        initialState: resolved,
+        viewerId: viewerId,
+        mode: BoardMode.localVersus,
+        seed: 1,
+      ),
       decks: FakeDeckRepository(),
       catalog: realShapedCatalog(),
       imageSource: images,

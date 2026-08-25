@@ -19,6 +19,7 @@ import 'package:flutter/material.dart';
 import 'package:loveca_core/loveca_core.dart';
 
 import '../../state/app_scope.dart';
+import '../../state/board_mode.dart';
 import '../../state/board_notice.dart';
 import 'board_page.dart';
 import 'board_start_dialog.dart';
@@ -82,6 +83,9 @@ Future<void> startSoloBoard(
         initialState: initialState,
         // ★押したデッキが自分側（決定 D81）。
         viewerId: kSelfPlayerId,
+        // ★★ D88 以前の「一人回し」はローカル対戦を指す（D88-1）★★
+        //   ソロの入口は次のコミットで足す。
+        mode: BoardMode.localVersus,
         seed: request.seed,
         notices: _noticesFor(
           selfResult: env.decks.validate(deck),

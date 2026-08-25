@@ -27,6 +27,7 @@ library;
 import 'package:flutter/material.dart' hide Card;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loveca_core/loveca_core.dart' hide Card;
+import 'package:loveca_ui/src/state/board_mode.dart';
 import 'package:loveca_ui/src/state/game_store.dart';
 import 'package:loveca_ui/src/ui/board/board_page.dart';
 import 'package:loveca_ui/src/ui/board/board_start_dialog.dart';
@@ -75,6 +76,9 @@ GameState _oneTurnBoard() => handcraftedBoard(
 GameStore _storeFor(GameState state, {int seed = 1}) => GameStore(
       initialState: state,
       viewerId: kSelfPlayerId,
+      // ★★ この群は「12 フェイズ・のべ 73 ステップ」の陽性対照である（決定 D88）★★
+      //   ソロは 42 で、その導出と番人は `loveca-core/test/step_engine_test.dart`。
+      mode: BoardMode.localVersus,
       seed: seed,
       cards: realShapedCatalog().cards,
       rng: SeededRng(seed),
@@ -391,7 +395,12 @@ void main() {
 
       await pumpInAppScope(
         tester,
-        BoardPage(initialState: state, viewerId: kSelfPlayerId, seed: 1),
+        BoardPage(
+          initialState: state,
+          viewerId: kSelfPlayerId,
+          mode: BoardMode.localVersus,
+          seed: 1,
+        ),
         decks: FakeDeckRepository(),
         catalog: realShapedCatalog(),
       );

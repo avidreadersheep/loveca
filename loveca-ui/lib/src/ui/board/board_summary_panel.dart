@@ -22,16 +22,27 @@
 /// 畳んで始めると出ていることに気づかない。
 ///
 /// ★横幅の最小値を増やさないよう `Wrap` で折り返す（決定 D83）。
+///
+/// ★★ 出す行は**受け取る**（決定 D88 / §14-5）★★
+/// ソロでは相手の行が**そもそも無い**。★「相手の行に 0 が並ぶ」ではない。
 library;
 
 import 'package:flutter/material.dart';
+import 'package:loveca_core/loveca_core.dart' hide Card;
 
 import '../../state/board_summary.dart';
 import '../common/heart_chips.dart';
 import 'board_view.dart';
 
 class BoardSummaryPanel extends StatefulWidget {
-  const BoardSummaryPanel({super.key, this.initiallyExpanded = true});
+  const BoardSummaryPanel({
+    super.key,
+    required this.players,
+    this.initiallyExpanded = true,
+  });
+
+  /// 集計を出すプレイヤー。★`BoardView.drawnPlayers` を渡す（決定 D88）。
+  final List<PlayerState> players;
 
   /// ★既定は開く（このファイルの doc）。畳んだ状態を試すためだけの口。
   final bool initiallyExpanded;
@@ -45,7 +56,6 @@ class _BoardSummaryPanelState extends State<BoardSummaryPanel> {
 
   @override
   Widget build(BuildContext context) {
-    final view = BoardView.of(context);
     final theme = Theme.of(context);
 
     return Container(
@@ -71,8 +81,8 @@ class _BoardSummaryPanelState extends State<BoardSummaryPanel> {
           ),
           if (_expanded) ...[
             const SizedBox(height: 2),
-            _PlayerSummary(playerId: view.viewerId),
-            _PlayerSummary(playerId: view.opponent.playerId),
+            for (final player in widget.players)
+              _PlayerSummary(playerId: player.playerId),
             _SharedDraw(),
             const SizedBox(height: 2),
             Text(

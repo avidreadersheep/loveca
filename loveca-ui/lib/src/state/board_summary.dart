@@ -19,6 +19,16 @@
 /// 数値を出すところまで。ALL / GRAY も**色に変換しない**（8.3.15.1.1 の色解決は手動）。
 ///
 /// ★Flutter に依存しない。描画は `ui/board/board_summary_panel.dart`。
+///
+/// ★★ 描くプレイヤーは**受け取る**（決定 D88 / §14-5）★★
+/// ソロでは相手側を**そもそも参照しない**ので、この関数は `GameState` から
+/// プレイヤーを引き直さない。反復元は `ui/board/board_view.dart` の
+/// `drawnPlayers` 1 か所である。★引数を変えたので呼び出し側はコンパイルエラーになる。
+///
+/// ★設計メモ §14-5 は「引数を `state` + `playerIds` にする」と書いているが、
+/// `playerIds` にすると**この層で `GameState` を引き直す**ことになり、
+/// 走査テスト（`test/board/board_player_access_test.dart`）に例外が要る。
+/// **例外を作らない側を採った。**
 library;
 
 import 'package:loveca_core/loveca_core.dart';
@@ -78,21 +88,17 @@ class BoardSummary {
 List<BoardNotice> derivedBoardNotices({
   required GameState state,
   required Map<String, Card> cards,
-  required String viewerId,
+  required List<PlayerState> players,
   required String Function(String playerId) labelOf,
 }) {
   final notices = <BoardNotice>[];
 
-  // ★視点側を先に並べる（読む順を決定的にする）。
-  final ordered = [
-    viewerId,
-    for (final player in state.players)
-      if (player.playerId != viewerId) player.playerId,
-  ];
-
   var sharedDrawReported = false;
 
-  for (final playerId in ordered) {
+  // ★★ 並びは呼び出し側が決める（`drawnPlayers` は視点側が先）★★
+  //   読む順を決定的にするのは呼び出し側の責務であり、ここで並べ替えない。
+  for (final player in players) {
+    final playerId = player.playerId;
     final label = labelOf(playerId);
     final summary = BoardSummary.of(state, cards, playerId: playerId);
 
@@ -123,8 +129,6 @@ List<BoardNotice> derivedBoardNotices({
     }
 
     // ---- メンバーエリアの中間状態（★エラーではない）----
-    final player = state.playerOf(playerId);
-
     final orphanAreas = [
       for (final area in player.memberAreas)
         if (area.orphans.isNotEmpty) area.slot.label,

@@ -27,6 +27,7 @@ import 'package:flutter/services.dart';
 import 'package:loveca_core/loveca_core.dart';
 
 import '../../state/app_scope.dart';
+import '../../state/board_mode.dart';
 import '../../state/board_notice.dart';
 import '../../state/board_summary.dart';
 import '../../state/game_store.dart';
@@ -42,6 +43,7 @@ class BoardPage extends StatefulWidget {
     super.key,
     required this.initialState,
     required this.viewerId,
+    required this.mode,
     required this.seed,
     this.notices = const [],
     this.dragStartMode = DragStartMode.immediate,
@@ -52,6 +54,16 @@ class BoardPage extends StatefulWidget {
   final GameState initialState;
 
   final String viewerId;
+
+  /// ★★ 既定値を置かない（決定 D88）★★
+  /// 既定は「指定し忘れがコンパイルで止まらない」= 漏れうる構造で、
+  /// D49 / D77 / D80 が一貫して退けてきた形である。
+  /// ★`loveca_core` の `ProgressionMode` が既定を持つのとは非対称だが、
+  /// 理由がある —— あちらはモードに無関係な経路も `ReduceContext` を組むのに対し、
+  /// **盤面はモードが必ず 1 つに決まる文脈**だから required にできる。
+  /// ★利得: **どのテストがどのモードを試しているかが型で見える。**
+  final BoardMode mode;
+
   final int seed;
   final List<BoardNotice> notices;
 
@@ -78,6 +90,7 @@ class _BoardPageState extends State<BoardPage> {
     _store = GameStore(
       initialState: widget.initialState,
       viewerId: widget.viewerId,
+      mode: widget.mode,
       seed: widget.seed,
       cards: env.cards,
       // ★盤面セッションのあいだ 1 つの乱数源を使い続ける（決定 D79）。
@@ -98,13 +111,13 @@ class _BoardPageState extends State<BoardPage> {
   Widget build(BuildContext context) {
     final store = _store!;
     final env = AppScope.of(context).environment;
-    final scheme = Theme.of(context).colorScheme;
 
     return ValueListenableBuilder<BoardState>(
       valueListenable: store,
       builder: (context, board, _) => BoardView(
         state: board.state,
         viewerId: board.viewerId,
+        mode: board.mode,
         catalog: env.catalog,
         imageSource: env.imageSource,
         // ★★ `reduce` を呼ぶ唯一の場所を盤面の各所へ配る（決定 D53）★★
@@ -112,64 +125,90 @@ class _BoardPageState extends State<BoardPage> {
         //   **自分で `GameState` を書き換えない。**
         store: store,
         dragStartMode: widget.dragStartMode,
-        child: Scaffold(
-          appBar: AppBar(
-            title: const Text('一人回し'),
-            actions: [
-              // ★★ 視点の切替（決定 D75）★★
-              //   これは GameAction ではない。盤面の向きは UI の状態である。
-              TextButton.icon(
-                key: const ValueKey('swap-viewer'),
-                onPressed: () => store.setViewer(board.opponentId),
-                icon: const Icon(Icons.swap_vert),
-                label: Text('下段: ${_shortLabel(board)}'),
-              ),
-              _SeedChip(seed: board.seed),
-              const SizedBox(width: 8),
-            ],
+        // ★★ 段はすべて `BoardView` の**内側**に置く（決定 D88）★★
+        //   `drawnPlayers`（描くプレイヤーの反復元）を配れるのは内側だけである。
+        //   外で組むと、同じ反復を 2 か所に持つことになる。
+        child: _BoardScaffold(board: board, store: store),
+      ),
+    );
+  }
+}
+
+/// 盤面の段。★`BoardView` の内側にあるので `drawnPlayers` を読める。
+class _BoardScaffold extends StatelessWidget {
+  const _BoardScaffold({required this.board, required this.store});
+
+  final BoardState board;
+  final GameStore store;
+
+  @override
+  Widget build(BuildContext context) {
+    final view = BoardView.of(context);
+    final env = AppScope.of(context).environment;
+    final scheme = Theme.of(context).colorScheme;
+
+    return Scaffold(
+      appBar: AppBar(
+        // ★モードを名乗る。★「一人回し」という語は使わない（決定 D88-1）。
+        title: Text(board.mode.label),
+        actions: [
+          // ★★ 視点の切替（決定 D75）★★
+          //   これは GameAction ではない。盤面の向きは UI の状態である。
+          //   ★ソロでは出さない —— 切替先が無い（D88）。
+          if (board.opponentId case final opponentId?)
+            TextButton.icon(
+              key: const ValueKey('swap-viewer'),
+              onPressed: () => store.setViewer(opponentId),
+              icon: const Icon(Icons.swap_vert),
+              label: Text('下段: ${_shortLabel(board)}'),
+            ),
+          _SeedChip(seed: board.seed),
+          const SizedBox(width: 8),
+        ],
+      ),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          BoardProgressBar(board: board, store: store),
+          // ★整理の結果は「起きたときだけ差し替わり、次の操作では消えない」。
+          BoardNoticeBar(
+            key: const ValueKey('tidy-notices'),
+            notices: board.tidy?.notices ?? const [],
+            mode: board.mode,
+            background: scheme.tertiaryContainer,
+            heading: '直前の整理（9.5.3 のチェックタイミング）',
           ),
-          body: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              BoardProgressBar(board: board, store: store),
-              // ★整理の結果は「起きたときだけ差し替わり、次の操作では消えない」。
-              BoardNoticeBar(
-                key: const ValueKey('tidy-notices'),
-                notices: board.tidy?.notices ?? const [],
-                background: scheme.tertiaryContainer,
-                heading: '直前の整理（9.5.3 のチェックタイミング）',
-              ),
-              BoardNoticeBar(
-                key: const ValueKey('board-notices'),
-                notices: [
-                  ...board.notices,
-                  // ★★ 盤面の状態から導く注記（毎 build 作り直す）★★
-                  //   「いまそうなっていること」なので、操作 1 回で消えてはいけない。
-                  ...derivedBoardNotices(
-                    state: board.state,
-                    cards: env.cards,
-                    viewerId: board.viewerId,
-                    // ★「自分 / 相手」の対応づけは `BoardView` 1 か所に置く。
-                    labelOf: (playerId) =>
-                        playerId == board.viewerId ? '自分' : '相手',
-                  ),
-                ],
-                background: scheme.secondaryContainer,
-              ),
-              // ★畳めるのはここだけ（警告は畳めない）。既定は開く。
-              const BoardSummaryPanel(),
-              Expanded(
-                child: BoardLayout(
-                  // ★★ 両プレイヤーぶんを渡す（決定 D87）★★
-                  //   一人回しは 1 人が両方を操作する（D77 / D84）。
-                  onDrawEnergy: (playerId) => store.canDrawEnergy(playerId)
-                      ? () => store.dispatch(DrawEnergy(playerId: playerId))
-                      : null,
-                ),
+          BoardNoticeBar(
+            key: const ValueKey('board-notices'),
+            notices: [
+              ...board.notices,
+              // ★★ 盤面の状態から導く注記（毎 build 作り直す）★★
+              //   「いまそうなっていること」なので、操作 1 回で消えてはいけない。
+              ...derivedBoardNotices(
+                state: board.state,
+                cards: env.cards,
+                // ★描くプレイヤーだけを見る。★ソロで「相手」の注記は幽霊である。
+                players: view.drawnPlayers,
+                // ★「自分 / 相手」の対応づけは `BoardView` 1 か所に置く。
+                labelOf: view.labelOf,
               ),
             ],
+            mode: board.mode,
+            background: scheme.secondaryContainer,
           ),
-        ),
+          // ★畳めるのはここだけ（警告は畳めない）。既定は開く。
+          BoardSummaryPanel(players: view.drawnPlayers),
+          Expanded(
+            child: BoardLayout(
+              // ★★ 描くプレイヤーぶんを渡す（決定 D87 / D88）★★
+              //   ローカル対戦は 1 人が両方を操作する（D77 / D84）。
+              //   ★ソロは袖が 1 つなので、渡る playerId も 1 つだけになる。
+              onDrawEnergy: (playerId) => store.canDrawEnergy(playerId)
+                  ? () => store.dispatch(DrawEnergy(playerId: playerId))
+                  : null,
+            ),
+          ),
+        ],
       ),
     );
   }

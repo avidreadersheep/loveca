@@ -17,6 +17,7 @@ library;
 import 'package:flutter/material.dart' hide Card;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loveca_core/loveca_core.dart' hide Card;
+import 'package:loveca_ui/src/state/board_mode.dart';
 import 'package:loveca_ui/src/state/board_notice.dart';
 import 'package:loveca_ui/src/state/board_summary.dart';
 import 'package:loveca_ui/src/state/game_store.dart';
@@ -67,16 +68,23 @@ GameState _withGhostOrphan(
   ]);
 }
 
-List<BoardNotice> _derived(GameState state) => derivedBoardNotices(
+/// ★描くプレイヤーを**受け取る**形になった（決定 D88 / §14-5）。
+/// 既定は視点側 → 相手側の順（`BoardView.drawnPlayers` と同じ並び）。
+List<BoardNotice> _derived(GameState state, {List<String>? playerIds}) =>
+    derivedBoardNotices(
       state: state,
       cards: realShapedCatalog().cards,
-      viewerId: kSelfPlayerId,
+      players: [
+        for (final id in playerIds ?? const [kSelfPlayerId, kOpponentPlayerId])
+          state.playerOf(id),
+      ],
       labelOf: (playerId) => playerId == kSelfPlayerId ? '自分' : '相手',
     );
 
 GameStore _storeFor(GameState state) => GameStore(
       initialState: state,
       viewerId: kSelfPlayerId,
+      mode: BoardMode.localVersus,
       seed: 1,
       cards: realShapedCatalog().cards,
       rng: SeededRng(1),
@@ -284,7 +292,7 @@ void main() {
 
       await pumpInAppScope(
         tester,
-        BoardPage(initialState: state, viewerId: kSelfPlayerId, seed: 1),
+        BoardPage(initialState: state, viewerId: kSelfPlayerId, mode: BoardMode.localVersus, seed: 1),
         decks: FakeDeckRepository(),
         catalog: realShapedCatalog(),
       );

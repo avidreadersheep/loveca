@@ -13,8 +13,15 @@
 ///
 /// ★★ 描画の視点と `redact` の視点を同じ変数にしない（決定 D77）★★
 /// [viewerId] は**上下の向き**を決めるだけで、**何が見えるか**は決めない。
-/// 一人回しでは両者の手札が見える（1 人が両方を操作するため）。
+/// ローカル対戦では両者の手札が見える（1 人が両方を操作するため）。
 /// `redact` はここに一切関与しない。
+///
+/// ★★ ここだけが `.players` / `playerOf(` を読む（決定 D88 / §14-5）★★
+/// ソロは「相手を描かない」のではなく「**そもそも参照しない**」。
+/// [opponent] を `PlayerState?` にしてあるので、**相手を読んでいる箇所は
+/// 全部コンパイルエラーになる。**残りの漏れは走査テストが塞ぐ
+/// （`test/board/board_player_access_test.dart`。★陽性対照つき）。
+/// ★盤面を回すときは [drawnPlayers] を使うこと。**反復元を 2 つにしない。**
 library;
 
 import 'package:flutter/widgets.dart';
@@ -22,6 +29,7 @@ import 'package:loveca_core/loveca_core.dart';
 
 import '../../data/card_image_source.dart';
 import '../../data/master_catalog.dart';
+import '../../state/board_mode.dart';
 import '../../state/game_store.dart';
 import '../common/card_drag.dart';
 
@@ -30,6 +38,7 @@ class BoardView extends InheritedWidget {
     super.key,
     required this.state,
     required this.viewerId,
+    required this.mode,
     required this.catalog,
     required this.imageSource,
     required this.store,
@@ -56,18 +65,31 @@ class BoardView extends InheritedWidget {
   /// ★下段に出るプレイヤー。盤面の向きはこれ 1 つで決まる。
   final String viewerId;
 
+  /// 盤面のモード（決定 D88）。★[opponent] / [drawnPlayers] がこれで決まる。
+  final BoardMode mode;
+
   final MasterCatalog catalog;
   final CardImageSource imageSource;
 
   /// 下段（視点）のプレイヤー。
   PlayerState get viewer => state.playerOf(viewerId);
 
-  /// 上段（相手）のプレイヤー。★2 人ちょうどなので必ず定まる。
-  PlayerState get opponent =>
-      state.players.firstWhere((p) => p.playerId != viewerId);
+  /// 上段（相手）のプレイヤー。★★ソロでは null★★（決定 D88 / §14-5）。
+  ///
+  /// ★`GameState.players` は 3 モードとも 2 人のままである（1.1.1）。
+  /// **2 人居ることと、ソロに相手が居ることは別**なので、ここで型を落とす。
+  PlayerState? get opponent => mode.hasOpponent
+      ? state.players.firstWhere((p) => p.playerId != viewerId)
+      : null;
+
+  /// ★★ 盤面が描くプレイヤー。反復元はここ 1 つ（決定 D88 / §14-5）★★
+  /// ソロは `[viewer]`、ローカル対戦は `[viewer, opponent]`。
+  /// ★上段（相手）が先ではない —— 並び順は呼び出し側が決める。
+  List<PlayerState> get drawnPlayers => [viewer, ?opponent];
 
   /// 表示用の呼び名。★playerId を画面に出さない（内部語彙）。
   String labelOf(String playerId) => playerId == viewerId ? '自分' : '相手';
+
 
   /// 上段の行に並べるスロットの順（総合ルール 4.5.7.1）。
   ///
@@ -89,6 +111,7 @@ class BoardView extends InheritedWidget {
   BoardView provideTo(Widget child) => BoardView(
         state: state,
         viewerId: viewerId,
+        mode: mode,
         catalog: catalog,
         imageSource: imageSource,
         store: store,
@@ -106,6 +129,7 @@ class BoardView extends InheritedWidget {
   bool updateShouldNotify(BoardView oldWidget) =>
       !identical(oldWidget.state, state) ||
       oldWidget.viewerId != viewerId ||
+      oldWidget.mode != mode ||
       oldWidget.dragStartMode != dragStartMode ||
       !identical(oldWidget.catalog, catalog);
 }

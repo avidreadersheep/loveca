@@ -9,6 +9,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loveca_core/loveca_core.dart' hide Card;
+import 'package:loveca_ui/src/state/board_mode.dart';
 import 'package:loveca_ui/src/state/board_notice.dart';
 import 'package:loveca_ui/src/state/game_store.dart';
 import 'package:loveca_ui/src/ui/board/board_page.dart';
@@ -22,6 +23,7 @@ import '../support/real_shaped_catalog.dart';
 GameStore storeWith({int seed = 1, GameState? state}) => GameStore(
       initialState: state ?? boardFixtureState(),
       viewerId: kSelfPlayerId,
+      mode: BoardMode.localVersus,
       seed: seed,
       cards: realShapedCatalog().cards,
       rng: SeededRng(seed),
@@ -122,7 +124,8 @@ void main() {
       final store = storeWith();
       final before = store.value.session;
 
-      store.setViewer(store.value.opponentId);
+      // ★ローカル対戦では相手が居るので null にならない（決定 D88）。
+      store.setViewer(store.value.opponentId!);
 
       expect(store.value.viewerId, kOpponentPlayerId);
       expect(identical(store.value.session, before), isTrue,
@@ -214,7 +217,7 @@ void main() {
       final initial = boardFixtureState();
       await pumpInAppScope(
         tester,
-        BoardPage(initialState: initial, viewerId: kSelfPlayerId, seed: 7),
+        BoardPage(initialState: initial, viewerId: kSelfPlayerId, mode: BoardMode.localVersus, seed: 7),
         decks: FakeDeckRepository(),
         catalog: realShapedCatalog(),
       );
@@ -253,6 +256,7 @@ void main() {
             opponent: boardFixtureDeckWithExactEnergy(),
           ),
           viewerId: kSelfPlayerId,
+          mode: BoardMode.localVersus,
           seed: 1,
         ),
         decks: FakeDeckRepository(),
@@ -286,7 +290,7 @@ void main() {
 
       await pumpInAppScope(
         tester,
-        BoardPage(initialState: state, viewerId: kSelfPlayerId, seed: 3),
+        BoardPage(initialState: state, viewerId: kSelfPlayerId, mode: BoardMode.localVersus, seed: 3),
         decks: FakeDeckRepository(),
         catalog: realShapedCatalog(),
       );
@@ -378,6 +382,7 @@ void main() {
         BoardPage(
           initialState: boardFixtureState(seed: 12345),
           viewerId: kSelfPlayerId,
+          mode: BoardMode.localVersus,
           seed: 12345,
         ),
         decks: FakeDeckRepository(),
@@ -399,6 +404,7 @@ void main() {
         BoardPage(
           initialState: boardFixtureState(),
           viewerId: kSelfPlayerId,
+          mode: BoardMode.localVersus,
           seed: 1,
           notices: const [MulliganNotImplemented()],
         ),
@@ -422,6 +428,7 @@ void main() {
         BoardPage(
           initialState: boardFixtureState(),
           viewerId: kSelfPlayerId,
+          mode: BoardMode.localVersus,
           seed: 1,
         ),
         decks: FakeDeckRepository(),

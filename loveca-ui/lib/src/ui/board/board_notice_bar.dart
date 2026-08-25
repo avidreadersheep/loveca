@@ -9,11 +9,18 @@
 /// 複数の画面がそれぞれ switch を持つと、片方だけ直されて無言で落ちる。
 ///
 /// ★内部語彙（instanceId / printingId / 孤児 / reduce）を出さない。
+///
+/// ★★ モードを受け取る（決定 D88 / §14-4）★★
+/// 10.3.1（勝利処理）の警告は**ソロでも出る**（`successLive >= winCondition` の検出）が、
+/// ★**ソロでは 1.2.1.1 の比較相手が居ないので勝ちにならない。**
+/// 添えないと「3 枚並んだのに勝ちにならない」が原因不明のまま残る。
+/// ★別の行にせず**その警告の文面に添える** —— 2 行に割ると、片方だけ読んだ人が誤る。
 library;
 
 import 'package:flutter/material.dart';
 import 'package:loveca_core/loveca_core.dart';
 
+import '../../state/board_mode.dart';
 import '../../state/board_notice.dart';
 import '../common/degradation_line.dart';
 
@@ -22,11 +29,16 @@ class BoardNoticeBar extends StatelessWidget {
   const BoardNoticeBar({
     super.key,
     required this.notices,
+    required this.mode,
     required this.background,
     this.heading,
   });
 
   final List<BoardNotice> notices;
+
+  /// 盤面のモード（決定 D88）。★10.3 の警告の文面が変わる。
+  final BoardMode mode;
+
   final Color background;
 
   /// 「直前の整理（9.5.3）」のような見出し。null なら出さない。
@@ -46,7 +58,7 @@ class BoardNoticeBar extends StatelessWidget {
         children: [
           if (heading case final text?)
             Text(text, style: theme.textTheme.labelSmall),
-          for (final notice in notices) boardNoticeLine(notice),
+          for (final notice in notices) boardNoticeLine(notice, mode: mode),
         ],
       ),
     );
@@ -54,11 +66,12 @@ class BoardNoticeBar extends StatelessWidget {
 }
 
 /// 注記 1 件を 1 行に描く。★ここが唯一の網羅 switch。
-Widget boardNoticeLine(BoardNotice notice) => switch (notice) {
+Widget boardNoticeLine(BoardNotice notice, {required BoardMode mode}) =>
+    switch (notice) {
       MulliganNotImplemented() => const DegradationLine(
           icon: Icons.construction_outlined,
           severity: DegradationSeverity.report,
-          // ★暫定であることを盤面から読めるようにする。M-B5 で消す。
+          // ★暫定であることを盤面から読めるようにする。M-B6 で消す。
           text: '6.2.1.6 のマリガンはまだありません。'
               'この盤面は 0 枚として開始しています。',
         ),
@@ -80,7 +93,7 @@ Widget boardNoticeLine(BoardNotice notice) => switch (notice) {
           severity: DegradationSeverity.warning,
           text: '$stepRuleRef の時点で次に当たるものがありますが、'
               'アプリは実行しません（手で処理してください）: '
-              '${kinds.map(_warningLabel).join(' / ')}',
+              '${kinds.map((k) => _warningLabel(k, mode)).join(' / ')}',
         ),
       TidyExcluded(:final stepRuleRef, :final count, :final cardNumbers) =>
         DegradationLine(
@@ -148,10 +161,16 @@ String _appliedLabel(RuleProcessKind kind) => switch (kind) {
         '上にメンバーが居ないエネルギーカード ${kind.ruleRef}',
     };
 
-String _warningLabel(RuleProcessWarningKind kind) => switch (kind) {
+String _warningLabel(RuleProcessWarningKind kind, BoardMode mode) =>
+    switch (kind) {
       // ★決定 D10: 勝敗確定は手動。1.2.1.2 により両者同時なら引き分け。
       RuleProcessWarningKind.victory =>
-        '勝利処理 ${kind.ruleRef}（成功ライブカード置き場の枚数が勝利条件に達しています）',
+        '勝利処理 ${kind.ruleRef}（成功ライブカード置き場の枚数が勝利条件に達しています）'
+            // ★★ ソロでは 1.2.1 のゲーム勝敗が成立しない（決定 D88 / §14-4）★★
+            //   1.2.1.1 は「**もう一方のプレイヤー**の成功ライブカード置き場の
+            //   カードが 2 枚以下の場合」を要求する。★条件の検出そのものは出す。
+            '${mode == BoardMode.solo ? '。★ソロでは 1.2.1.1 の比較相手が居ないため、'
+                'これだけでは勝ちになりません' : ''}',
       // ★D-A: 「プレイ中 / 解決中」は効果の解決状態なので観測できない。
       RuleProcessWarningKind.invalidResolution =>
         '不正解決領域処理 ${kind.ruleRef}（解決領域にカードがあります）',

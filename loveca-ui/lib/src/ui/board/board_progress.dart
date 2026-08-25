@@ -23,6 +23,11 @@
 /// ★★ `Wrap` で組む ★★
 /// 盤面は最小幅を下回ると横スクロールするが（D75）、この行はスクロールしない。
 /// 固定の `Row` にすると窓を狭めたときに溢れ、`kBoardMinWidth`（D83）を押し上げる。
+/// ★★ 飛ばしたステップを黙らない（決定 D88 / 盤面設計メモ §14-3）★★
+/// ソロでは 1 回の「次へ」で**4 フェイズを跨ぐ**ことがある。出さないと
+/// 「勝手に飛んだ」ように見える。★8.3.6 の早期終了で既に学んだ形である（D86）。
+/// ★**フェイズ単位にまとめて条番号のまま出す。**`StepId` の enum 名を UI に書かない
+/// （`test/board/step_authority_test.dart` が走査で禁じている）。
 library;
 
 import 'package:flutter/material.dart';
@@ -76,8 +81,12 @@ class BoardProgressBar extends StatelessWidget {
               _AdvanceControls(store: store),
             ],
           ),
-          if (board.operation case final operation?)
+          if (board.operation case final operation?) ...[
             _LastOperationLine(operation: operation),
+            // ★★ 「直前」行に混ぜない ★★
+            //   4 フェイズぶん並ぶことがあるので、混ぜると直前の遷移が読めなくなる。
+            _SkippedLine(skipped: operation.skipped),
+          ],
         ],
       ),
     );
@@ -194,3 +203,45 @@ String phaseLabel(PhaseId phase) => switch (phase) {
       PhaseId.secondPerformance => '後攻パフォーマンス',
       PhaseId.liveJudgement => 'ライブ勝敗判定',
     };
+
+/// ★★ ソロで通らなかったステップ（決定 D88 / 盤面設計メモ §14-4）★★
+///
+/// ★フェイズ単位にまとめる。のべ 31 ステップを 1 行に並べると読めない。
+/// ★条文が定める分岐（8.3.6 の早期終了 / 8.4.12 のループ）とは**別物**なので、
+/// 「相手が居ないため」という理由を必ず添える。混ぜて読まれると D86 の意味が消える。
+class _SkippedLine extends StatelessWidget {
+  const _SkippedLine({required this.skipped});
+
+  final List<StepCursor> skipped;
+
+  @override
+  Widget build(BuildContext context) {
+    if (skipped.isEmpty) return const SizedBox.shrink();
+    final theme = Theme.of(context);
+
+    // ★並び順は通る順のまま保つ（どこを飛んだかが読めるように）。
+    final byPhase = <PhaseId, List<String>>{};
+    for (final cursor in skipped) {
+      (byPhase[cursor.phase] ??= []).add(cursor.step.ruleRef);
+    }
+
+    final parts = [
+      for (final entry in byPhase.entries)
+        // ★フェイズを丸ごと飛ばしたか、その中の一部かで書き分ける。
+        entry.value.length == entry.key.steps.length
+            ? '${phaseLabel(entry.key)} ${entry.key.ruleRef}（全体）'
+            : '${phaseLabel(entry.key)} ${entry.key.ruleRef} の '
+                '${entry.value.join(' / ')}',
+    ];
+
+    return Padding(
+      key: const ValueKey('skipped-steps'),
+      padding: const EdgeInsets.only(top: 2),
+      child: Text(
+        '通らなかった手順（ソロには相手が居ないため）: ${parts.join(' / ')}',
+        style: theme.textTheme.labelSmall
+            ?.copyWith(color: theme.colorScheme.outline),
+      ),
+    );
+  }
+}
