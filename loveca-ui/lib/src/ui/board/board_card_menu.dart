@@ -15,15 +15,20 @@
 /// 空のメニューが出ると「壊れている」と読まれる。**なぜ何も無いのか**を条番号つきで出す。
 /// このリポジトリで一貫している「黙って効かないボタンを作らない」の裏返しである。
 ///
-/// ★★ M-B2 に無いもの ★★
-/// 引く（5.6）/ シャッフル（5.5）/ 上から見る（5.7）は物理操作（CLAUDE.md §1）だが、
-/// 盤面設計メモ §11 の M-B2 の列挙に無い。**M-B3 で入れる。**
+/// ★★ M-B6 で 1 つ足した（決定 D74 / D93）★★
+/// メンバーの札に**ポジションチェンジ 11.10** を出す。
+/// ★11.10.1 が「**そのメンバーを**」と対象を 1 人指名する動詞なので、
+/// 札から始めるのが条文の構造と一致する。
+/// ★**フォーメーションチェンジ 11.11 はここではない** —— 11.11.1 は
+/// 「**ステージにいるすべてのメンバーを**」なので袖（プレイヤー単位）に置く。
+/// 主語が違うものに同じ入口を与えると、UI が条文の構造を潰す。
 library;
 
 import 'package:flutter/material.dart';
 import 'package:loveca_core/loveca_core.dart' hide Card;
 
 import 'board_drag.dart';
+import 'board_formation.dart';
 import 'board_view.dart';
 
 /// 掴める札（[BoardPiece]）のメニュー。
@@ -47,6 +52,19 @@ Future<void> showBoardCardMenu(BuildContext context, BoardDrag drag) {
             orientation: card.orientation == CardOrientation.active
                 ? CardOrientation.wait
                 : CardOrientation.active,
+          ),
+        ),
+        // ★★ ポジションチェンジ 11.10（決定 D74 / D93）★★
+        //   ★これはカード効果の自動処理ではない。プレイヤーが宣言して押す（D-A）。
+        //   ★入れ替え（11.10.2）は 2 アクションの合成で、**1 undo で戻る**。
+        _MenuEntry(
+          label: 'ポジションチェンジする 11.10',
+          run: (context) => showPositionChange(
+            context,
+            // ★描くプレイヤーの一覧から受け取る（`state.players` を引き直さない / D88）。
+            player: BoardView.of(context).drawnPlayerOf(playerId),
+            slot: slot,
+            member: card,
           ),
         ),
         const _MenuEntry(
@@ -161,12 +179,20 @@ List<_MenuEntry> _orientationEntry(
 }
 
 class _MenuEntry {
-  const _MenuEntry({required this.label, this.action});
+  const _MenuEntry({required this.label, this.action, this.run});
 
   final String label;
 
-  /// null なら**説明だけ**の行（押せない）。
+  /// 押したら `dispatch` する 1 件のアクション。
   final GameAction? action;
+
+  /// ★★ ダイアログを開くなど、1 アクションで表せない行（M-B6）★★
+  /// ポジションチェンジ 11.10 は移動先を選ばせ、**2 アクションの合成**になる。
+  /// ★[action] と両方を渡さないこと（どちらが走るか読めなくなる）。
+  final Future<void> Function(BuildContext context)? run;
+
+  /// null / null なら**説明だけ**の行（押せない）。
+  bool get isEnabled => action != null || run != null;
 }
 
 Future<void> _present(BuildContext context, List<_MenuEntry> entries) async {
@@ -176,7 +202,8 @@ Future<void> _present(BuildContext context, List<_MenuEntry> entries) async {
   if (box is! RenderBox || overlay is! RenderBox) return;
 
   final topLeft = box.localToGlobal(Offset.zero, ancestor: overlay);
-  final action = await showMenu<GameAction>(
+  // ★値ではなく**添字**を返す（[_MenuEntry.run] を持つ行があるため）。
+  final chosen = await showMenu<int>(
     context: context,
     position: RelativeRect.fromLTRB(
       topLeft.dx,
@@ -185,16 +212,21 @@ Future<void> _present(BuildContext context, List<_MenuEntry> entries) async {
       0,
     ),
     items: [
-      for (final entry in entries)
-        PopupMenuItem<GameAction>(
-          key: ValueKey('card-menu-${entries.indexOf(entry)}'),
-          value: entry.action,
+      for (var i = 0; i < entries.length; i++)
+        PopupMenuItem<int>(
+          key: ValueKey('card-menu-$i'),
+          value: i,
           // ★説明だけの行は押せない。**が、消さない**（理由が読めなくなる）。
-          enabled: entry.action != null,
-          child: Text(entry.label, style: Theme.of(context).textTheme.bodySmall),
+          enabled: entries[i].isEnabled,
+          child: Text(entries[i].label,
+              style: Theme.of(context).textTheme.bodySmall),
         ),
     ],
   );
 
-  if (action != null) store.dispatch(action);
+  if (chosen == null) return;
+  final entry = entries[chosen];
+  if (entry.action case final action?) store.dispatch(action);
+  if (!context.mounted) return;
+  await entry.run?.call(context);
 }

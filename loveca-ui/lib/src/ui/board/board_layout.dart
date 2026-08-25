@@ -65,6 +65,7 @@ import 'board_card_menu.dart';
 import 'board_deck_menu.dart';
 import 'board_drag.dart';
 import 'board_drop.dart';
+import 'board_formation.dart';
 import 'board_piece.dart';
 import 'board_slot.dart';
 import 'board_view.dart';
@@ -264,6 +265,15 @@ class _Sleeve extends StatelessWidget {
             deckIsEmpty: player.energyDeck.isEmpty,
           ),
 
+          // ★★ フォーメーションチェンジ 11.11（決定 D74 / D93 / M-B6）★★
+          //   ★袖に置くのは 11.11.1 が「**ステージにいるすべてのメンバーを**」
+          //   ＝ プレイヤー単位の動詞だからである。
+          //   ★ポジションチェンジ 11.10 は「**そのメンバーを**」なので札のメニュー。
+          //   **主語が違うものに同じ入口を与えない。**
+          //   ★D87 と揃えて**両プレイヤーの袖**に出す（ソロは袖が 1 つ）。
+          const SizedBox(height: 4),
+          _FormationChangeButton(player: player),
+
           const SizedBox(height: 8),
           _ZonePile(
             playerId: playerId,
@@ -327,6 +337,39 @@ class _DrawEnergyButton extends StatelessWidget {
             textStyle: Theme.of(context).textTheme.labelSmall,
           ),
           child: Text(deckIsEmpty ? 'エネルギーが空' : 'エネルギーを1枚出す'),
+        ),
+      );
+}
+
+/// 「フォーメーションチェンジする 11.11」（決定 D74 / D93）。
+///
+/// ★★ 消さずに開く。無効化はダイアログの中で理由と一緒に出す ★★
+/// 11.10.2 / 11.11.2 の【要確認】（1 エリアに 2 人以上）は
+/// **押す前に読めても直せない**（先に整理が要る）。
+/// ★ボタンを無効にすると Tooltip でしか理由を出せず、タッチ環境では読めない
+/// （`board_progress.dart` が同じ懸念を記録している）。
+/// → **開いて、中で理由を出す。**判定は `formationRefusal` 1 か所。
+class _FormationChangeButton extends StatelessWidget {
+  const _FormationChangeButton({required this.player});
+
+  final PlayerState player;
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+        message: 'ステージにいるすべてのメンバーをそれぞれ好きなエリアへ移します'
+            '（11.11.1）。\n'
+            '★1 つのエリアに 2 人以上は置けません（11.11.2）。\n'
+            '★カードの効果は判定しません。効果で指示されたときに押してください。',
+        child: OutlinedButton(
+          key: ValueKey('formation-change-${player.playerId}'),
+          onPressed: () => showFormationChange(context, player: player),
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 0),
+            minimumSize: const Size(0, 28),
+            textStyle: Theme.of(context).textTheme.labelSmall,
+          ),
+          child: const Text('フォーメーション\nチェンジ 11.11',
+              textAlign: TextAlign.center),
         ),
       );
 }

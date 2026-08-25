@@ -90,6 +90,16 @@ class BoardView extends InheritedWidget {
   /// 表示用の呼び名。★playerId を画面に出さない（内部語彙）。
   String labelOf(String playerId) => playerId == viewerId ? '自分' : '相手';
 
+  /// ★★ 描いているプレイヤーの [PlayerState]（M-B6）★★
+  ///
+  /// ★[drawnPlayers] から引く。**`GameState` から引き直さない。**
+  ///   盤面の各所は `PlayerState` を受け取る形になっているが、
+  ///   メニューやコマンドは `playerId` しか持たないことがある。
+  ///   ★その 1 か所をここに寄せる（判断点を増やさない / D75 と同じ理由）。
+  /// ★ソロで相手を渡すと落ちる —— **それが正しい**（幽霊を作らない / §14-5）。
+  PlayerState drawnPlayerOf(String playerId) =>
+      drawnPlayers.firstWhere((player) => player.playerId == playerId);
+
 
   /// 上段の行に並べるスロットの順（総合ルール 4.5.7.1）。
   ///
