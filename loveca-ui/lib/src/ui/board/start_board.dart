@@ -1,7 +1,7 @@
 /// R2 から R7 へ入る道（決定 D81 / D88 / 盤面設計メモ §9 / §14）.
 ///
 /// ★★ 6.2.1 を走らせるのはここ 1 箇所である ★★
-/// `GameSetup.begin` → （★6.2.1.6 マリガンが入る場所 / M-B6）→ `dealInitialEnergy`。
+/// `GameSetup.begin` → `mulligan`（6.2.1.6）→ `dealInitialEnergy`。
 /// **2 箇所で走らせない。** 走らせる場所が増えると
 /// 「seed をどこで作ったか」「マリガンをどこに挟むか」が分岐する。
 ///
@@ -25,6 +25,7 @@ import 'package:loveca_core/loveca_core.dart';
 import '../../state/app_scope.dart';
 import '../../state/board_mode.dart';
 import '../../state/board_notice.dart';
+import 'board_mulligan_dialog.dart';
 import 'board_page.dart';
 import 'board_start_dialog.dart';
 
@@ -52,9 +53,9 @@ Future<void> startBoard(
   //   begin と dealInitialEnergy に同じインスタンスを渡す。
   final rng = SeededRng(request.seed);
 
-  final GameState initialState;
+  final GameSetup setup;
   try {
-    final setup = GameSetup.begin(
+    setup = GameSetup.begin(
       players: [
         PlayerDeck(playerId: kSelfPlayerId, deck: deck),
         PlayerDeck(playerId: kOpponentPlayerId, deck: request.opponentDeck),
@@ -66,11 +67,6 @@ Future<void> startBoard(
       // ★6.1.2 により置換されうるので配信された値を使う（定数にしない）。
       config: env.ruleConfig,
     );
-
-    // ★★ ここに 6.2.1.6（マリガン）が入る（M-B6）★★
-    //   setup = setup.mulligan(...);
-    //   ★順を入れ替えないこと。入れ替えると乱数の消費順が条文と変わる。
-    initialState = setup.dealInitialEnergy(rng: rng);
   } on GameSetupException catch (e) {
     // ★ダイアログが未知の刷りで止めているので普通は来ない。
     //   ★それでも黙って落とさない（来たら理由を出す）。
@@ -81,6 +77,25 @@ Future<void> startBoard(
     }
     return;
   }
+
+  if (!context.mounted) return;
+
+  // ★★ 6.2.1.6（決定 D93 / M-B6）★★
+  //   ★手札は `handsForMulligan` で**受け取る**。`pendingState` から引き直さない
+  //   （`test/board/board_player_access_test.dart` が走査で塞いでいる）。
+  final choices = await showMulliganDialog(
+    context,
+    hands: setup.handsForMulligan,
+    mode: mode,
+    catalog: env.catalog,
+    imageSource: env.imageSource,
+  );
+  // ★★ 「やめる」は「0 枚」ではない ★★ 盤面を開かない。
+  if (choices == null || !context.mounted) return;
+
+  // ★★ 順を入れ替えないこと ★★ 入れ替えると乱数の消費順が条文と変わる（D80）。
+  final initialState =
+      setup.mulligan(choices: choices, rng: rng).dealInitialEnergy(rng: rng);
 
   if (!context.mounted) return;
   await Navigator.of(context).push<void>(
@@ -112,9 +127,6 @@ List<BoardNotice> _noticesFor({
   required DeckValidationResult opponentResult,
 }) =>
     [
-      // ★★ この盤面は 6.2.1.6 を経ていない。暫定であることを盤面に出す ★★
-      //   中途半端に動くものが「完成」と誤認される形にしない。M-B6 で消す。
-      const MulliganNotImplemented(),
       if (!selfResult.isValid)
         DeckNotValid(playerLabel: '自分', issues: selfResult.issues),
       if (mode.hasOpponent && !opponentResult.isValid)

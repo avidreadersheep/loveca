@@ -70,12 +70,21 @@ Deck boardFixtureDeckWithUnknown() => Deck(
     );
 
 /// 6.2.1 を通した初期状態。★本番（`start_board.dart`）と同じ順で呼ぶ。
+///
+/// ★★ 6.2.1.6（マリガン）を 0 枚で通してある（決定 D93 / M-B6）★★
+/// **飛ばさない。**本番の経路は必ず 6.2.1.6 を通るので、fixture が飛ばすと
+/// 「盤面テストが通る経路」と「実機の経路」が分かれる。
+/// ★0 枚は**乱数を 1 つも消費しない**ので、この fixture を使う既存の盤面テストは
+/// 1 件も影響を受けない —— **影響したらそれ自体が回帰の合図**である。
 GameState boardFixtureState({
   int seed = 1,
   Deck? self,
   Deck? opponent,
   String firstPlayerId = kSelfPlayerId,
   MasterCatalog? catalog,
+
+  /// ★脇に置くカード（6.2.1.6）。★既定は 0 枚。
+  List<MulliganChoice> mulligan = const [],
 }) {
   final resolved = catalog ?? realShapedCatalog();
   // ★乱数列は 1 本（決定 D80）。
@@ -93,8 +102,8 @@ GameState boardFixtureState({
     rng: rng,
     firstPlayerId: firstPlayerId,
     config: resolved.config,
-    // ★ここに 6.2.1.6（マリガン）が入る（M-B6）。順を入れ替えないこと。
-  ).dealInitialEnergy(rng: rng);
+    // ★順を入れ替えないこと（決定 D80）。
+  ).mulligan(choices: mulligan, rng: rng).dealInitialEnergy(rng: rng);
 }
 
 /// ★★ 領域ごとに刷りを指定して盤面を手で組む（M-B2）★★

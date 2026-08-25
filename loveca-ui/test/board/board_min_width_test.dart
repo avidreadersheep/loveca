@@ -214,8 +214,10 @@ Future<void> _pumpBoard(
       mode: mode,
       seed: 1234567890,
       // ★盤面の帯 2 本（最も混む状態）。
+      //   ★M-B6 で `MulliganNotImplemented` を消したので `HistoryAtMaxDepth` に替えた。
+      //   **測っているのは「帯が 2 行あること」**なので、中身は同じ格の注記でよい。
       notices: const [
-        MulliganNotImplemented(),
+        HistoryAtMaxDepth(maxDepth: 512),
         DeckNotValid(playerLabel: '自分', issues: []),
       ],
     ),
@@ -413,7 +415,7 @@ void main() {
           viewerId: kSelfPlayerId,
           mode: BoardMode.localVersus,
           seed: 1,
-          notices: const [MulliganNotImplemented()],
+          notices: const [HistoryAtMaxDepth(maxDepth: 512)],
         ),
         decks: FakeDeckRepository(),
         catalog: realShapedCatalog(),

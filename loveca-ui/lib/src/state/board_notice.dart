@@ -22,17 +22,6 @@ sealed class BoardNotice {
   const BoardNotice();
 }
 
-/// ★★ 6.2.1.6（マリガン）がまだ無い（M-B6）★★
-///
-/// ★★ これは「中途半端に動くものを完成と誤認させない」ための表示である ★★
-/// M-B1 の盤面は `GameSetup.begin` → `dealInitialEnergy` を続けて呼ぶので、
-/// **マリガンを 0 枚として開始している**。条文の手順としては未完である。
-///
-/// ★M-B6 でマリガンを実装したら**この枝ごと消すこと。**
-/// 残っていると「実装したのに出っぱなし」という無言の嘘になる。
-final class MulliganNotImplemented extends BoardNotice {
-  const MulliganNotImplemented();
-}
 
 /// ★★ 整理（9.5.3 のチェックタイミング）で実行したルール処理（M-B3）★★
 ///

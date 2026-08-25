@@ -68,13 +68,6 @@ class BoardNoticeBar extends StatelessWidget {
 /// 注記 1 件を 1 行に描く。★ここが唯一の網羅 switch。
 Widget boardNoticeLine(BoardNotice notice, {required BoardMode mode}) =>
     switch (notice) {
-      MulliganNotImplemented() => const DegradationLine(
-          icon: Icons.construction_outlined,
-          severity: DegradationSeverity.report,
-          // ★暫定であることを盤面から読めるようにする。M-B6 で消す。
-          text: '6.2.1.6 のマリガンはまだありません。'
-              'この盤面は 0 枚として開始しています。',
-        ),
       // ★★ 捨てたことを黙らない（M-B5 / 決定 D78）★★
       //   `canUndo` は真のままなので、出さないと気づけない。
       HistoryAtMaxDepth(:final maxDepth) => DegradationLine(

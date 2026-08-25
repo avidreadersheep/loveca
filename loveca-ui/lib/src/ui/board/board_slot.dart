@@ -36,6 +36,7 @@ import 'package:flutter/material.dart';
 import 'package:loveca_core/loveca_core.dart';
 
 import '../../data/card_image_source.dart';
+import '../../data/master_catalog.dart';
 import '../../state/board_mode.dart';
 import '../common/card_thumb.dart';
 import 'board_view.dart';
@@ -206,7 +207,7 @@ class BoardCard extends StatelessWidget {
     // 4.3.3.2: 裏向きのカードは情報が書かれている面が見えない。
     final face = card.face == FaceState.faceDown
         ? BoardFaceDown(width: width)
-        : _art(view, MediaQuery.devicePixelRatioOf(context));
+        : _art(view);
 
     // ★★ 4.3.2.2 のウェイト状態は「マスターから見て横向き」★★
     //   描かないと「向きを変える」が黙って何も起きない操作になる。
@@ -232,14 +233,46 @@ class BoardCard extends StatelessWidget {
     );
   }
 
-  Widget _art(BoardView view, double devicePixelRatio) {
-    final printing = view.catalog.printings[card.printingId];
+  Widget _art(BoardView view) => BoardCardArt(
+        card: card,
+        catalog: view.catalog,
+        imageSource: view.imageSource,
+        width: width,
+      );
+}
+
+/// 表向きの札の**絵**。★カタログと画像源を[受け取る]。
+///
+/// ★★ `BoardView` の外からも使えるようにしてある（決定 D93 / M-B6）★★
+/// 6.2.1.6 のマリガンは**盤面が開く前**に行うので `GameStore` が存在せず、
+/// したがって `BoardView` も無い。それでも手札の絵は要る。
+/// ★**絵を描くコードを 3 箇所目にしない** —— [BoardCard] はこれに委譲する。
+///
+/// ★段の決め方（決定 D82 / 未決 U5 の解消）はここ 1 箇所にある。
+/// `test/board/board_image_tier_test.dart` が `ResizeImage.width` で固定している。
+class BoardCardArt extends StatelessWidget {
+  const BoardCardArt({
+    super.key,
+    required this.card,
+    required this.catalog,
+    required this.imageSource,
+    this.width = kBoardSlotWidth,
+  });
+
+  final CardInstance card;
+  final MasterCatalog catalog;
+  final CardImageSource imageSource;
+  final double width;
+
+  @override
+  Widget build(BuildContext context) {
+    final printing = catalog.printings[card.printingId];
     final cardType =
-        view.catalog.cards[card.cardNumber]?.cardType ?? CardType.member;
+        catalog.cards[card.cardNumber]?.cardType ?? CardType.member;
 
     return CardArt(
       key: ValueKey('board-card-${card.instanceId}'),
-      source: view.imageSource,
+      source: imageSource,
       imageHash: printing?.imageHash ?? '',
       cardType: cardType,
       // ★箱が枠より縦長なので枠の幅 == 箱の幅（`card_thumb.dart` の不変）。
@@ -247,7 +280,7 @@ class BoardCard extends StatelessWidget {
       // ★★ 段は物理幅で決める（未決 U5 の解消 / 決定 D82）★★
       //   盤面の札は一覧のセルより大きくなりうる。thumb の原寸は 200px なので、
       //   物理幅がそれを超えると**拡大されてぼやける**。
-      size: cardImageSizeFor(width, devicePixelRatio),
+      size: cardImageSizeFor(width, MediaQuery.devicePixelRatioOf(context)),
       borderRadius: BorderRadius.circular(3),
     );
   }

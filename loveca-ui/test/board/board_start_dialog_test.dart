@@ -118,6 +118,25 @@ void main() {
     });
   });
 
+  /// ★★ 開始 → 6.2.1.6（マリガン 0 枚）→ 盤面（決定 D93 / M-B6）★★
+  ///
+  /// ★開始ダイアログと盤面のあいだにマリガンが入る（D80 の 3 段）。
+  ///   ローカル対戦は**先攻 → 後攻**の 2 段、ソロは 1 段。
+  Future<void> startBoard(
+    WidgetTester tester, {
+    BoardMode mode = BoardMode.localVersus,
+  }) async {
+    await tester.tap(find.byKey(const ValueKey('start-board')));
+    await tester.pumpAndSettle();
+
+    if (mode == BoardMode.localVersus) {
+      await tester.tap(find.byKey(const ValueKey('mulligan-next')));
+      await tester.pumpAndSettle();
+    }
+    await tester.tap(find.byKey(const ValueKey('mulligan-done')));
+    await tester.pumpAndSettle();
+  }
+
   group('★ seed（決定 D79）', () {
     testWidgets('既定で seed が入っていて、書き換えられる', (tester) async {
       await openDeckList(tester);
@@ -129,8 +148,7 @@ void main() {
       await tester.enterText(field, '4242');
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const ValueKey('start-board')));
-      await tester.pumpAndSettle();
+      await startBoard(tester);
 
       // ★入れた seed がそのまま盤面に出る（書き写して再現できる）。
       expect(find.text('seed 4242'), findsOneWidget);
@@ -142,8 +160,7 @@ void main() {
         await openStartDialog(tester);
         await tester.enterText(find.byKey(const ValueKey('seed-field')), seed);
         await tester.pumpAndSettle();
-        await tester.tap(find.byKey(const ValueKey('start-board')));
-        await tester.pumpAndSettle();
+        await startBoard(tester);
 
         final page = tester.widget<BoardPage>(find.byType(BoardPage));
         final hand = page.initialState.playerOf(kSelfPlayerId).hand;
@@ -178,8 +195,7 @@ void main() {
     testWidgets('★同じデッキで始めても instanceId が衝突しない', (tester) async {
       await openDeckList(tester);
       await openStartDialog(tester);
-      await tester.tap(find.byKey(const ValueKey('start-board')));
-      await tester.pumpAndSettle();
+      await startBoard(tester);
 
       final page = tester.widget<BoardPage>(find.byType(BoardPage));
       final ids = [
@@ -210,13 +226,13 @@ void main() {
     testWidgets('★★ 開始でき、盤面にも帯が残る ★★', (tester) async {
       await openDeckList(tester);
       await openStartDialog(tester);
-      await tester.tap(find.byKey(const ValueKey('start-board')));
-      await tester.pumpAndSettle();
+      await startBoard(tester);
 
       expect(find.byType(BoardPage), findsOneWidget);
       expect(find.textContaining('6.1 の構築条件を満たしていません'), findsWidgets);
-      // ★6.2.1.6 を経ていないことも盤面から読める。
-      expect(find.textContaining('マリガンはまだありません'), findsOneWidget);
+      // ★★ M-B6 で 6.2.1.6 を実装したので「未実装」の帯は出ない ★★
+      //   実装したのに出っぱなしなら無言の嘘になる（`board_notice.dart` の旧 doc）。
+      expect(find.textContaining('マリガンはまだありません'), findsNothing);
     });
   });
 
@@ -246,8 +262,7 @@ void main() {
     testWidgets('手札 6 枚 / エネルギー 3 枚', (tester) async {
       await openDeckList(tester);
       await openStartDialog(tester);
-      await tester.tap(find.byKey(const ValueKey('start-board')));
-      await tester.pumpAndSettle();
+      await startBoard(tester);
 
       final page = tester.widget<BoardPage>(find.byType(BoardPage));
       for (final player in page.initialState.players) {
@@ -262,8 +277,7 @@ void main() {
     testWidgets('★押したデッキが自分側（下段）になる（決定 D81）', (tester) async {
       await openDeckList(tester);
       await openStartDialog(tester);
-      await tester.tap(find.byKey(const ValueKey('start-board')));
-      await tester.pumpAndSettle();
+      await startBoard(tester);
 
       expect(tester.widget<BoardPage>(find.byType(BoardPage)).viewerId,
           kSelfPlayerId);
@@ -331,8 +345,7 @@ void main() {
     testWidgets('★★ 始めるとソロの盤面が立ち、自分が先攻になる ★★', (tester) async {
       await openDeckList(tester);
       await openStartDialog(tester, mode: BoardMode.solo);
-      await tester.tap(find.byKey(const ValueKey('start-board')));
-      await tester.pumpAndSettle();
+      await startBoard(tester, mode: BoardMode.solo);
 
       final page = tester.widget<BoardPage>(find.byType(BoardPage));
       expect(page.mode, BoardMode.solo);

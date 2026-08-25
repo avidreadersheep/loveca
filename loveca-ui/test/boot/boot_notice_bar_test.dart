@@ -247,6 +247,9 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('start-board')));
       await tester.pumpAndSettle();
+      // ★6.2.1.6（決定 D93）。ソロは 1 段。★0 枚で通す。
+      await tester.tap(find.byKey(const ValueKey('mulligan-done')));
+      await tester.pumpAndSettle();
 
       expect(_bar, findsOneWidget,
           reason: '★症状（絵が出ない）が最も目立つ画面である');

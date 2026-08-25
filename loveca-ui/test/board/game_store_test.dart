@@ -610,7 +610,7 @@ void main() {
   });
 
   group('★ 盤面の帯（BoardNotice / 盤面設計メモ §10-3）', () {
-    testWidgets('★★ マリガンが未実装であることを盤面から読める ★★', (tester) async {
+    testWidgets('★ 常設の注記が盤面から読める', (tester) async {
       tester.view.physicalSize = const Size(1600, 1200);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
@@ -622,16 +622,15 @@ void main() {
           viewerId: kSelfPlayerId,
           mode: BoardMode.localVersus,
           seed: 1,
-          notices: const [MulliganNotImplemented()],
+          notices: const [
+            DeckNotValid(playerLabel: '自分', issues: []),
+          ],
         ),
         decks: FakeDeckRepository(),
         catalog: realShapedCatalog(),
       );
 
-      // ★「6.2.1.6」だけで探さない —— ルール外の置き場の見出し
-      //   （「脇置き 6.2.1.6」）にも同じ条番号が出る。
-      expect(find.textContaining('マリガンはまだありません'), findsOneWidget);
-      expect(find.textContaining('0 枚として開始'), findsOneWidget);
+      expect(find.textContaining('6.1 の構築条件を満たしていません'), findsOneWidget);
     });
 
     testWidgets('★対: 注記が無ければ帯は出ない', (tester) async {
@@ -651,7 +650,7 @@ void main() {
         catalog: realShapedCatalog(),
       );
 
-      expect(find.textContaining('マリガンはまだありません'), findsNothing);
+      expect(find.textContaining('6.1 の構築条件を満たしていません'), findsNothing);
       // ★対: 盤面そのものは出ている（何も描かれていないから通った、ではない）
       expect(find.byKey(const ValueKey('progress-bar')), findsOneWidget);
     });
