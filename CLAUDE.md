@@ -253,9 +253,17 @@ git ls-files --others --ignored --exclude-standard \
 | `loveca-data`（Python） | 33 | `python tests/run_all.py` |
 | `loveca-core`（Dart） | 293 | `dart test` |
 | `loveca-db`（Dart） | 127（★skip 0） | `dart test` |
-| `loveca-ui`（Flutter） | 587（★skip 0） | `flutter test` |
+| `loveca-ui`（Flutter） | **590**（★skip 0） | `flutter test` |
 
-（4 パッケージとも 2026-08-25 時点 / Phase 3b の M-B3 完了時）
+（4 パッケージとも 2026-08-25 時点 / Phase 3b の M-B3 完了時。★**4 件とも実測で確認済み**）
+
+★★**`loveca-ui` は 587 と書かれていたが実測 590 だった（2026-08-25 に訂正）。**★★
+表を書いたコミット（`7fba617`）の**あと**に `board_progress_test.dart` へ 3 件足した
+コミット（`5cbbe47`）があり、**表だけが更新されなかった。**
+★**この表は「他の文書より優先する正」なので、古いまま放置すると
+「増減しないはずの作業で増えた」という誤った読みを生む。**
+→ ★**テストを足したコミットで必ずここを直すこと。**同じ数を 2 箇所に書く問題
+（`ルール整合性チェック_v1.06.md` D-15）と同じ型で、**ここでは「コードと表」の 2 箇所である。**
 
 ★`loveca-db` の 127 件には **移行テスト（`migration_test.dart` / 10 件）**を含む。
 `onUpgrade` が走ること・`decks` が残ること・索引が建て直ることを固定している
