@@ -253,16 +253,20 @@ git ls-files --others --ignored --exclude-standard \
 | `loveca-data`（Python） | 33 | `python tests/run_all.py` |
 | `loveca-core`（Dart） | **380** | `dart test` |
 | `loveca-db`（Dart） | 127（★skip 0） | `dart test` |
-| `loveca-ui`（Flutter） | **825**（★skip 0） | `flutter test` |
+| `loveca-ui`（Flutter） | **826**（★skip 0） | `flutter test` |
 
 （4 パッケージとも 2026-08-26 時点 / **決定 D96 / D97（U23 / U24 の確定）の完了時**。
 ★**4 件とも実測で確認済み**）
 
-★★**D96 / D97 で増えたのは `loveca-core`（376 → 380）と `loveca-ui`（825 - 777 = +48）**★★
+★★**D96 / D97 で増えたのは `loveca-core`（376 → 380）と `loveca-ui`（777 → 826）**★★
 （core: +4 = 入口が 0 枚のエネルギーデッキ（例外が出ないこと / 1 枚なら 1 枚だけ出る対 /
 0 枚では乱数を消費しないこと / 消費する対）。
-ui: +48 = 補完の撃ち分け 14 / 走査テスト 7 / 設定の往復 6 / 開始ダイアログ 11 /
-R3 の軸 2 が 5 / R6 と D-23 が 5）。
+ui: +49 = 補完の撃ち分け 14 / 走査テスト 7 / 設定の往復 6 / 開始ダイアログ 11 /
+R3 の軸 2 が 5 / R6 と D-23 が 6）。
+★★**うち 1 件は実機で見つけた不具合の受け**★★ —— R6 が「いま補うカード」を
+**起動時のスナップショット**で出していた。★ウィジェットテストでは出ない
+（`env.settings` と `settingsStore` が最初から一致しているため）ので、
+**両者をわざと食い違わせる**形で固定した。
 ★`loveca_db` / `loveca-data` は触っていないので 127 / 33 のまま（★どちらも実測で確認した）。
 
 ★以下は D95 時点の記録（残す）——
