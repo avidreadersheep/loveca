@@ -241,6 +241,105 @@ void main() {
       expect(find.textContaining('反映されるのは次の起動から'), findsNothing);
     });
 
+    /// ★★ 再起動が要るかは項目ごとに違う（`ルール整合性チェック_v1.06.md` D-23）★★
+    ///
+    /// かつては**どの項目でも**無条件に「次の起動から」と言っていた。
+    /// 既存 2 項目がどちらも再起動を要したので**偶然に正しかった**だけで、
+    /// 即時に効く項目を足した瞬間に嘘になる。
+    group('★★ 補完に使うエネルギーカード（決定 D97 / D-23）★★', () {
+      testWidgets('★★ 選び直しても「次の起動から」と言わない ★★', (tester) async {
+        final store = FakeAppSettingsStore(const AppSettings());
+        await _open(tester, settingsStore: store);
+
+        await _tap(tester, find.byKey(const Key('energyFillPickSetting')));
+        // ★ピッカから 1 枚選ぶ（fixture のエネルギーは 1 種）。
+        await _tap(tester, find.byKey(const ValueKey('energyFill:E-1-N')));
+
+        expect(store.saved, hasLength(1));
+        expect(store.saved.single.energyFillPrintingId, 'E-1-N');
+        // ★★ ここが D-23 の要点 ★★
+        expect(find.textContaining('反映されるのは次の起動から'), findsNothing,
+            reason: '★補完の 1 回にしか効かないので、再起動は要らない');
+        expect(find.textContaining('次に盤面を始めるときから効きます'), findsOneWidget);
+      });
+
+      testWidgets('★★ 対: dist を保存したときは「次の起動から」と言う ★★',
+          (tester) async {
+        // ★片方だけ見ると、常に「要らない」と言う実装でも通ってしまう。
+        await _open(tester, settingsStore: FakeAppSettingsStore());
+
+        await tester.enterText(
+            find.byKey(const Key('distDirField')), r'C:\dist');
+        await _tap(tester, find.text('この場所を保存する'));
+
+        expect(find.textContaining('反映されるのは次の起動から'), findsOneWidget);
+      });
+
+      testWidgets('★「補完しない」を選べる（片道にしない）', (tester) async {
+        final store = FakeAppSettingsStore(
+          const AppSettings(energyFillPrintingId: 'E-1-N'),
+        );
+        await _open(
+          tester,
+          settingsStore: store,
+          settings: const AppSettings(energyFillPrintingId: 'E-1-N'),
+        );
+
+        await _tap(tester, find.byKey(const Key('energyFillPickSetting')));
+        await _tap(tester, find.byKey(const ValueKey('energyFillNone')));
+
+        expect(store.saved.single.energyFillPrintingId, isNull);
+      });
+
+      testWidgets('★やめたら何も保存しない（null と「補完しない」は別物）',
+          (tester) async {
+        final store = FakeAppSettingsStore(const AppSettings());
+        await _open(tester, settingsStore: store);
+
+        await _tap(tester, find.byKey(const Key('energyFillPickSetting')));
+        await _tap(tester, find.widgetWithText(TextButton, 'やめる'));
+
+        expect(store.saved, isEmpty);
+      });
+
+      testWidgets('★★ 引けない刷りは理由を撃ち分けて出す（決定 D97-5）★★',
+          (tester) async {
+        // ★cardNumber ごと無い側。
+        await _open(
+          tester,
+          settings: const AppSettings(energyFillPrintingId: 'GHOST-9-9-X'),
+        );
+
+        // ★★ ListView は画面外を作らない ★★
+        //   スクロールせずに見ると、出ていても findsNothing になる（M5 の教訓）。
+        await tester.scrollUntilVisible(
+          find.byKey(const Key('energyFillPickSetting')),
+          120,
+          scrollable: _scrollable(),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.textContaining('がカードデータにありません'), findsOneWidget);
+      });
+
+      testWidgets('★対: cardNumber は在るが刷りだけ無い側は文面が違う', (tester) async {
+        await _open(
+          tester,
+          settings: const AppSettings(energyFillPrintingId: 'E-1-ZZZ'),
+        );
+
+        await tester.scrollUntilVisible(
+          find.byKey(const Key('energyFillPickSetting')),
+          120,
+          scrollable: _scrollable(),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.textContaining('選ばれている刷りがありません'), findsOneWidget);
+        expect(find.textContaining('がカードデータにありません'), findsNothing);
+      });
+    });
+
     testWidgets('★dist のパスを空にすると設定から消える（片道にしない）',
         (tester) async {
       final store = FakeAppSettingsStore(const AppSettings(distDir: r'C:\old'));

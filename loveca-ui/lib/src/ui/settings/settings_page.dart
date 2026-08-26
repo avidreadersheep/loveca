@@ -18,12 +18,15 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../boot/boot_steps.dart';
 import '../../data/app_settings.dart';
+import '../../data/energy_fill.dart';
 import '../../data/dist_locator.dart';
 import '../../data/import_issue.dart';
 import '../../data/search_limit.dart';
 import '../../state/app_scope.dart';
 import '../../state/store.dart';
+import '../board/board_energy_fill_picker.dart';
 import '../common/loadable_view.dart';
 import 'import_issues_section.dart';
 
@@ -72,21 +75,66 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  Future<void> _saveSettings(AppSettings next) async {
+  /// 設定を保存する。
+  ///
+  /// ★★ 再起動が要るかは**項目ごとに違う**（`ルール整合性チェック_v1.06.md` D-23）★★
+  ///
+  /// | 項目 | 要るか | 理由の格 |
+  /// |---|---|---|
+  /// | `distDir` | ★**要る（本質的）** | **D56**「取り込みは起動ゲートでのみ」。カタログ全体の再構築を伴う |
+  /// | `showParallel` | 要る（★**偶然**） | 一覧が `env.settings` から読んでいるだけ |
+  /// | `energyFillPrintingId` | ★**要らない** | 補完の 1 回にしか効かず、既存の状態に影響しない |
+  ///
+  /// ★★ かつては無条件に `_needsRestart` を立てていた ★★
+  /// 既存 2 項目がどちらも再起動を要したので**偶然に正しい答えが出ていた**だけで、
+  /// 根拠（上のコメント）は `distDir` 1 項目ぶんしか無かった。
+  /// ★即時に効く項目を足した時点で、帯とスナックバーは**嘘になる。**
+  ///
+  /// ★★ 判定を項目名で分岐させない ★★
+  /// どちらなのかは**呼び出し側が知っている**ので、呼び出し側が渡す
+  /// （`HiddenPile` が「押したとき何が出るか」を持たないのと同じ形）。
+  Future<void> _saveSettings(
+    AppSettings next, {
+    required bool needsRestart,
+  }) async {
     await _scope.environment.settingsStore.save(next);
     if (!mounted) return;
     setState(() {
       _settings = next;
-      // ★dist の場所は起動ゲートでしか読まれない（決定 D56 / D60）。
-      //   いま効いたように見せると、次の起動まで嘘をつくことになる。
-      _needsRestart = true;
+      // ★一度でも「要る」項目を触ったら、以降は帯を出したままにする。
+      _needsRestart = _needsRestart || needsRestart;
     });
     // ★★ 帯だけでは足りない ★★
     //   帯は一覧の先頭にあり、下のほうの項目を触った利用者には**見えない。**
     //   押した場所で言わないと「保存されたのか分からない」が残る。
+    // ★★ 帯と同じ判断で文面を分ける ★★
+    //   片方だけ直すと、上の指摘（帯だけでは足りない）に反する。
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('保存しました。反映されるのは次の起動からです。')),
+      SnackBar(
+        content: Text(
+          needsRestart
+              ? '保存しました。反映されるのは次の起動からです。'
+              : '保存しました。次に盤面を始めるときから効きます。',
+        ),
+      ),
     );
+  }
+
+  /// 補うカードの表示。★引けないときは**理由を撃ち分ける**（決定 D97-5）。
+  ///
+  /// ★★ 1 行にまとめない ★★ 「その刷りだけ無い」は**別の刷りを選べば直る**が、
+  /// 「cardNumber ごと無い」は取り込み直すしかない。次の一手が違う。
+  String _energyFillLabel(AppEnvironment env, String printingId) {
+    final row = env.rows.where((r) => r.printingId == printingId).firstOrNull;
+    if (row != null) {
+      return '${row.name}（${row.cardNumber}・${row.expansion}）';
+    }
+    final cardNumber = cardNumberOfPrinting(printingId);
+    return env.cards.containsKey(cardNumber)
+        ? '$cardNumber はありますが、選ばれている刷りがありません。'
+            '同じカードの別の刷りを選んでください'
+        : '$cardNumber がカードデータにありません。'
+            '取り込み直すか、別のカードを選んでください';
   }
 
   Future<void> _quit() async {
@@ -214,6 +262,8 @@ class _SettingsPageState extends State<SettingsPage> {
                           // ★消す口が要る。`distDir ?? this.distDir` だけだと片道になる。
                           ? _settings.copyWith(clearDistDir: true)
                           : _settings.copyWith(distDir: text),
+                      // ★取り込みは起動ゲートでのみ走る（決定 D56 / D60）。
+                      needsRestart: true,
                     );
                   },
                   child: const Text('この場所を保存する'),
@@ -231,7 +281,63 @@ class _SettingsPageState extends State<SettingsPage> {
                 subtitle: const Text('カード一覧を開いたときの既定です'),
                 value: _settings.showParallel,
                 onChanged: (v) =>
-                    _saveSettings(_settings.copyWith(showParallel: v)),
+                    _saveSettings(
+                  _settings.copyWith(showParallel: v),
+                  // ★一覧が `env.settings` から読んでいるだけだが、
+                  //   いまの実装では次の起動まで効かない（D-23 の「偶然」の側）。
+                  needsRestart: true,
+                ),
+              ),
+            ],
+          ),
+          // ★★ 補完に使うエネルギーカード（決定 D97）★★
+          //   ★この項目だけは再起動が要らない（D-23 / D97-4）。
+          _Section(
+            title: 'エネルギーデッキが 0 枚のとき',
+            children: [
+              Text(
+                '総合ルール 6.1.1.3 はエネルギーカード 12 枚ちょうどを求めますが、'
+                'どのカードかは定めていません。'
+                'エネルギーはゲーム上の差が無いので、絵柄の好みで選べます。'
+                '\n★盤面を始めるときにだけ補います。保存されているデッキは変わりません。',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 8),
+              _Row(
+                label: 'いま補うカード',
+                value: switch (_settings.energyFillPrintingId) {
+                  null => '補いません（0 枚のまま始めます）',
+                  final id => _energyFillLabel(env, id),
+                },
+              ),
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: OutlinedButton.icon(
+                  key: const Key('energyFillPickSetting'),
+                  onPressed: () async {
+                    final choice = await showEnergyFillPicker(
+                      context,
+                      rows: env.rows,
+                      selected: _settings.energyFillPrintingId,
+                      imageSource: env.imageSource,
+                    );
+                    // ★やめたら何も変えない（`null` は「補完しない」と別物）。
+                    if (choice == null) return;
+                    await _saveSettings(
+                      choice.printingId == null
+                          ? _settings.copyWith(clearEnergyFill: true)
+                          : _settings.copyWith(
+                              energyFillPrintingId: choice.printingId,
+                            ),
+                      // ★★ ここが D-23 の要点 ★★
+                      //   補完の 1 回にしか効かず、既存の状態に影響しない。
+                      needsRestart: false,
+                    );
+                  },
+                  icon: const Icon(Icons.style_outlined, size: 16),
+                  label: const Text('カードを選ぶ'),
+                ),
               ),
             ],
           ),
