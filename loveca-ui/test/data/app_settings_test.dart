@@ -139,4 +139,59 @@ void main() {
           reason: '「消せる」だけを見ると、常に消す実装でも通ってしまう');
     });
   });
+
+  group('★ 補完に使うエネルギーカード（決定 D97）', () {
+    test('★既定は未設定ではない', () {
+      // ★値そのものをここに書かない（`card_number_literal_test.dart` と同じ理由）。
+      expect(AppSettings.defaults.energyFillPrintingId,
+          kDefaultEnergyFillPrintingId);
+      expect(kDefaultEnergyFillPrintingId, isNotEmpty);
+    });
+
+    test('★初回起動でも既定が立つ（ファイルが無い）', () async {
+      final load = await store().load();
+
+      expect(load.settings.energyFillPrintingId, kDefaultEnergyFillPrintingId);
+      expect(load.wasRecovered, isFalse);
+    });
+
+    test('書いたものが読める（往復）', () async {
+      const written = AppSettings(energyFillPrintingId: 'LL-E-001-SD');
+      await store().save(written);
+
+      expect((await store().load()).settings.energyFillPrintingId,
+          'LL-E-001-SD');
+    });
+
+    test('★★ 補完をやめた状態が読み戻せる（既定に戻らない）★★', () async {
+      // ★これが `distDir` と流儀を分けた理由そのものである。
+      //   キーごと落とすと「やめた」と「初回」が区別できず、既定が復活する。
+      await store().save(
+        AppSettings.defaults.copyWith(clearEnergyFill: true),
+      );
+
+      final load = await store().load();
+
+      expect(load.settings.energyFillPrintingId, isNull);
+      expect(load.wasRecovered, isFalse);
+    });
+
+    test('★対: キーが無いファイルは既定に落ちる（上の対）', () async {
+      // ★D97 より前に書かれた設定ファイルはこの形。
+      //   「やめた」と読むと、既存の利用者が黙って補完を失う。
+      file.writeAsStringSync(jsonEncode({'showParallel': true}));
+
+      final load = await store().load();
+
+      expect(load.settings.energyFillPrintingId, kDefaultEnergyFillPrintingId,
+          reason: '上のテストだけだと、常に null にする実装でも通ってしまう');
+    });
+
+    test('★clearEnergyFill で null に戻り、渡さなければ残る', () {
+      const set = AppSettings(energyFillPrintingId: 'LL-E-001-SD');
+      expect(set.copyWith(clearEnergyFill: true).energyFillPrintingId, isNull);
+      expect(set.copyWith(showParallel: false).energyFillPrintingId,
+          'LL-E-001-SD');
+    });
+  });
 }
