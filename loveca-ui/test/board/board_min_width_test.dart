@@ -199,17 +199,56 @@ Future<double> _search(
 /// 盤面ごと（`AppBar` / 進行バー / 帯 / 集計を含む）を実寸で立てる。
 ///
 /// ★[bootNotices] は**起動時の警告の帯**（決定 D89）。盤面の帯とは別物である。
+/// ★★ 整理の帯（`tidy-notices`）を出した状態で測るための盤面（決定 D95）★★
+///
+/// ★★ M-B6 の測定は帯を 1 本も出していなかった ★★
+///   内訳が `tidy-notices = 0.0` だった原因は **harness が整理を 1 度も押していない**こと。
+///   →「整理のボタンを足したのに、帯そのものは測定に入ったことが 1 度も無い」
+///     という状態のまま「変わらなかった」と書いていた（`docs/盤面設計メモ.md` §16 の 4 番）。
+///
+/// ★★ 行が最も増える組み合わせを作る ★★
+///   `_crowded()` の孤児（メンバー / エネルギー）は**整理で動く**ので `RuleProcessApplied` の 1 行だけ。
+///   決定 D95 で理由が 2 つに分かれたので、**両方を同時に出す**盤面を作る:
+///     - ライブの孤児   → `TidyNoRuleForCardType`（条文の問題）+ `OrphanCardsStuck`
+///     - カタログ外の札 → `TidyUnknownCard`（データの問題）+ `OrphanCardsStuck`
+///   ★解決領域にも札が在るので 10.6 の警告も出る（D94-2 が作った組み合わせ）。
+GameState _crowdedWithStuckOrphans() => withGhostOrphan(
+      handcraftedBoard(
+        selfZones: _fullZones,
+        opponentZones: _fullZones,
+        selfMembers: _fullMembers,
+        opponentMembers: _fullMembers,
+        selfBeneath: const {
+          MemberAreaSlot.leftSide: [_energy, _member],
+          MemberAreaSlot.center: [_energy],
+          MemberAreaSlot.rightSide: [_energy],
+        },
+        selfOrphans: const {
+          MemberAreaSlot.center: [_energy, _member],
+          // ★条文に行き先が無い（決定 D95）。整理しても動かない。
+          MemberAreaSlot.rightSide: [_live],
+        },
+        selfResolution: const [_live, _member],
+        selfFreeArea: const [_energy, _live],
+      ),
+      kSelfPlayerId,
+      MemberAreaSlot.leftSide,
+    );
+
 Future<void> _pumpBoard(
   WidgetTester tester, {
   required Size size,
   required BoardMode mode,
   List<BootNotice> bootNotices = const [],
+
+  /// ★整理を 1 回押して帯を出す（決定 D95 / §16 の 4 番）。
+  bool pressTidy = false,
 }) async {
   tester.view.physicalSize = size;
   await pumpInAppScope(
     tester,
     BoardPage(
-      initialState: _crowded(),
+      initialState: pressTidy ? _crowdedWithStuckOrphans() : _crowded(),
       viewerId: kSelfPlayerId,
       mode: mode,
       seed: 1234567890,
@@ -225,6 +264,12 @@ Future<void> _pumpBoard(
     catalog: realShapedCatalog(),
     notices: bootNotices,
   );
+
+  if (pressTidy) {
+    // ★★ 押さないと帯は出ない。**ここが M-B6 の測定に無かった 1 行である** ★★
+    await tester.tap(find.byKey(const ValueKey('tidy-button')));
+    await tester.pump();
+  }
 }
 
 /// 起動時の警告 1 件（決定 D89 の文面）。★帯が出ている状態を作る。
@@ -272,6 +317,7 @@ Future<double> _measureHeight(
   required double width,
   double low = 120,
   List<BootNotice> bootNotices = const [],
+  bool pressTidy = false,
   void Function(List<String> where)? onOverflow,
 }) {
   Future<bool> overflowsAt(double height) async {
@@ -281,6 +327,7 @@ Future<double> _measureHeight(
         size: Size(width, height),
         mode: mode,
         bootNotices: bootNotices,
+        pressTidy: pressTidy,
       );
     });
     if (where.isNotEmpty) onOverflow?.call(where);
@@ -520,6 +567,88 @@ void main() {
     );
 
     // ★★ 溢れの下限に張りついていないこと（(1)(2) と同じ検算）★★
+    expect(measured, greaterThan(121),
+        reason: '★下限のすぐ上に収束している = 溢れが報告されていない');
+
+    // ★★ 2026-08-26（決定 D95）: この測定に整理の帯が入っていないこと ★★
+    //   ★「入っていない」を**言い切れる**ようにしておく。
+    //     入っていないのに「変わらなかった」と書くのが M-B6 の誤りだった。
+    //     帯を出した測定は下の別のテストが持つ。
+    //   ★`BoardNoticeBar` は空でも `SizedBox.shrink()` として在る（Key は付く）ので、
+    //     「見つからない」ではなく**高さ 0** で見る。★内訳の出力と同じ見方にする。
+    expect(tester.getSize(find.byKey(const ValueKey('tidy-notices'))).height, 0,
+        reason: '★この測定は整理を押していない（帯ありは別の測定）');
+  });
+
+  testWidgets('★★ U19 (帯あり): 整理の帯を出した状態の縦の下限（決定 D95）★★',
+      (tester) async {
+    // ★★ M-B6 の測定は帯を 1 本も出していなかった（`docs/盤面設計メモ.md` §16 の 4 番）★★
+    //   内訳が `tidy-notices = 0.0` だったのは **harness が整理を押していない**ため。
+    //   ★「整理のボタンを足したのに帯そのものは測定に入ったことが 1 度も無い」まま
+    //     「変わらなかった」と書いていた。→ **押してから測る。**
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    // ★★ 先に「条件が作れること」を確かめる（D-10）★★
+    //   ★これが 0 なら測定条件がまた間違っている。**測る前に落とす。**
+    await _pumpBoard(
+      tester,
+      size: const Size(kBoardMinWidth, 1400),
+      mode: BoardMode.localVersus,
+      pressTidy: true,
+    );
+    final bandHeight =
+        tester.getSize(find.byKey(const ValueKey('tidy-notices'))).height;
+    expect(bandHeight, greaterThan(0),
+        reason: '★整理の帯が出ていない = 測定条件が間違っている（M-B6 と同じ誤り）');
+
+    // ★★ 決定 D95 で増えた 2 行が本当に出ていること ★★
+    //   ★行数だけ見ても「同じ行が 2 本」と区別がつかない。中身で見る。
+    expect(find.textContaining('カードデータが未取得で種別が分かりません'), findsWidgets,
+        reason: '★データの問題の行');
+    expect(find.textContaining('ライブカードの行き先は総合ルールにありません'), findsWidgets,
+        reason: '★条文の問題の行');
+    // ★対: 10.6 の警告も同時に出ている（D94-2 が作った組み合わせ）。
+    expect(find.textContaining('不正解決領域処理 10.6'), findsOneWidget);
+
+    var lastWhere = const <String>[];
+    final measured = await _measureHeight(
+      tester,
+      mode: BoardMode.localVersus,
+      width: kBoardMinWidth,
+      pressTidy: true,
+      onOverflow: (where) => lastWhere = where,
+    );
+
+    // ignore: avoid_print
+    print('★U19 測定（★帯あり / 決定 D95）: '
+        '整理の帯を出した状態で縦に溢れない最小の高さ = $measured 論理px'
+        '（直前に溢れた向き: ${lastWhere.join(' / ')}）');
+
+    await _pumpBoard(
+      tester,
+      size: Size(kBoardMinWidth, measured),
+      mode: BoardMode.localVersus,
+      pressTidy: true,
+    );
+    for (final key in const [
+      'progress-bar',
+      'tidy-notices',
+      'board-notices',
+      'summary-panel',
+    ]) {
+      final finder = find.byKey(ValueKey(key));
+      // ignore: avoid_print
+      print('  ★内訳（帯あり）: $key = '
+          '${finder.evaluate().isEmpty ? '出ていない' : '${tester.getSize(finder).height} 論理px'}');
+    }
+    // ignore: avoid_print
+    print('  ★内訳（帯あり）: AppBar = '
+        '${tester.getSize(find.byType(AppBar)).height} 論理px');
+
+    // ★測定に入っていることをもう一度（探索のあと組み直しているため）。
+    expect(tester.getSize(find.byKey(const ValueKey('tidy-notices'))).height,
+        greaterThan(0), reason: '★内訳を取るときの盤面でも帯が出ていること');
     expect(measured, greaterThan(121),
         reason: '★下限のすぐ上に収束している = 溢れが報告されていない');
   });
