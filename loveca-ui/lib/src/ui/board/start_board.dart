@@ -22,6 +22,8 @@ library;
 import 'package:flutter/material.dart';
 import 'package:loveca_core/loveca_core.dart';
 
+import '../../boot/boot_steps.dart';
+import '../../data/energy_fill.dart';
 import '../../state/app_scope.dart';
 import '../../state/board_mode.dart';
 import '../../state/board_notice.dart';
@@ -39,6 +41,13 @@ Future<void> startBoard(
   final scope = AppScope.of(context);
   final env = scope.environment;
 
+  // ★★ 設定は `env.settings` から読まない（決定 D97-4）★★
+  //   あれは起動段 3 のスナップショットなので、R6 で変えても次の起動まで古いままである。
+  //   ★この項目は補完の 1 回にしか効かないので、いま読んでよい
+  //     （`distDir` のように起動ゲートを要求する理由が無い / D56 との違い）。
+  final settings = (await env.settingsStore.load()).settings;
+  if (!context.mounted) return;
+
   final request = await showBoardStartDialog(
     context,
     deck: deck,
@@ -46,8 +55,34 @@ Future<void> startBoard(
     mode: mode,
     // ★検証は `DeckRepository` 経由（UI から DAO を直接呼ばない / D55）。
     validate: env.decks.validate,
+    energyFillPrintingId: settings.energyFillPrintingId,
+    rows: env.rows,
+    imageSource: env.imageSource,
   );
   if (request == null || !context.mounted) return;
+
+  // ★★ ダイアログで変えたなら覚える（次回も同じカードで補う）★★
+  //   ★変えていなければ書かない —— 盤面を開くたびに設定ファイルへ書く理由が無い。
+  if (request.energyFillPrintingId != settings.energyFillPrintingId) {
+    await env.settingsStore.save(
+      request.energyFillPrintingId == null
+          ? settings.copyWith(clearEnergyFill: true)
+          : settings.copyWith(
+              energyFillPrintingId: request.energyFillPrintingId,
+            ),
+    );
+    if (!context.mounted) return;
+  }
+
+  // ★★ エネルギーデッキ 0 枚の補完（決定 D96 / D97）★★
+  //   ★ここでしか行わない。保存されたデッキには触れない
+  //     （6.1.1 が縛るのは「開始前に用意されたエネルギーデッキ」であって記録ではない）。
+  //   ★★ 相手側にも同じ補完を掛ける ★★
+  //     ソロでは `request.opponentDeck` に自分と同じデッキが入る（§14-5 / D81）ので、
+  //     片側だけ補うと盤面上で自他の中身が食い違う。
+  final selfFill = _planFill(env, deck, request.energyFillPrintingId);
+  final opponentFill =
+      _planFill(env, request.opponentDeck, request.energyFillPrintingId);
 
   // ★★ 乱数列は 1 本（決定 D79 / D80）★★
   //   begin と dealInitialEnergy に同じインスタンスを渡す。
@@ -57,8 +92,14 @@ Future<void> startBoard(
   try {
     setup = GameSetup.begin(
       players: [
-        PlayerDeck(playerId: kSelfPlayerId, deck: deck),
-        PlayerDeck(playerId: kOpponentPlayerId, deck: request.opponentDeck),
+        PlayerDeck(
+          playerId: kSelfPlayerId,
+          deck: applyEnergyFill(deck, selfFill),
+        ),
+        PlayerDeck(
+          playerId: kOpponentPlayerId,
+          deck: applyEnergyFill(request.opponentDeck, opponentFill),
+        ),
       ],
       cards: env.cards,
       printings: env.printings,
@@ -108,8 +149,15 @@ Future<void> startBoard(
         seed: request.seed,
         notices: _noticesFor(
           mode: mode,
+          // ★★ 検証は補完前のデッキに対して走らせる ★★
+          //   ここを補完後にすると 6.1 の判定が嘘になる。
+          //   保存されているのはあくまで 0 枚のデッキである。
           selfResult: env.decks.validate(deck),
           opponentResult: env.decks.validate(request.opponentDeck),
+          selfFill: selfFill,
+          opponentFill: opponentFill,
+          // ★引けなければ番号だけで通す（ここで落とさない）。
+          nameOf: (n) => env.cards[n]?.name ?? 'エネルギーカード',
         ),
       ),
     ),
@@ -125,10 +173,66 @@ List<BoardNotice> _noticesFor({
   required BoardMode mode,
   required DeckValidationResult selfResult,
   required DeckValidationResult opponentResult,
+  required EnergyFillPlan selfFill,
+  required EnergyFillPlan opponentFill,
+  // ★`Map<String, Card>` を受け取らない —— `Card` は Flutter の
+  //   マテリアルウィジェットと名前が衝突する。★名前だけが要るので関数で渡す。
+  required String Function(String cardNumber) nameOf,
 }) =>
     [
       if (!selfResult.isValid)
         DeckNotValid(playerLabel: '自分', issues: selfResult.issues),
       if (mode.hasOpponent && !opponentResult.isValid)
         DeckNotValid(playerLabel: '相手', issues: opponentResult.issues),
+      // ★★ 黙って足さない（決定 D96）★★
+      ...?_fillNotice(playerLabel: '自分', plan: selfFill, nameOf: nameOf),
+      // ★ソロでは相手側の補完を出さない（同じデッキなので同じ行が 2 回並ぶ / §14-5）。
+      if (mode.hasOpponent)
+        ...?_fillNotice(playerLabel: '相手', plan: opponentFill, nameOf: nameOf),
     ];
+
+/// 補完 1 件ぶんの注記。★何も言うことが無ければ `null`。
+///
+/// ★**`notNeeded` と `unset` では何も出さない** —— どちらも正常な状態である。
+/// `unset` は「補完しない」という利用者の選択、`notNeeded` はそもそも 0 枚ではない。
+List<BoardNotice>? _fillNotice({
+  required String playerLabel,
+  required EnergyFillPlan plan,
+  required String Function(String cardNumber) nameOf,
+}) {
+  if (plan.willFill) {
+    final cardNumber = cardNumberOfPrinting(plan.printingId!);
+    return [
+      EnergyDeckFilled(
+        playerLabel: playerLabel,
+        // ★名前はカタログから。引けなければ番号だけで通す（ここで落とさない）。
+        cardName: nameOf(cardNumber),
+        cardNumber: cardNumber,
+        count: plan.count,
+      ),
+    ];
+  }
+  return switch (plan.skip!) {
+    EnergyFillSkip.notNeeded || EnergyFillSkip.unset => null,
+    final reason => [
+        EnergyFillUnavailable(
+          reason: reason,
+          cardNumber: plan.cardNumber ?? '',
+        ),
+      ],
+  };
+}
+
+/// 補完の計画を立てる。★枚数は `DeckValidator` から取る（**D28**: 数え直さない）。
+EnergyFillPlan _planFill(
+  AppEnvironment env,
+  Deck deck,
+  String? energyFillPrintingId,
+) =>
+    planEnergyFill(
+      energyCount: env.decks.validate(deck).energyCount,
+      printingId: energyFillPrintingId,
+      cards: env.cards,
+      printings: env.printings,
+      config: env.ruleConfig,
+    );

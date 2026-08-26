@@ -18,6 +18,8 @@ library;
 
 import 'package:loveca_core/loveca_core.dart';
 
+import '../data/energy_fill.dart';
+
 sealed class BoardNotice {
   const BoardNotice();
 }
@@ -217,6 +219,58 @@ final class DeckNotValid extends BoardNotice {
 
   /// `DeckValidator` が出した違反。★件数だけにしない（何が足りないか言えなくなる）。
   final List<DeckIssue> issues;
+}
+
+/// ★★ エネルギーデッキ 0 枚を開始時に補った（決定 D96 / D97）★★
+///
+/// ★★ 黙って足さない ★★
+/// 保存されたデッキは 0 枚のままで、**盤面の中身だけが違う。**
+/// 出さないと「入れていないカードが山に在る」ことに気づけない
+/// （**D35**「黙って削除しない」の裏返し —— 黙って足しもしない）。
+///
+/// ★★ 再現情報でもある ★★
+/// エネルギー 0 枚は乱数を 1 つも消費しないが、12 枚なら 6.2.1.7 で 3 回消費する。
+/// 6.2.1 は手順ごとに両プレイヤーを回すので、**補完の有無で相手の抽出位置までずれる**
+/// （**D-17** と同型）。★**seed だけでは盤面が決まらない**ので、何を足したかを残す。
+final class EnergyDeckFilled extends BoardNotice {
+  const EnergyDeckFilled({
+    required this.playerLabel,
+    required this.cardName,
+    required this.cardNumber,
+    required this.count,
+  });
+
+  /// 「自分」/「相手」。★playerId を出さない（内部語彙）。
+  final String playerLabel;
+
+  final String cardName;
+
+  /// ★cardNumber は利用者に見える語である（カードに印刷され、共有形式でも使う）。
+  /// ★**printingId は出さない**（内部語彙）。
+  final String cardNumber;
+
+  final int count;
+}
+
+/// ★★ 補完に使う設定が解決できなかった（決定 D97-5）★★
+///
+/// ★★ 黙って 0 枚で始めない ★★
+/// 0 枚のまま開始すること自体は正当（**D81** / **D-A**）だが、
+/// **利用者は補完されるつもりでいる。**何が起きなかったのかを出す。
+///
+/// ★★ 開始は止めない ★★
+/// 止めると「(a) 保存時を却下した理由」を (b) で再現することになる
+/// （補完の失敗がデッキを使えなくする）。**現状の挙動に戻るだけ**にする。
+///
+/// ★★ 理由を 1 行にまとめない ★★
+/// cardNumber ごと無い / その刷りだけ無い / 種別が違う で**次の一手が違う。**
+final class EnergyFillUnavailable extends BoardNotice {
+  const EnergyFillUnavailable({required this.reason, required this.cardNumber});
+
+  final EnergyFillSkip reason;
+
+  /// 設定値から切り出した cardNumber。★**printingId は出さない**（内部語彙）。
+  final String cardNumber;
 }
 
 /// ★★ 巻き戻せる履歴が上限に達している（M-B5 / 決定 D78）★★

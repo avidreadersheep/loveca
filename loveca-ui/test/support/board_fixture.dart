@@ -69,6 +69,37 @@ Deck boardFixtureDeckWithUnknown() => Deck(
       updatedAt: _epoch,
     );
 
+/// ★★ エネルギーが 1 枚も無いデッキ（決定 D96 / D97）★★
+///
+/// ★実データでも成立する形である —— 6.1.1.3 を満たさないだけで、
+/// 保存も盤面の開始もできる（`canSave` は名前しか見ず、開始を止めるのは未知の刷りだけ）。
+/// ★エネルギーが**永久に 1 枚も出ない**のがこのデッキで、それが U23 の要望の実体。
+Deck boardFixtureDeckWithoutEnergy() => Deck(
+      deckId: 'no-energy',
+      name: 'エネルギー 0 枚',
+      entries: const [
+        DeckEntry(printingId: trioMemberPrinting, count: 4),
+        DeckEntry(printingId: drawLivePrinting, count: 4),
+      ],
+      createdAt: _epoch,
+      updatedAt: _epoch,
+    );
+
+/// ★★ メンバー / ライブも足りず、かつエネルギーも 0 枚のデッキ ★★
+///
+/// ★**軸 2 の行を「エネルギーだけが不足しているとき」に限る**ことの対で要る
+/// （決定 D96-2）。これで「このまま開始できます」を出すと、
+/// **補完が効かない不足まで補われるように読める。**
+Deck boardFixtureDeckShortEverything() => Deck(
+      deckId: 'short-everything',
+      name: 'いろいろ足りない',
+      entries: const [
+        DeckEntry(printingId: trioMemberPrinting, count: 1),
+      ],
+      createdAt: _epoch,
+      updatedAt: _epoch,
+    );
+
 /// 6.2.1 を通した初期状態。★本番（`start_board.dart`）と同じ順で呼ぶ。
 ///
 /// ★★ 6.2.1.6（マリガン）を 0 枚で通してある（決定 D93 / M-B6）★★

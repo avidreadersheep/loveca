@@ -38,8 +38,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:loveca_core/loveca_core.dart';
 
+import '../../data/card_image_source.dart';
+import '../../data/card_list_row.dart';
 import '../../state/board_mode.dart';
 import '../../state/board_seed.dart';
+import '../common/card_thumb.dart';
+import 'board_energy_fill_picker.dart';
 
 /// 開始ダイアログの結果。★`GameSetup` にそのまま渡せる値だけを持つ。
 class BoardStartRequest {
@@ -47,6 +51,7 @@ class BoardStartRequest {
     required this.opponentDeck,
     required this.firstPlayerId,
     required this.seed,
+    required this.energyFillPrintingId,
   });
 
   final Deck opponentDeck;
@@ -56,6 +61,12 @@ class BoardStartRequest {
 
   /// 決定 D79。★`SeededRng(seed)` を作る値。
   final int seed;
+
+  /// ★★ 補完に使う刷り（決定 D97）。`null` は「補完しない」★★
+  ///
+  /// ★ここに載せるのは、**この開始で何を使ったか**が
+  /// `BoardNotice` と再現情報の入力になるためである（決定 D96-6 / **D-17** と同型）。
+  final String? energyFillPrintingId;
 }
 
 /// 盤面を始める側の playerId。★盤面の `viewerId` の既定にもなる（決定 D81）。
@@ -68,6 +79,9 @@ Future<BoardStartRequest?> showBoardStartDialog(
   required List<Deck> candidates,
   required BoardMode mode,
   required DeckValidationResult Function(Deck) validate,
+  required String? energyFillPrintingId,
+  required List<CardListRow> rows,
+  required CardImageSource imageSource,
 }) =>
     showDialog<BoardStartRequest>(
       context: context,
@@ -76,6 +90,9 @@ Future<BoardStartRequest?> showBoardStartDialog(
         candidates: candidates,
         mode: mode,
         validate: validate,
+        energyFillPrintingId: energyFillPrintingId,
+        rows: rows,
+        imageSource: imageSource,
       ),
     );
 
@@ -85,12 +102,23 @@ class _BoardStartDialog extends StatefulWidget {
     required this.candidates,
     required this.mode,
     required this.validate,
+    required this.energyFillPrintingId,
+    required this.rows,
+    required this.imageSource,
   });
 
   final Deck deck;
   final List<Deck> candidates;
   final BoardMode mode;
   final DeckValidationResult Function(Deck) validate;
+
+  /// ★★ 起動時のスナップショットではなく、開いた時点の設定を渡すこと ★★
+  /// `env.settings` は起動段 3 で 1 回読んだきりなので、
+  /// R6 で変えても次の起動まで変わらない。呼び出し側が `settingsStore.load()` する。
+  final String? energyFillPrintingId;
+
+  final List<CardListRow> rows;
+  final CardImageSource imageSource;
 
   @override
   State<_BoardStartDialog> createState() => _BoardStartDialogState();
@@ -111,6 +139,9 @@ class _BoardStartDialogState extends State<_BoardStartDialog> {
 
   /// 2 段目「そのプレイヤーがどちらが先攻となるかを選びます」。
   String _firstPlayerId = kSelfPlayerId;
+
+  /// 補完に使う刷り（決定 D97）。★開いた時点の設定で初期化する。
+  late String? _energyFill = widget.energyFillPrintingId;
 
   @override
   void dispose() {
@@ -312,6 +343,22 @@ class _BoardStartDialogState extends State<_BoardStartDialog> {
                 ),
               ),
 
+              // ---- 6.1.1.3 の補完（決定 D96 / D97）----
+              // ★★ エネルギーが 0 枚のときだけ出す ★★
+              //   常に出すと、関係のない開始でも 1 段増えて読む量が無駄に増える。
+              if (selfResult.energyCount == 0 ||
+                  (versus && opponentResult.energyCount == 0))
+                _Step(
+                  ruleRef: '6.1.1.3',
+                  title: 'エネルギーデッキが 0 枚です',
+                  child: _EnergyFill(
+                    printingId: _energyFill,
+                    rows: widget.rows,
+                    imageSource: widget.imageSource,
+                    onChanged: (v) => setState(() => _energyFill = v),
+                  ),
+                ),
+
               // ---- 検証（6.1）----
               _Validation(
                 label: '自分',
@@ -345,8 +392,91 @@ class _BoardStartDialogState extends State<_BoardStartDialog> {
                     // ★ソロは常に自分が先攻（決定 D88）。
                     firstPlayerId: versus ? _firstPlayerId : kSelfPlayerId,
                     seed: _parsedSeed!,
+                    energyFillPrintingId: _energyFill,
                   )),
           child: const Text('始める'),
+        ),
+      ],
+    );
+  }
+}
+
+/// ★★ 補完に使うカードを見せ、その場で変えられるようにする（決定 D97）★★
+///
+/// ★★ 再起動を要求しない ★★
+/// `distDir` は起動ゲートでしか読まれない（**D56**）ので次の起動まで効かないが、
+/// **この項目は補完の 1 回にしか効かず、既存の状態に影響しない。**
+/// 「設定は起動時だけ読む」という規則はそもそも存在しない
+/// （`ルール整合性チェック_v1.06.md` **D-23**）。
+class _EnergyFill extends StatelessWidget {
+  const _EnergyFill({
+    required this.printingId,
+    required this.rows,
+    required this.imageSource,
+    required this.onChanged,
+  });
+
+  final String? printingId;
+  final List<CardListRow> rows;
+  final CardImageSource imageSource;
+  final void Function(String?) onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    // ★選ばれている刷りをカタログから引く。引けなければ null（下で理由を出す）。
+    final row = printingId == null
+        ? null
+        : rows.where((r) => r.printingId == printingId).firstOrNull;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          switch ((printingId, row)) {
+            // ★「補完しない」は利用者の選択であって異常ではない。
+            (null, _) => '補完しません。エネルギーが 1 枚も出ないまま始めます。',
+            // ★★ 解決できないことを黙らない（決定 D97-5）★★
+            //   ここでは「引けなかった」ことだけを言い、原因の撃ち分けは
+            //   盤面の帯（EnergyFillUnavailable）が持つ。
+            (_, null) => '選ばれているカードをカードデータから引けません。'
+                '下のボタンで選び直してください。',
+            (_, final r) => '開始時に ${r!.name}（${r.cardNumber}・${r.expansion}）'
+                'を 12 枚として補います。保存されているデッキは 0 枚のままです。',
+          },
+          style: theme.textTheme.bodySmall,
+        ),
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            if (row != null) ...[
+              SizedBox(
+                width: 40,
+                child: CardArt(
+                  source: imageSource,
+                  imageHash: row.imageHash,
+                  cardType: row.cardType,
+                  logicalWidth: 40,
+                ),
+              ),
+              const SizedBox(width: 8),
+            ],
+            OutlinedButton.icon(
+              key: const ValueKey('energyFillPick'),
+              onPressed: () async {
+                final choice = await showEnergyFillPicker(
+                  context,
+                  rows: rows,
+                  selected: printingId,
+                  imageSource: imageSource,
+                );
+                // ★やめたら何も変えない（`null` は「補完しない」と別物）。
+                if (choice != null) onChanged(choice.printingId);
+              },
+              icon: const Icon(Icons.style_outlined, size: 16),
+              label: const Text('カードを選ぶ'),
+            ),
+          ],
         ),
       ],
     );

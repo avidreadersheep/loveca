@@ -17,6 +17,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loveca_core/loveca_core.dart' hide Card;
+import 'package:loveca_ui/src/data/app_settings.dart';
 import 'package:loveca_ui/src/state/board_mode.dart';
 import 'package:loveca_ui/src/ui/board/board_page.dart';
 import 'package:loveca_ui/src/ui/board/board_start_dialog.dart';
@@ -31,6 +32,11 @@ void main() {
   Future<FakeDeckRepository> openDeckList(
     WidgetTester tester, {
     List<Deck>? decks,
+    // ★★ 既定値そのものは使わない（決定 D97）★★
+    //   `kDefaultEnergyFillPrintingId` は実データの刷りで、この fixture には無い。
+    //   ★補完が成立する側を見たいので、fixture に在るエネルギーを渡す。
+    AppSettings settings =
+        const AppSettings(energyFillPrintingId: energyPrinting),
   }) async {
     tester.view.physicalSize = const Size(1600, 1200);
     tester.view.devicePixelRatio = 1;
@@ -45,6 +51,7 @@ void main() {
       const DeckListPage(),
       decks: repository,
       catalog: realShapedCatalog(),
+      settings: settings,
     );
     return repository;
   }
@@ -359,6 +366,144 @@ void main() {
           reason: '★空の Deck を採らない（条文に無い状態を作らない / §14-5）');
       // ★盤面の帯にも相手の 6.1 違反は出ない。
       expect(find.textContaining('相手のデッキは 6.1'), findsNothing);
+    });
+  });
+
+  group('★★ エネルギーデッキ 0 枚の補完（決定 D96 / D97）★★', () {
+    testWidgets('★★ 0 枚のとき 6.1.1.3 の段が出て、何を補うかを言う ★★',
+        (tester) async {
+      await openDeckList(tester, decks: [boardFixtureDeckWithoutEnergy()]);
+      await openStartDialog(tester, mode: BoardMode.solo);
+
+      expect(find.text('エネルギーデッキが 0 枚です'), findsOneWidget);
+      // ★★ 黙って足さない ★★ 何を何枚補うかを開始前に言う。
+      expect(find.textContaining('を 12 枚として補います'), findsOneWidget);
+      // ★保存されるものは変わらないことも言う（DB と盤面で中身が違うため）。
+      expect(find.textContaining('保存されているデッキは 0 枚のまま'), findsOneWidget);
+    });
+
+    testWidgets('★対: エネルギーがあるデッキでは段そのものが出ない', (tester) async {
+      // ★出る側だけ見ると、常に出す実装でも通ってしまう。
+      await openDeckList(tester);
+      await openStartDialog(tester, mode: BoardMode.solo);
+
+      expect(find.text('エネルギーデッキが 0 枚です'), findsNothing);
+    });
+
+    testWidgets('★★ 補完しない設定なら、その旨を出して段は残す ★★', (tester) async {
+      // ★0 枚のまま開始するのは正当（D81 / D-A）。★ただし黙らない。
+      await openDeckList(
+        tester,
+        decks: [boardFixtureDeckWithoutEnergy()],
+        settings: AppSettings.defaults.copyWith(clearEnergyFill: true),
+      );
+      await openStartDialog(tester, mode: BoardMode.solo);
+
+      expect(find.text('エネルギーデッキが 0 枚です'), findsOneWidget);
+      expect(find.textContaining('補完しません'), findsOneWidget);
+      expect(find.textContaining('を 12 枚として補います'), findsNothing);
+    });
+
+    testWidgets('★★ 引けない刷りが設定されていたら、その旨を出す ★★', (tester) async {
+      await openDeckList(
+        tester,
+        decks: [boardFixtureDeckWithoutEnergy()],
+        settings: const AppSettings(energyFillPrintingId: 'GHOST-bp9-999-X'),
+      );
+      await openStartDialog(tester, mode: BoardMode.solo);
+
+      expect(find.textContaining('カードデータから引けません'), findsOneWidget);
+      expect(find.textContaining('を 12 枚として補います'), findsNothing);
+    });
+
+    testWidgets('★★ 始めるとエネルギーが 6.2.1.7 のぶん出る ★★', (tester) async {
+      await openDeckList(tester, decks: [boardFixtureDeckWithoutEnergy()]);
+      await openStartDialog(tester, mode: BoardMode.solo);
+      await startBoard(tester, mode: BoardMode.solo);
+
+      final page = tester.widget<BoardPage>(find.byType(BoardPage));
+      final self = page.initialState.playerOf(kSelfPlayerId);
+
+      // ★6.2.1.7 は `initialEnergyOnField` 枚を出す。★定数を書かない。
+      expect(self.energyField,
+          hasLength(page.initialState.config.initialEnergyOnField));
+      // ★残りは山に在る（12 - 出したぶん）。
+      expect(
+        self.energyDeck,
+        hasLength(page.initialState.config.energyDeckSize -
+            page.initialState.config.initialEnergyOnField),
+      );
+    });
+
+    testWidgets('★★ 対: 補完しないと 1 枚も出ない（U23 の要望の実体）★★',
+        (tester) async {
+      // ★これが「永久に 1 枚も出ない」状態。10.5.4 の閉ループでリフレッシュが無い。
+      await openDeckList(
+        tester,
+        decks: [boardFixtureDeckWithoutEnergy()],
+        settings: AppSettings.defaults.copyWith(clearEnergyFill: true),
+      );
+      await openStartDialog(tester, mode: BoardMode.solo);
+      await startBoard(tester, mode: BoardMode.solo);
+
+      final page = tester.widget<BoardPage>(find.byType(BoardPage));
+      final self = page.initialState.playerOf(kSelfPlayerId);
+
+      expect(self.energyField, isEmpty);
+      expect(self.energyDeck, isEmpty);
+    });
+
+    testWidgets('★★ 補ったことを盤面の帯に出す（黙って足さない）★★', (tester) async {
+      await openDeckList(tester, decks: [boardFixtureDeckWithoutEnergy()]);
+      await openStartDialog(tester, mode: BoardMode.solo);
+      await startBoard(tester, mode: BoardMode.solo);
+
+      expect(find.textContaining('開始時に'), findsWidgets);
+      expect(find.textContaining('12 枚として補いました'), findsOneWidget);
+    });
+
+    testWidgets('★対: 補完が要らないデッキでは帯に出ない', (tester) async {
+      await openDeckList(tester);
+      await openStartDialog(tester, mode: BoardMode.solo);
+      await startBoard(tester, mode: BoardMode.solo);
+
+      expect(find.textContaining('12 枚として補いました'), findsNothing);
+    });
+
+    testWidgets('★★ 検証は補完前のデッキに対して走る（6.1 の判定を曲げない）★★',
+        (tester) async {
+      // ★補完後を検証すると「エネルギー 12 / 12」になり、6.1 の表示が嘘になる。
+      //   保存されているのはあくまで 0 枚のデッキである。
+      await openDeckList(tester, decks: [boardFixtureDeckWithoutEnergy()]);
+      await openStartDialog(tester, mode: BoardMode.solo);
+      await startBoard(tester, mode: BoardMode.solo);
+
+      expect(find.textContaining('自分のデッキは 6.1 の構築条件を満たしていません'),
+          findsOneWidget);
+      expect(find.textContaining('エネルギーカード 0枚'), findsOneWidget);
+    });
+
+    testWidgets('★★ ソロでは相手側の補完を出さない（同じ行が 2 回並ばない）★★',
+        (tester) async {
+      await openDeckList(tester, decks: [boardFixtureDeckWithoutEnergy()]);
+      await openStartDialog(tester, mode: BoardMode.solo);
+      await startBoard(tester, mode: BoardMode.solo);
+
+      expect(find.textContaining('相手のエネルギーデッキ'), findsNothing);
+    });
+
+    testWidgets('★対: ローカル対戦では相手側も補われ、帯にも出る', (tester) async {
+      // ★片側だけ補うと盤面上で自他の中身が食い違う。
+      await openDeckList(tester, decks: [boardFixtureDeckWithoutEnergy()]);
+      await openStartDialog(tester);
+      await startBoard(tester);
+
+      final page = tester.widget<BoardPage>(find.byType(BoardPage));
+      expect(
+        page.initialState.playerOf(kOpponentPlayerId).energyField,
+        hasLength(page.initialState.config.initialEnergyOnField),
+      );
+      expect(find.textContaining('相手のエネルギーデッキ'), findsOneWidget);
     });
   });
 }

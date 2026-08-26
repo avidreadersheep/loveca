@@ -20,6 +20,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:loveca_core/loveca_core.dart';
 
+import '../../data/energy_fill.dart';
 import '../../state/board_mode.dart';
 import '../../state/board_notice.dart';
 import '../common/degradation_line.dart';
@@ -81,6 +82,30 @@ Widget boardNoticeLine(BoardNotice notice, {required BoardMode mode}) =>
           severity: DegradationSeverity.warning,
           text: '$playerLabelのデッキは 6.1 の構築条件を満たしていません: '
               '${issues.map((i) => i.message).join(' / ')}',
+        ),
+      // ★★ 黙って足さない（決定 D96 / D97）★★
+      //   保存されたデッキは 0 枚のままで、盤面の中身だけが違う。
+      //   ★何を足したかは再現情報でもある（seed だけでは盤面が決まらない / D-17 と同型）。
+      EnergyDeckFilled(
+        :final playerLabel,
+        :final cardName,
+        :final cardNumber,
+        :final count
+      ) =>
+        DegradationLine(
+          icon: Icons.battery_charging_full_outlined,
+          severity: DegradationSeverity.report,
+          text: '$playerLabelのエネルギーデッキは 0 枚だったので、'
+              '開始時に $cardName（$cardNumber）を $count 枚として補いました。'
+              '保存されているデッキは 0 枚のままです。',
+        ),
+      // ★★ 補完されるつもりでいる利用者に、何が起きなかったかを出す ★★
+      EnergyFillUnavailable(:final reason, :final cardNumber) =>
+        DegradationLine(
+          icon: Icons.battery_alert_outlined,
+          severity: DegradationSeverity.warning,
+          text: 'エネルギーデッキが 0 枚ですが、補うカードを用意できませんでした'
+              '（$cardNumber）。${_energyFillReason(reason)}',
         ),
       RuleProcessApplied(:final stepRuleRef, :final kinds) => DegradationLine(
           icon: Icons.cleaning_services_outlined,
@@ -201,6 +226,32 @@ String _appliedLabel(RuleProcessKind kind) => switch (kind) {
         '上にメンバーが居ないメンバーカード ${kind.ruleRef}',
       RuleProcessKind.orphanEnergy =>
         '上にメンバーが居ないエネルギーカード ${kind.ruleRef}',
+    };
+
+/// ★★ 補完できなかった理由（決定 D97-5）★★
+///
+/// ★1 行にまとめない —— **原因も次の一手も違う。**
+/// とくに [EnergyFillSkip.unknownPrinting] は
+/// **同じカードの別の刷りを選べば直る**ので、[EnergyFillSkip.unknownCardNumber] より
+/// はるかに軽い。同じ文面にすると、直せる利用者が諦める。
+///
+/// ★`LL-E-002` は決定 D68 が開示対象にした 19 種の 1 つで、非パラレル刷りが 2 件ある。
+/// **cardNumber は在るのに printingId だけ落ちる**ことが実際に起こりうる。
+String _energyFillReason(EnergyFillSkip reason) => switch (reason) {
+      EnergyFillSkip.unknownCardNumber =>
+        'このカードはカードデータにありません。設定から取り込み直すか、'
+            '別のカードを選んでください。',
+      EnergyFillSkip.unknownPrinting =>
+        'このカードはありますが、選ばれている刷りだけがありません。'
+            '設定で同じカードの別の刷りを選んでください。',
+      EnergyFillSkip.notEnergy =>
+        '選ばれているカードがエネルギーカードではありません（6.1.1.3）。'
+            '設定で選び直してください。',
+      // ★この 2 つは注記を作る前に弾いている（`start_board.dart`）。
+      //   ここへ来たら撃ち分けの取りこぼしなので、黙って通さない。
+      EnergyFillSkip.notNeeded ||
+      EnergyFillSkip.unset =>
+        '補完は行いません。',
     };
 
 /// ★理由ごとに「なぜ動かないか」と「次に何をするか」を書く。
