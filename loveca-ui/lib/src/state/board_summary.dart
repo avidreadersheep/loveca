@@ -101,6 +101,9 @@ List<BoardNotice> derivedBoardNotices({
     if (historyAtMaxDepth) HistoryAtMaxDepth(maxDepth: historyMaxDepth),
   ];
 
+  // ★孤児が動かせるかの判定に使う。★盤面を変えない（`tidy` は呼ばない）。
+  final ruleProcessor = RuleProcessor(cards: cards);
+
   var sharedDrawReported = false;
 
   // ★★ 並びは呼び出し側が決める（`drawnPlayers` は視点側が先）★★
@@ -137,12 +140,38 @@ List<BoardNotice> derivedBoardNotices({
     }
 
     // ---- メンバーエリアの中間状態（★エラーではない）----
-    final orphanAreas = [
-      for (final area in player.memberAreas)
-        if (area.orphans.isNotEmpty) area.slot.label,
-    ];
-    if (orphanAreas.isNotEmpty) {
-      notices.add(OrphanCardsPresent(playerLabel: label, areaLabels: orphanAreas));
+    //
+    // ★★ 「整理を待っている」と「整理しても動かない」を分ける（決定 D95）★★
+    //   分けないと、動かない札にも「整理で移ります」と言い続けることになる。
+    // ★判定は `RuleProcessor.orphanUnmovableReason` 1 か所から取る。
+    //   ここで `cardType` を見て書き直すと、整理の実行と食い違いうる。
+    final waiting = <String>[];
+    final stuck = <UnmovableReason, List<String>>{};
+    for (final area in player.memberAreas) {
+      var hasWaiting = false;
+      for (final orphan in area.orphans) {
+        final reason = ruleProcessor.orphanUnmovableReason(orphan);
+        if (reason == null) {
+          hasWaiting = true;
+        } else {
+          (stuck[reason] ??= []).add(area.slot.label);
+        }
+      }
+      if (hasWaiting) waiting.add(area.slot.label);
+    }
+    if (waiting.isNotEmpty) {
+      notices.add(OrphanCardsPresent(playerLabel: label, areaLabels: waiting));
+    }
+    // ★並びを決定的にする（enum の宣言順）。Map の反復順に任せない。
+    for (final reason in UnmovableReason.values) {
+      final labels = stuck[reason];
+      if (labels == null) continue;
+      notices.add(OrphanCardsStuck(
+        playerLabel: label,
+        // ★同じエリアに 2 枚あっても領域名は 1 度だけ。
+        areaLabels: labels.toSet().toList(),
+        reason: reason,
+      ));
     }
 
     final duplicateAreas = [

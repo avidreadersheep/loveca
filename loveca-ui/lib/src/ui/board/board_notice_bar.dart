@@ -103,13 +103,32 @@ Widget boardNoticeLine(BoardNotice notice, {required BoardMode mode}) =>
           text: '$stepRuleRef の時点では、当たるルール処理が'
               'ありませんでした（10.4 / 10.5）。盤面は変わっていません。',
         ),
-      TidyExcluded(:final stepRuleRef, :final count, :final cardNumbers) =>
+      // ★★ 「動かせなかった」と言うなら、どこに在るかを必ず言う ★★
+      //   ★以前はどの領域にも置かないまま元から消していた（D-22）。
+      //     文面だけを読むと「その場に残っている」と読めるのに、消えていた。
+      TidyUnknownCard(:final stepRuleRef, :final count, :final cardNumbers) =>
         DegradationLine(
           icon: Icons.help_outline,
           severity: DegradationSeverity.warning,
           text: '$stepRuleRef の整理で $count 枚を動かせませんでした。'
-              'カードデータが未取得です（${cardNumbers.join(' / ')}）。'
+              '元の置き場に残っています。'
+              'カードデータが未取得で種別が分かりません（${cardNumbers.join(' / ')}）。'
               '設定から取り込み直すと解消します。',
+        ),
+      // ★★ こちらは取り込み直しても解消しない。次の一手が違う（決定 D95）★★
+      TidyNoRuleForCardType(
+        :final stepRuleRef,
+        :final count,
+        :final cardNumbers
+      ) =>
+        DegradationLine(
+          icon: Icons.rule_folder_outlined,
+          severity: DegradationSeverity.report,
+          text: '$stepRuleRef の整理で $count 枚を動かせませんでした。'
+              '元の置き場に残っています。'
+              '10.5.3 はメンバーカード、10.5.4 はエネルギーカードだけを定めており、'
+              'ライブカードの行き先は総合ルールにありません'
+              '（${cardNumbers.join(' / ')}）。手で動かしてください。',
         ),
       AggregationExcluded(
         :final scope,
@@ -129,10 +148,25 @@ Widget boardNoticeLine(BoardNotice notice, {required BoardMode mode}) =>
           icon: Icons.layers_clear_outlined,
           severity: DegradationSeverity.report,
           // ★★ エラーとして出さない。正規の中間状態である ★★
+          // ★ここに来るのは**整理で動く**札だけ（決定 D95）。動かない札は下の枝。
           text: '$playerLabelの${areaLabels.join(' / ')}に、'
               '上にメンバーが居なくなったカードがあります（4.5.5.4.1 / 4.5.5.4.2）。'
               'これは正規の中間状態で、不具合ではありません。'
               '整理（10.5.3 / 10.5.4）で控え室・エネルギーデッキ置き場へ移ります。',
+        ),
+      // ★★ 「整理を待っている」ではなく「整理しても動かない」（決定 D95）★★
+      //   同じ文面にすると、押しても消えない帯に「移ります」と言い続けることになる。
+      OrphanCardsStuck(:final playerLabel, :final areaLabels, :final reason) =>
+        DegradationLine(
+          icon: Icons.layers_clear_outlined,
+          severity: switch (reason) {
+            // ★直せる問題は警告、直せない問題は報告。severity から次の一手が読める。
+            UnmovableReason.unknownCard => DegradationSeverity.warning,
+            UnmovableReason.noRuleForCardType => DegradationSeverity.report,
+          },
+          text: '$playerLabelの${areaLabels.join(' / ')}に、'
+              '整理（10.5.3 / 10.5.4）では動かないカードがあります。'
+              '${_stuckReason(reason)}',
         ),
       DuplicateMembersPresent(:final playerLabel, :final areaLabels) =>
         DegradationLine(
@@ -167,6 +201,17 @@ String _appliedLabel(RuleProcessKind kind) => switch (kind) {
         '上にメンバーが居ないメンバーカード ${kind.ruleRef}',
       RuleProcessKind.orphanEnergy =>
         '上にメンバーが居ないエネルギーカード ${kind.ruleRef}',
+    };
+
+/// ★理由ごとに「なぜ動かないか」と「次に何をするか」を書く。
+/// ★1 行にまとめない —— 一方は利用者が直せ、もう一方は直せない。
+String _stuckReason(UnmovableReason reason) => switch (reason) {
+      UnmovableReason.unknownCard =>
+        'カードデータが未取得で種別が分からず、10.5.3 と 10.5.4 のどちらに'
+            '当たるかを決められません。設定から取り込み直すと解消します。',
+      UnmovableReason.noRuleForCardType =>
+        '10.5.3 はメンバーカード、10.5.4 はエネルギーカードだけを定めており、'
+            'ライブカードの行き先は総合ルールにありません。手で動かしてください。',
     };
 
 String _warningLabel(RuleProcessWarningKind kind, BoardMode mode) =>

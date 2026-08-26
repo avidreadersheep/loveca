@@ -106,8 +106,7 @@ class BoardTidyLog {
     required this.cursor,
     this.applied = const [],
     this.warnings = const [],
-    this.excludedCount = 0,
-    this.unknownCardNumbers = const [],
+    this.unmovable = const [],
     this.manual = false,
   });
 
@@ -120,10 +119,20 @@ class BoardTidyLog {
   /// ★自動実行せず警告に留めたもの（10.3 / 10.6）。
   final List<RuleProcessWarningKind> warnings;
 
-  /// カードマスタに無く種別を判定できなかった枚数。
-  final int excludedCount;
+  /// ★★ 動かせなかった札。**元の置き場に残っている**（決定 D95 / D-22）★★
+  ///
+  /// ★理由が 2 つあり（[UnmovableReason]）、利用者にできることが違う。
+  ///   帯では理由ごとに 1 行を作る。件数だけに畳まない。
+  final List<UnmovableCard> unmovable;
 
-  final List<String> unknownCardNumbers;
+  /// [reason] の札の cardNumber（重複排除・昇順）。★帯の文面に入れる。
+  List<String> unmovableNumbersFor(UnmovableReason reason) =>
+      ({for (final c in unmovable) if (c.reason == reason) c.cardNumber}.toList()
+        ..sort());
+
+  /// [reason] の札の枚数。
+  int unmovableCountFor(UnmovableReason reason) =>
+      unmovable.where((c) => c.reason == reason).length;
 
   /// ★★ プレイヤーが「整理する」を押して起きた整理か（M-B6 / 決定 D93-5）★★
   ///
@@ -144,17 +153,22 @@ class BoardTidyLog {
   /// → 条件に混ぜると、**押す前から在った 10.3 の警告が
   ///   「押しても何も起きなかった」を隠す。**（M-B6 の実機確認で実際に起きた / D94-2）
   ///
-  /// ★[excludedCount] は逆に混ぜる。**この押下の中で起きた**うえ、
-  /// 種別を判定できなかった札がある以上「当たるものは無かった」と**言い切れない**
-  /// （D-10 の「無い」と「見えていない」の区別）。
-  /// ★黙りはしない —— [TidyExcluded] が「$ruleRef の整理で N 枚を動かせませんでした」と
+  /// ★[unmovable] は逆に混ぜる。**この押下の中で起きた**うえ、
+  /// 動かせなかった札がある以上「当たるものは無かった」と**言い切れない**。
+  ///
+  /// ★★ 理由が 2 つあるが、抑止するかの答えは同じである（決定 D95）★★
+  ///   [UnmovableReason.unknownCard] は「見えていない」（D-10 の区別そのもの）。
+  ///   [UnmovableReason.noRuleForCardType] は種別まで分かっているが、
+  ///   **当たる候補は在って行き先が無い**ので「当たるものが無かった」とは違う。
+  ///   → どちらでも「ありませんでした」は出さない。
+  /// ★黙りはしない —— [TidyUnknownCard] / [TidyNoRuleForCardType] が
   /// **この押下の結果として**答える。
-  bool get appliedNothing => applied.isEmpty && excludedCount == 0;
+  bool get appliedNothing => applied.isEmpty && unmovable.isEmpty;
 
   /// 帯に出す行。★描画は `ui/board/board_notice_bar.dart` が持つ。
   ///
   /// ★★ 早期 return を置かないこと ★★
-  /// 4 行は互いに独立した問いへの答えである。1 つの条件でまとめて畳むと、
+  /// 各行は互いに独立した問いへの答えである。1 つの条件でまとめて畳むと、
   /// **どれか 1 つが立っただけで他の答えが消える。**
   /// （実際に [warnings] が立つと「ありませんでした」が消えていた）
   List<BoardNotice> get notices {
@@ -168,11 +182,18 @@ class BoardTidyLog {
       if (manual && appliedNothing) TidyFoundNothing(stepRuleRef: ruleRef),
       if (warnings.isNotEmpty)
         RuleProcessNotAutomatic(stepRuleRef: ruleRef, kinds: warnings),
-      if (excludedCount > 0)
-        TidyExcluded(
+      // ★★ 理由ごとに 1 行。混ぜない（`state/board_notice.dart` の doc）★★
+      if (unmovableCountFor(UnmovableReason.unknownCard) > 0)
+        TidyUnknownCard(
           stepRuleRef: ruleRef,
-          count: excludedCount,
-          cardNumbers: unknownCardNumbers,
+          count: unmovableCountFor(UnmovableReason.unknownCard),
+          cardNumbers: unmovableNumbersFor(UnmovableReason.unknownCard),
+        ),
+      if (unmovableCountFor(UnmovableReason.noRuleForCardType) > 0)
+        TidyNoRuleForCardType(
+          stepRuleRef: ruleRef,
+          count: unmovableCountFor(UnmovableReason.noRuleForCardType),
+          cardNumbers: unmovableNumbersFor(UnmovableReason.noRuleForCardType),
         ),
     ];
   }
@@ -454,8 +475,7 @@ class GameStore extends Store<BoardState> {
           cursor: cursorBefore,
           applied: result.applied,
           warnings: result.warnings,
-          excludedCount: result.excludedCount,
-          unknownCardNumbers: result.unknownCardNumbers,
+          unmovable: result.unmovable,
           // ★手で押した [Tidy] だけが「何も当たらなかった」を出す。
           manual: action is Tidy,
         ));

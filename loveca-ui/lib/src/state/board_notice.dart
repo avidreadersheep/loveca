@@ -72,12 +72,41 @@ final class TidyFoundNothing extends BoardNotice {
   final String stepRuleRef;
 }
 
-/// 整理がカードマスタを引けず、種別を判定できなかった。
+/// ★★ 整理がカードマスタを引けず、種別を判定できなかった（データの問題）★★
 ///
 /// ★10.5.2 / 10.5.3 / 10.5.4 は種別で行き先が変わるので、引けないと動かせない。
+/// ★★ その札は**元の置き場に残っている**（決定 D95 / D-22）★★
+///   「動かせませんでした」だけだと消えたと読める。どこに在るかを必ず言う。
 /// ★黙って残さない（A-3「痕跡を残さずデータを落とす」と同じ失敗にしない）。
-final class TidyExcluded extends BoardNotice {
-  const TidyExcluded({
+///
+/// ★★ [TidyNoRuleForCardType] と 1 行にまとめない ★★
+///   こちらは**利用者が直せる**（カードデータを取り込み直す）。あちらは直せない。
+///   原因も次の一手も違うものを 1 行にすると、直せる問題が埋もれる
+///   （`docs/UI設計メモ.md` §3-4 で縮退の系統を分けたのと同じ理由）。
+final class TidyUnknownCard extends BoardNotice {
+  const TidyUnknownCard({
+    required this.stepRuleRef,
+    required this.count,
+    required this.cardNumbers,
+  });
+
+  final String stepRuleRef;
+  final int count;
+  final List<String> cardNumbers;
+}
+
+/// ★★ 種別は分かるが、条文がその行き先を定めていない（条文の問題）★★
+///
+/// 10.5.3 はメンバーカード、10.5.4 はエネルギーカードしか定めておらず、
+/// 4.5.5 も下に重ねられるカードをこの 2 種別に限る。
+/// ★アプリはサンドボックス（D-A）なのでライブカードを下に置けるが、
+///   **条文が定めていない移動を実装が決めない**（D-B / 決定 D95）。
+///
+/// ★★ 利用者にできることは無い ★★
+///   取り込み直しても解消しない。だから [TidyUnknownCard] と文面を分ける。
+///   次の一手は「手で動かす」だけである。
+final class TidyNoRuleForCardType extends BoardNotice {
+  const TidyNoRuleForCardType({
     required this.stepRuleRef,
     required this.count,
     required this.cardNumbers,
@@ -119,6 +148,10 @@ final class AggregationExcluded extends BoardNotice {
 /// ★★ エラーとして出さない ★★
 /// 10.1.2 によりルール処理はチェックタイミングでのみ走るので、
 /// これは**正規の中間状態**である（`member_area.dart`）。
+///
+/// ★★ ここに入るのは「整理を待っている」札だけ（決定 D95）★★
+///   整理しても動かない札は [OrphanCardsStuck] に分ける。
+///   同じ 1 行にすると「整理で移ります」が**動かない札にも掛かって嘘になる**。
 final class OrphanCardsPresent extends BoardNotice {
   const OrphanCardsPresent({
     required this.playerLabel,
@@ -129,6 +162,29 @@ final class OrphanCardsPresent extends BoardNotice {
 
   /// 4.5.2.1 が定める領域名称（「左サイドエリア」など）。
   final List<String> areaLabels;
+}
+
+/// ★★ 整理しても動かない孤児がある（決定 D95 / D-22）★★
+///
+/// ★★ 「整理を待っている」と見分けがつかないと、押すたびに同じ帯が出る ★★
+///   [OrphanCardsPresent] は「次のチェックタイミングで移ります」と言う。
+///   動かない札にそれを言うと、押しても消えない帯を出し続けることになり、
+///   本当に何か起きたときに気づけなくなる（M3 の「なんか出てる」）。
+///
+/// ★これは**出来事ではなく状態**なので常設の帯に出す（盤面設計メモ §10-2）。
+/// ★理由ごとに 1 件ずつ作る。1 行に混ぜない（[TidyUnknownCard] の doc を参照）。
+final class OrphanCardsStuck extends BoardNotice {
+  const OrphanCardsStuck({
+    required this.playerLabel,
+    required this.areaLabels,
+    required this.reason,
+  });
+
+  final String playerLabel;
+  final List<String> areaLabels;
+
+  /// なぜ動かないか。★`loveca_core` の判定をそのまま運ぶ（言い換えない）。
+  final UnmovableReason reason;
 }
 
 /// 1 つのメンバーエリアにメンバーが 2 人以上いる（10.4 待ち）。

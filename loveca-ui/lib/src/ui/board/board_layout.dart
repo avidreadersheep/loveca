@@ -517,6 +517,9 @@ class _AreaContents extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // ★孤児が整理で動くかの判定に使う。★盤面を変えない（`tidy` は呼ばない）。
+    final ruleProcessor =
+        RuleProcessor(cards: BoardView.of(context).catalog.cards);
     final items = <_MiniCard>[
       // ★末尾（箱に出ている 1 人）を除く。
       for (final stack in area.stacks.take(
@@ -546,12 +549,24 @@ class _AreaContents extends StatelessWidget {
               card: beneath,
             ),
           ),
+      // ★★ 「整理を待っている」と「整理しても動かない」を見分けられること ★★
+      //   （決定 D95 / D-22）。同じタグにすると、押しても消えない帯の相手が
+      //   盤面のどれなのか分からず、押すたびに同じ帯が出るだけになる。
+      // ★判定は `loveca_core` の `orphanUnmovableReason` 1 か所から取る。
+      //   ここで `cardType` を見て書き直すと、整理の実行と食い違いうる。
       for (final orphan in area.orphans)
         _MiniCard(
           card: orphan,
-          tag: '孤児',
-          // ★できることが無い。だからこそ理由を出す（整理は M-B6）。
-          onTap: showOrphanCardMenu,
+          tag: switch (ruleProcessor.orphanUnmovableReason(orphan)) {
+            null => '孤児',
+            UnmovableReason.unknownCard => '孤児・不明',
+            UnmovableReason.noRuleForCardType => '孤児・行き先なし',
+          },
+          // ★できることが無い。だからこそ理由を出す。
+          onTap: (context) => showOrphanCardMenu(
+            context,
+            reason: ruleProcessor.orphanUnmovableReason(orphan),
+          ),
         ),
     ];
 

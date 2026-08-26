@@ -284,14 +284,47 @@ void main() {
       //   ★下の「前提」テストがこの不可能性そのものを見張る。
       const log = BoardTidyLog(
         cursor: StepCursor(PhaseId.firstActive, StepId.s7_4_3),
-        excludedCount: 1,
-        unknownCardNumbers: [ghostCardNumber],
+        unmovable: [
+          UnmovableCard(
+            instanceId: 'x',
+            cardNumber: ghostCardNumber,
+            reason: UnmovableReason.unknownCard,
+          ),
+        ],
         manual: true,
       );
 
       expect(log.notices.whereType<TidyFoundNothing>(), isEmpty);
       // ★対: 黙ってはいない。押下の結果は別の行で出る。
-      expect(log.notices.whereType<TidyExcluded>(), hasLength(1));
+      expect(log.notices.whereType<TidyUnknownCard>(), hasLength(1));
+    });
+
+    test('★★ 理由が違えば別の行になる（1 行に混ぜない / 決定 D95）★★', () {
+      // ★★ 原因も次の一手も違う ★★
+      //   `unknownCard` は取り込み直せば直る。`noRuleForCardType` は直らない。
+      //   1 行にまとめると、直せる問題が直せない問題の文面に埋もれる。
+      const log = BoardTidyLog(
+        cursor: StepCursor(PhaseId.firstActive, StepId.s7_4_3),
+        unmovable: [
+          UnmovableCard(
+            instanceId: 'x',
+            cardNumber: ghostCardNumber,
+            reason: UnmovableReason.unknownCard,
+          ),
+          UnmovableCard(
+            instanceId: 'y',
+            cardNumber: 'PL!HS-bp1-022',
+            reason: UnmovableReason.noRuleForCardType,
+          ),
+        ],
+        manual: true,
+      );
+
+      expect(log.notices.whereType<TidyUnknownCard>(), hasLength(1));
+      expect(log.notices.whereType<TidyNoRuleForCardType>(), hasLength(1));
+      // ★件数は理由ごとに数える（合算しない）。
+      expect(log.notices.whereType<TidyUnknownCard>().single.count, 1);
+      expect(log.notices.whereType<TidyNoRuleForCardType>().single.count, 1);
     });
 
     test('★対: 除外も警告も無ければ同じ形で「ありませんでした」が出る', () {
@@ -303,9 +336,12 @@ void main() {
       expect(log.notices.single, isA<TidyFoundNothing>());
     });
 
-    test('★★ 前提: いまの core では applied が空のまま除外だけが立つことは無い ★★', () {
-      // ★★ 上のテストが「画面から通せない」と書いている根拠を機械で見る ★★
-      //   これが落ちたら core が両者を分けたということ。そのときは画面から通せる。
+    test('★★ 画面から通せる: applied が空のまま動かせない札だけが立つ ★★', () {
+      // ★★ 2026-08-26（決定 D95 / D-22）に逆転した ★★
+      //   以前の core は除外した孤児にも 10.5.3 を積んでいたので、
+      //   この組み合わせは**画面から作れない**と記録してあった。
+      //   種別の断定をやめた結果、**作れるようになった。**
+      //   → 上の「器を直接組む」テストが見ている規則が、実物でも成立する。
       final store = _storeFor(withGhostOrphan(
           handcraftedBoard(), kSelfPlayerId, MemberAreaSlot.center));
       addTearDown(store.dispose);
@@ -313,9 +349,86 @@ void main() {
       store.dispatch(const Tidy());
       final log = store.value.tidies.single;
 
-      expect(log.excludedCount, 1);
-      expect(log.applied, isNotEmpty,
-          reason: '★core は除外した孤児にも 10.5.3 を積む（rule_process.dart）');
+      expect(log.unmovableCountFor(UnmovableReason.unknownCard), 1);
+      expect(log.applied, isEmpty,
+          reason: '★種別を判定できていないので 10.5.3 を積まない');
+      expect(log.notices.whereType<TidyFoundNothing>(), isEmpty,
+          reason: '★「当たるものは無かった」とは言い切れない');
+      expect(log.notices.whereType<TidyUnknownCard>(), hasLength(1));
+    });
+
+    test('★★ ライブの孤児は「条文の問題」として出る（決定 D95）★★', () {
+      // ★★ 実機で作れる経路である（`StackUnderMember` は種別を制限しない）★★
+      //   カタログに無い札は `GameSetup.begin` が弾くので実機で作れないが、
+      //   こちらは作れる。**この修正を実物で確かめられる唯一の経路。**
+      final store = _storeFor(handcraftedBoard(selfOrphans: const {
+        MemberAreaSlot.center: [_live],
+      }));
+      addTearDown(store.dispose);
+
+      store.dispatch(const Tidy());
+      final log = store.value.tidies.single;
+
+      expect(log.unmovableCountFor(UnmovableReason.noRuleForCardType), 1);
+      expect(log.applied, isEmpty);
+      expect(log.notices.whereType<TidyNoRuleForCardType>(), hasLength(1));
+      // ★対: 取り込み直しを促す行は出さない（直らないため）。
+      expect(log.notices.whereType<TidyUnknownCard>(), isEmpty);
+    });
+
+    test('★対: メンバーの孤児は普通に片付く（動かない側だけを見ない）', () {
+      final store = _storeFor(handcraftedBoard(selfOrphans: const {
+        MemberAreaSlot.center: [_member],
+      }));
+      addTearDown(store.dispose);
+
+      store.dispatch(const Tidy());
+      final log = store.value.tidies.single;
+
+      expect(log.applied, contains(RuleProcessKind.orphanMember));
+      expect(log.unmovable, isEmpty);
+    });
+
+    test('★★ 動かせない札は盤面に残る（D-22 そのもの）★★', () {
+      final store = _storeFor(handcraftedBoard(selfOrphans: const {
+        MemberAreaSlot.center: [_live],
+      }));
+      addTearDown(store.dispose);
+
+      store.dispatch(const Tidy());
+
+      final area = store.value.state
+          .playerOf(kSelfPlayerId)
+          .memberAreas
+          .firstWhere((a) => a.slot == MemberAreaSlot.center);
+      expect(area.orphans, hasLength(1), reason: '★消えていない');
+      expect(store.value.state.playerOf(kSelfPlayerId).waitingRoom, isEmpty,
+          reason: '★行き先が無いので控え室へも行かない');
+    });
+
+    testWidgets('★★ 盤面の上で「待っている」と「動かない」を見分けられる ★★',
+        (tester) async {
+      // ★★ 帯だけでは、どの札のことか分からない（決定 D95）★★
+      //   区別できないと、押しても消えない帯を見ながら盤面を探すことになる。
+      await _pumpBoard(
+          tester,
+          handcraftedBoard(selfOrphans: const {
+            MemberAreaSlot.center: [_member],
+            MemberAreaSlot.leftSide: [_live],
+          }));
+
+      expect(find.text('孤児'), findsOneWidget, reason: '★整理を待っている側');
+      expect(find.text('孤児・行き先なし'), findsOneWidget, reason: '★整理では動かない側');
+    });
+
+    testWidgets('★対: カタログを引けない札はさらに別のタグ（理由が違う）',
+        (tester) async {
+      await _pumpBoard(tester,
+          withGhostOrphan(handcraftedBoard(), kSelfPlayerId, MemberAreaSlot.center));
+
+      expect(find.text('孤児・不明'), findsOneWidget);
+      // ★対: 「行き先なし」とは別物である（同じタグに畳んでいない）。
+      expect(find.text('孤児・行き先なし'), findsNothing);
     });
   });
 

@@ -121,13 +121,30 @@ Future<void> showBeneathCardMenu(
 /// ★★ できることが無い。だからこそ理由を出す ★★
 /// 解消は 10.5.3 / 10.5.4 のルール処理であり、10.1.2 により
 /// **チェックタイミングでのみ**実行される。整理は M-B6。
-Future<void> showOrphanCardMenu(BuildContext context) => _present(context, const [
-      _MenuEntry(
+/// ★★ [reason] が null でなければ「整理しても動かない」（決定 D95 / D-22）★★
+///   そのとき「整理で移ります」と出すと嘘になる。★理由と次の一手を出す。
+///   ★判定はここで作らない。呼び出し側が `orphanUnmovableReason` から取る。
+Future<void> showOrphanCardMenu(
+  BuildContext context, {
+  UnmovableReason? reason,
+}) =>
+    _present(context, [
+      const _MenuEntry(
         label: '★上にメンバーが居ないカードです（4.5.5.4.1 / 4.5.5.4.2）。'
             'これは正規の中間状態で、不具合ではありません',
       ),
       _MenuEntry(
-        label: '★整理（10.4 / 10.5）で控え室 / エネルギーデッキへ移ります',
+        label: switch (reason) {
+          null => '★整理（10.4 / 10.5）で控え室 / エネルギーデッキへ移ります',
+          UnmovableReason.unknownCard =>
+            '★このカードは整理しても動きません。カードデータが未取得で種別が分からず、'
+                '10.5.3 と 10.5.4 のどちらに当たるかを決められません。'
+                '設定から取り込み直すと解消します',
+          UnmovableReason.noRuleForCardType =>
+            '★このカードは整理しても動きません。10.5.3 はメンバーカード、'
+                '10.5.4 はエネルギーカードだけを定めており、'
+                'ライブカードの行き先は総合ルールにありません。手で動かしてください',
+        },
       ),
     ]);
 

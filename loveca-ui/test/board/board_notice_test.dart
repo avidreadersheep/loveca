@@ -244,8 +244,69 @@ void main() {
 
       store.dispatch(const AdvanceStep());
 
-      expect(store.value.tidies.single.excludedCount, 1);
-      expect(store.value.tidies.single.unknownCardNumbers, [ghostCardNumber]);
+      expect(
+          store.value.tidies.single
+              .unmovableCountFor(UnmovableReason.unknownCard),
+          1);
+      expect(
+          store.value.tidies.single
+              .unmovableNumbersFor(UnmovableReason.unknownCard),
+          [ghostCardNumber]);
+    });
+
+    test('★★ 動かせない孤児は常設の帯でも「待っている」と区別される（決定 D95）★★', () {
+      // ★★ 区別できないと、押しても消えない帯に「移ります」と言い続ける ★★
+      //   `OrphanCardsPresent` は「整理で控え室・エネルギーデッキへ移ります」と言う。
+      //   動かない札にそれを言うと嘘になる。
+      final notices = derivedBoardNotices(
+        state: handcraftedBoard(selfOrphans: const {
+          MemberAreaSlot.center: [drawLivePrinting],
+        }),
+        cards: realShapedCatalog().cards,
+        players: [
+          handcraftedBoard(selfOrphans: const {
+            MemberAreaSlot.center: [drawLivePrinting],
+          }).playerOf(kSelfPlayerId),
+        ],
+        labelOf: (_) => '自分',
+      );
+
+      expect(notices.whereType<OrphanCardsStuck>(), hasLength(1));
+      expect(notices.whereType<OrphanCardsStuck>().single.reason,
+          UnmovableReason.noRuleForCardType);
+      expect(notices.whereType<OrphanCardsPresent>(), isEmpty,
+          reason: '★「整理で移ります」は動かない札には掛けない');
+    });
+
+    test('★対: 動く孤児では「待っている」側が出る', () {
+      // ★これが通らないと、上の検査は「常に Stuck を出す実装」でも通る。
+      final state = handcraftedBoard(selfOrphans: const {
+        MemberAreaSlot.center: [parallelMemberNormal],
+      });
+      final notices = derivedBoardNotices(
+        state: state,
+        cards: realShapedCatalog().cards,
+        players: [state.playerOf(kSelfPlayerId)],
+        labelOf: (_) => '自分',
+      );
+
+      expect(notices.whereType<OrphanCardsPresent>(), hasLength(1));
+      expect(notices.whereType<OrphanCardsStuck>(), isEmpty);
+    });
+
+    test('★同じエリアに両方あれば 2 行とも出る', () {
+      final state = handcraftedBoard(selfOrphans: const {
+        MemberAreaSlot.center: [parallelMemberNormal, drawLivePrinting],
+      });
+      final notices = derivedBoardNotices(
+        state: state,
+        cards: realShapedCatalog().cards,
+        players: [state.playerOf(kSelfPlayerId)],
+        labelOf: (_) => '自分',
+      );
+
+      expect(notices.whereType<OrphanCardsPresent>(), hasLength(1));
+      expect(notices.whereType<OrphanCardsStuck>(), hasLength(1));
     });
   });
 
