@@ -302,6 +302,31 @@ void main() {
         expect(store.saved, isEmpty);
       });
 
+      testWidgets('★★ 開いた時点の値を読み直す（起動時のスナップショットを出さない）★★',
+          (tester) async {
+        // ★★ 実機で見つけた（2026-08-26）★★
+        //   補完のカードは盤面の開始ダイアログでも変えられるので、
+        //   `env.settings` のまま出すと**前の刷りが「いま補うカード」として出る。**
+        //   ★`settings`（起動時）と `settingsStore`（いま）を**わざと食い違わせる。**
+        await _open(
+          tester,
+          settings: const AppSettings(energyFillPrintingId: 'E-1-N'),
+          settingsStore: FakeAppSettingsStore(
+            const AppSettings(energyFillPrintingId: 'E-1-ZZZ'),
+          ),
+        );
+        await tester.scrollUntilVisible(
+          find.byKey(const Key('energyFillPickSetting')),
+          120,
+          scrollable: _scrollable(),
+        );
+        await tester.pumpAndSettle();
+
+        // ★store の値（いま）が出ること。★env.settings（起動時）ではない。
+        expect(find.textContaining('選ばれている刷りがありません'), findsOneWidget,
+            reason: '★起動時のスナップショットを出していると、これは出ない');
+      });
+
       testWidgets('★★ 引けない刷りは理由を撃ち分けて出す（決定 D97-5）★★',
           (tester) async {
         // ★cardNumber ごと無い側。

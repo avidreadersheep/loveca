@@ -57,6 +57,29 @@ class _SettingsPageState extends State<SettingsPage> {
     _settings = _scope.environment.settings;
     _distController = TextEditingController(text: _settings.distDir ?? '');
     _loadIssues();
+    _reloadSettings();
+  }
+
+  /// ★★ `env.settings` は**起動時のスナップショット**である（決定 D97-4 / D-23）★★
+  ///
+  /// 補完に使うカードは**盤面の開始ダイアログでも変えられる**ので、
+  /// スナップショットのまま出すと「いま補うカード」が古い値になる。
+  /// ★★ 実機で実際にそうなっていた（2026-08-26）★★ ——
+  /// 開始ダイアログで選び直した直後に R6 を開くと、**前の刷りが出ていた。**
+  /// ★ウィジェットテストでは出ない —— あちらは `env.settings` と
+  /// `settingsStore` の中身が最初から一致しているため。
+  Future<void> _reloadSettings() async {
+    final load = await _scope.environment.settingsStore.load();
+    if (!mounted) return;
+    final snapshot = _scope.environment.settings;
+    setState(() {
+      _settings = load.settings;
+      // ★利用者が既に打ち込んでいたら上書きしない。
+      //   起動直後の 1 回しか走らないが、遅い読み込みで消すと理由が分からない。
+      if (_distController.text == (snapshot.distDir ?? '')) {
+        _distController.text = load.settings.distDir ?? '';
+      }
+    });
   }
 
   @override
