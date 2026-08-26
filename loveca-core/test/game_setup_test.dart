@@ -853,4 +853,97 @@ void main() {
       });
     });
   });
+
+  /// ★★ 入口が 0 枚のエネルギーデッキ（決定 D96 / `docs/UI設計メモ.md` §12-3）★★
+  ///
+  /// ★★ これまで使い捨てで確かめたまま、再現手段が無かった ★★
+  /// 決定 **D51** が戒めた「リポジトリの外で確かめたまま再現手段が無い」状態で、
+  /// **M-B5 が §8-3 で返済したのと同じ負債**である。
+  ///
+  /// ★既存で最も近いのは `energy_deck_test.dart`（`drawEnergyRandomly` を直接）と
+  /// `board_fixture.dart`（エネルギー 3 枚を使い切る）で、
+  /// **どちらも「入口が 0 枚」ではない。**
+  ///
+  /// ★★ ここは `loveca_core` なので補完そのものは無い ★★
+  /// 補完は UI（`loveca-ui/lib/src/data/energy_fill.dart`）の仕事である。
+  /// **`GameSetup` に入れると Phase 6 のサーバが相手のデッキにも 12 枚足す**ことになる。
+  /// ここで固定するのは「0 枚でも通ること」だけ。
+  group('★★ エネルギー 0 枚でも 6.2.1 は通る（決定 D96）★★', () {
+    /// エネルギーの `DeckEntry` を 1 件も持たないデッキ。
+    Deck noEnergy() => _deck(entries: const [
+          DeckEntry(printingId: 'M1-R', count: 4),
+          DeckEntry(printingId: 'M2-R', count: 4),
+          DeckEntry(printingId: 'L1-R', count: 4),
+        ]);
+
+    test('★★ 例外は出ず、正規の開始位置に着く ★★', () {
+      final state = _start(a: noEnergy(), b: noEnergy());
+      final a = state.playerOf('A');
+
+      // ★6.2.1.7 は 3 枚を要求するが、1 枚も動かないまま完了する。
+      expect(a.energyDeck, isEmpty);
+      expect(a.energyField, isEmpty);
+      // ★6.2.1.5 は正常（手札は引ける）。
+      expect(a.hand, hasLength(state.config.initialHandSize));
+      // ★カーソルは正規の開始位置。
+      expect(state.cursor.phase, PhaseId.firstActive);
+      expect(state.cursor.step, StepId.s7_4_1);
+    });
+
+    test('★対: エネルギーが 1 枚なら 1 枚だけ出る（3 枚要求しても落ちない）', () {
+      // ★「0 枚で落ちない」だけを見ると、**何もしない実装**でも通ってしまう。
+      final state = _start(
+        a: _deck(entries: const [
+          DeckEntry(printingId: 'M1-R', count: 4),
+          DeckEntry(printingId: 'E1-R', count: 1),
+        ]),
+        b: noEnergy(),
+      );
+
+      expect(state.config.initialEnergyOnField, greaterThan(1),
+          reason: '★3 枚要求しているのに 1 枚しか無い、という状況であること');
+      expect(state.playerOf('A').energyField, hasLength(1));
+      expect(state.playerOf('A').energyDeck, isEmpty);
+    });
+
+    /// ★★ 乱数を消費したかは「次に出る値」で見る ★★
+    /// `CountingRng` は `loveca_ui` の道具なので、ここでは使えない。
+    /// 代わりに **同じ seed の 2 本**を用意し、片方だけ 6.2.1.7 を通してから
+    /// 次の値を引く。消費していなければ**同じ値**が出る。
+    int nextAfter({required bool dealEnergy, required Deck deck}) {
+      final rng = SeededRng(1);
+      final setup = GameSetup.begin(
+        players: [
+          PlayerDeck(playerId: 'A', deck: deck),
+          PlayerDeck(playerId: 'B', deck: deck),
+        ],
+        cards: _cards,
+        printings: _printings,
+        rng: rng,
+        firstPlayerId: 'A',
+      );
+      if (dealEnergy) setup.dealInitialEnergy(rng: rng);
+      return rng.nextInt(1 << 30);
+    }
+
+    test('★★ 0 枚のときは乱数を 1 つも消費しない ★★', () {
+      // ★★ これが D-17 と同じ形の帰結を生む ★★
+      //   6.2.1 は手順ごとに両プレイヤーを回すので、
+      //   **片方の枚数が変わると、もう片方の抽出位置までずれる。**
+      //   → 補完の有無で同じ seed でも盤面が変わる（UI 側が注記で残す）。
+      expect(
+        nextAfter(dealEnergy: true, deck: noEnergy()),
+        nextAfter(dealEnergy: false, deck: noEnergy()),
+        reason: '★6.2.1.7 が 1 回も引かない = 乱数が進まない',
+      );
+    });
+
+    test('★対: エネルギーがあれば 6.2.1.7 で乱数が進む', () {
+      // ★この対が無いと、`nextAfter` が壊れていても上が通ってしまう。
+      expect(
+        nextAfter(dealEnergy: true, deck: _deck()),
+        isNot(nextAfter(dealEnergy: false, deck: _deck())),
+      );
+    });
+  });
 }
