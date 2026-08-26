@@ -20,6 +20,7 @@ import 'package:flutter/material.dart' hide Card;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loveca_core/loveca_core.dart' hide Card;
 import 'package:loveca_ui/src/state/board_mode.dart';
+import 'package:loveca_ui/src/state/board_notice.dart';
 import 'package:loveca_ui/src/state/game_store.dart';
 import 'package:loveca_ui/src/ui/board/board_page.dart';
 import 'package:loveca_ui/src/ui/board/board_start_dialog.dart';
@@ -219,6 +220,103 @@ void main() {
 
       expect(find.textContaining('当たるルール処理がありませんでした'), findsNothing);
     });
+
+    // ★★ ここから下は 2026-08-26 の実機確認で見つかった穴（決定 D94-2）★★
+    //   `BoardTidyLog` の畳み込みが warnings を条件に含んでいたため、
+    //   10.3 / 10.6 の警告が立っていると「ありませんでした」が消えていた。
+    //   ★上の「手で押したときは出る」は**警告が無い盤面でしか見ていない**ので、
+    //     この穴を素通しした（D-10「起きない条件で見ると常に通る」）。
+
+    testWidgets('★★ 10.3 の警告が出ていても、空振りなら 2 行とも出る ★★',
+        (tester) async {
+      await _pumpBoard(
+        tester,
+        handcraftedBoard(selfZones: const {
+          Zone.successLive: [_live, _live, _live],
+        }),
+      );
+
+      await tester.tap(find.byKey(const ValueKey('tidy-button')));
+      await tester.pumpAndSettle();
+
+      // ★警告は押す前から成立している盤面の条件であって、押した結果ではない。
+      //   押した 10.4 / 10.5 の答えを隠してはいけない。
+      expect(find.textContaining('当たるルール処理がありませんでした'), findsOneWidget);
+      expect(find.textContaining('勝利処理 10.3'), findsOneWidget);
+    });
+
+    testWidgets('★★ 10.6 の警告でも同じ ★★', (tester) async {
+      await _pumpBoard(tester, handcraftedBoard(selfResolution: const [_live]));
+
+      await tester.tap(find.byKey(const ValueKey('tidy-button')));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('当たるルール処理がありませんでした'), findsOneWidget);
+      expect(find.textContaining('不正解決領域処理 10.6'), findsOneWidget);
+    });
+
+    // ★★ ここから下は器の規則そのものを直接見る（決定 D94-2）★★
+    //   撃ち分けの規則は「抑止できるのはその押下が生んだ事実だけ」（盤面設計メモ §10-2）。
+    //   ★画面から通せない組み合わせがあるので、器を直接組んで固定する。
+
+    test('★★ 警告は抑止しない（10.3 / 10.6 は押した結果ではない）★★', () {
+      const log = BoardTidyLog(
+        cursor: StepCursor(PhaseId.firstActive, StepId.s7_4_3),
+        warnings: [RuleProcessWarningKind.victory],
+        manual: true,
+      );
+
+      expect(log.notices.whereType<TidyFoundNothing>(), hasLength(1));
+      // ★対: 警告の行も消えない（片方を出すためにもう片方を畳まない）。
+      expect(log.notices.whereType<RuleProcessNotAutomatic>(), hasLength(1));
+    });
+
+    test('★★ 判定できない札があるときは出さない（言い切れない）★★', () {
+      // ★★ 警告とは扱いが違う ★★
+      //   excludedCount は**この押下の中で起きた**事実で、種別を判定できていない以上
+      //   「当たるものは無かった」と言い切れない（D-10 の「無い」と「見えていない」）。
+      //
+      // ★★ 画面からは通せないので器を直接組む ★★
+      //   `loveca_core` の `RuleProcessor` は孤児を除外するときも
+      //   `applied` に 10.5.3 を積むので（`rule_process.dart` の 10.5.3 / 10.5.4 の枝）、
+      //   **`applied` が空のまま `excludedCount` だけが立つ盤面は現在の core では作れない。**
+      //   ★作れないからと条件を落とすと、core が分けた瞬間に黙って壊れる。
+      //   ★下の「前提」テストがこの不可能性そのものを見張る。
+      const log = BoardTidyLog(
+        cursor: StepCursor(PhaseId.firstActive, StepId.s7_4_3),
+        excludedCount: 1,
+        unknownCardNumbers: [ghostCardNumber],
+        manual: true,
+      );
+
+      expect(log.notices.whereType<TidyFoundNothing>(), isEmpty);
+      // ★対: 黙ってはいない。押下の結果は別の行で出る。
+      expect(log.notices.whereType<TidyExcluded>(), hasLength(1));
+    });
+
+    test('★対: 除外も警告も無ければ同じ形で「ありませんでした」が出る', () {
+      const log = BoardTidyLog(
+        cursor: StepCursor(PhaseId.firstActive, StepId.s7_4_3),
+        manual: true,
+      );
+
+      expect(log.notices.single, isA<TidyFoundNothing>());
+    });
+
+    test('★★ 前提: いまの core では applied が空のまま除外だけが立つことは無い ★★', () {
+      // ★★ 上のテストが「画面から通せない」と書いている根拠を機械で見る ★★
+      //   これが落ちたら core が両者を分けたということ。そのときは画面から通せる。
+      final store = _storeFor(withGhostOrphan(
+          handcraftedBoard(), kSelfPlayerId, MemberAreaSlot.center));
+      addTearDown(store.dispose);
+
+      store.dispatch(const Tidy());
+      final log = store.value.tidies.single;
+
+      expect(log.excludedCount, 1);
+      expect(log.applied, isNotEmpty,
+          reason: '★core は除外した孤児にも 10.5.3 を積む（rule_process.dart）');
+    });
   });
 
   group('★★ 整理ログの器は複数件（§14-7 の持ち越し 4 つ目 / 新所見 D-21 の器）★★', () {
@@ -245,7 +343,12 @@ void main() {
       // ★1 回目で 10.4.1 が当たり、2 回目は当たるものが無い。
       expect(store.value.tidies.first.applied,
           contains(RuleProcessKind.duplicateMember));
-      expect(store.value.tidies.last.isEmpty, isTrue);
+      // ★内部の述語ではなく**画面に出る行**で見る（決定 D94-2）。
+      //   `isEmpty` は消した —— 3 つの独立した事実を 1 つに畳んでいたのが
+      //   「警告があると空振りを黙る」の出どころで、直すと `lib` の消費者が
+      //   0 人になる（**D-20** の形そのもの）。
+      expect(store.value.tidies.last.applied, isEmpty);
+      expect(store.value.tidies.last.notices.single, isA<TidyFoundNothing>());
       // ★合成なので履歴は 1 件（1 undo で戻る）。
       expect(store.value.session.history.depth, 1);
     });

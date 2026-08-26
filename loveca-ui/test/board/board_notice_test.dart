@@ -33,42 +33,6 @@ import '../support/real_shaped_catalog.dart';
 const _member = parallelMemberNormal;
 const _live = drawLivePrinting;
 
-/// ★カタログに無い刷り。集計も整理もこれを引けない。
-const _ghostCardNumber = 'GHOST-bp9-999';
-
-CardInstance _ghost(String playerId, int n) => CardInstance(
-      instanceId: '$playerId:ghost:$n',
-      printingId: '$_ghostCardNumber-X',
-      cardNumber: _ghostCardNumber,
-      ownerId: playerId,
-    );
-
-/// 解決領域（共有 / 4.14.1）にカタログに無い札を混ぜる。
-GameState _withGhostInResolution(GameState state, String playerId) =>
-    state.copyWith(resolution: [...state.resolution, _ghost(playerId, 1)]);
-
-/// メンバーエリアに、上にメンバーが居ないカタログ外の札を置く。
-GameState _withGhostOrphan(
-  GameState state,
-  String playerId,
-  MemberAreaSlot slot,
-) {
-  final areas = [
-    for (final area in state.playerOf(playerId).memberAreas)
-      if (area.slot == slot)
-        area.copyWith(orphans: [...area.orphans, _ghost(playerId, 2)])
-      else
-        area,
-  ];
-  return state.copyWith(players: [
-    for (final player in state.players)
-      if (player.playerId == playerId)
-        player.copyWith(memberAreas: areas)
-      else
-        player,
-  ]);
-}
-
 /// ★描くプレイヤーを**受け取る**形になった（決定 D88 / §14-5）。
 /// 既定は視点側 → 相手側の順（`BoardView.drawnPlayers` と同じ並び）。
 List<BoardNotice> _derived(GameState state, {List<String>? playerIds}) =>
@@ -94,18 +58,18 @@ GameStore _storeFor(GameState state) => GameStore(
 void main() {
   group('★★ 集計から落ちたものを見せる（CLAUDE.md §6）★★', () {
     test('解決領域にカタログ外の札があると 8.3.12 と 8.3.14 に出る', () {
-      final state = _withGhostInResolution(handcraftedBoard(), kSelfPlayerId);
+      final state = withGhostInResolution(handcraftedBoard(), kSelfPlayerId);
       final excluded = _derived(state).whereType<AggregationExcluded>().toList();
 
       expect(excluded.map((e) => e.ruleRef).toSet(), {'8.3.14', '8.3.12'});
       // ★8.3.12 は共有領域の話なので、プレイヤーごとに 2 回出さない。
       expect(excluded.where((e) => e.ruleRef == '8.3.12'), hasLength(1));
-      expect(excluded.first.cardNumbers, [_ghostCardNumber]);
+      expect(excluded.first.cardNumbers, [ghostCardNumber]);
       expect(excluded.first.count, 1);
     });
 
     test('★相手の 8.3.14 には出ない（4.14.1 の共有領域を ownerId で絞るため）', () {
-      final state = _withGhostInResolution(handcraftedBoard(), kSelfPlayerId);
+      final state = withGhostInResolution(handcraftedBoard(), kSelfPlayerId);
       final excluded = _derived(state).whereType<AggregationExcluded>();
 
       expect(
@@ -269,7 +233,7 @@ void main() {
     });
 
     test('★カタログを引けず動かせなかった枚数が出る', () {
-      final store = _storeFor(_withGhostOrphan(
+      final store = _storeFor(withGhostOrphan(
         handcraftedBoard(
           cursor: const StepCursor(PhaseId.firstActive, StepId.s7_4_3),
         ),
@@ -281,7 +245,7 @@ void main() {
       store.dispatch(const AdvanceStep());
 
       expect(store.value.tidies.single.excludedCount, 1);
-      expect(store.value.tidies.single.unknownCardNumbers, [_ghostCardNumber]);
+      expect(store.value.tidies.single.unknownCardNumbers, [ghostCardNumber]);
     });
   });
 
@@ -313,7 +277,7 @@ void main() {
     testWidgets('孤児 / 重複 / 集計の除外が帯に出る', (tester) async {
       await pumpBoard(
         tester,
-        _withGhostInResolution(
+        withGhostInResolution(
           handcraftedBoard(
             selfOrphans: const {
               MemberAreaSlot.center: [_member],
@@ -330,7 +294,7 @@ void main() {
       expect(find.textContaining('不具合ではありません'), findsWidgets);
       expect(find.textContaining('メンバーが 2 人以上います'), findsOneWidget);
       expect(find.textContaining('集計から 1 枚を外しています'), findsWidgets);
-      expect(find.textContaining(_ghostCardNumber), findsWidgets);
+      expect(find.textContaining(ghostCardNumber), findsWidgets);
     });
 
     testWidgets('★対: 何も起きていなければ帯に 1 行も出ない', (tester) async {

@@ -239,3 +239,48 @@ GameState handcraftedBoard({
     ],
   );
 }
+
+/// ★★ カタログに無い刷り（M-B6 の実機確認 / 決定 D94-2）★★
+///
+/// 集計も整理もこれを引けないので、`excludedCount` を**実際に立てられる**。
+/// ★実データは完全なので、この形は fixture でしか作れない。
+///
+/// ★`board_notice_test.dart` と `board_tidy_test.dart` の両方が使う。
+/// 同じ材料を 2 箇所に書かない（`ルール整合性チェック_v1.06.md` D-15）。
+const ghostCardNumber = 'GHOST-bp9-999';
+
+CardInstance ghostCard(String playerId, int n) => CardInstance(
+      instanceId: '$playerId:ghost:$n',
+      printingId: '$ghostCardNumber-X',
+      cardNumber: ghostCardNumber,
+      ownerId: playerId,
+    );
+
+/// 解決領域（共有 / 4.14.1）にカタログに無い札を混ぜる。
+GameState withGhostInResolution(GameState state, String playerId) =>
+    state.copyWith(resolution: [...state.resolution, ghostCard(playerId, 1)]);
+
+/// メンバーエリアに、上にメンバーが居ないカタログ外の札を置く。
+///
+/// ★10.5.3 は種別で行き先が変わるので、カタログを引けないと**動かせない**。
+/// → 整理は `applied` が空のまま `excludedCount` だけが立つ。
+GameState withGhostOrphan(
+  GameState state,
+  String playerId,
+  MemberAreaSlot slot,
+) {
+  final areas = [
+    for (final area in state.playerOf(playerId).memberAreas)
+      if (area.slot == slot)
+        area.copyWith(orphans: [...area.orphans, ghostCard(playerId, 2)])
+      else
+        area,
+  ];
+  return state.copyWith(players: [
+    for (final player in state.players)
+      if (player.playerId == playerId)
+        player.copyWith(memberAreas: areas)
+      else
+        player,
+  ]);
+}

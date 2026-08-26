@@ -134,18 +134,38 @@ class BoardTidyLog {
   ///   → [manual] のときだけ [TidyFoundNothing] を出す。
   final bool manual;
 
-  bool get isEmpty => applied.isEmpty && warnings.isEmpty && excludedCount == 0;
+  /// 10.4 / 10.5 が 1 件も当たらなかったか。
+  ///
+  /// ★★ 抑止できるのは「その押下が生んだ事実」だけ（盤面設計メモ §10-2）★★
+  ///
+  /// [warnings]（10.3 / 10.6）は `RuleProcessor.warningsFor` が
+  /// **盤面を変更せずに返す「いま成立している条件」**であって、押した結果ではない。
+  /// 押す前から真で、押した後も真である。
+  /// → 条件に混ぜると、**押す前から在った 10.3 の警告が
+  ///   「押しても何も起きなかった」を隠す。**（M-B6 の実機確認で実際に起きた / D94-2）
+  ///
+  /// ★[excludedCount] は逆に混ぜる。**この押下の中で起きた**うえ、
+  /// 種別を判定できなかった札がある以上「当たるものは無かった」と**言い切れない**
+  /// （D-10 の「無い」と「見えていない」の区別）。
+  /// ★黙りはしない —— [TidyExcluded] が「$ruleRef の整理で N 枚を動かせませんでした」と
+  /// **この押下の結果として**答える。
+  bool get appliedNothing => applied.isEmpty && excludedCount == 0;
 
   /// 帯に出す行。★描画は `ui/board/board_notice_bar.dart` が持つ。
+  ///
+  /// ★★ 早期 return を置かないこと ★★
+  /// 4 行は互いに独立した問いへの答えである。1 つの条件でまとめて畳むと、
+  /// **どれか 1 つが立っただけで他の答えが消える。**
+  /// （実際に [warnings] が立つと「ありませんでした」が消えていた）
   List<BoardNotice> get notices {
     final ruleRef = cursor.step.ruleRef;
-    // ★手で押して何も当たらなかったことを黙らない（黙って効かないボタンにしない）。
-    if (isEmpty) {
-      return manual ? [TidyFoundNothing(stepRuleRef: ruleRef)] : const [];
-    }
     return [
       if (applied.isNotEmpty)
         RuleProcessApplied(stepRuleRef: ruleRef, kinds: applied),
+      // ★手で押して何も当たらなかったことを黙らない（黙って効かないボタンにしない）。
+      //   ★自動（チェックタイミング）では出さない —— ほとんど毎回空なので、
+      //     出すと帯が出っぱなしになって本当に何か起きたときに気づけなくなる。
+      if (manual && appliedNothing) TidyFoundNothing(stepRuleRef: ruleRef),
       if (warnings.isNotEmpty)
         RuleProcessNotAutomatic(stepRuleRef: ruleRef, kinds: warnings),
       if (excludedCount > 0)
