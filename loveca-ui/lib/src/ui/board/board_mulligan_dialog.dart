@@ -149,7 +149,7 @@ class _MulliganDialogState extends State<_MulliganDialog> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                '手札のカードを**任意の枚数**選んで裏向きに脇に置き、'
+                '手札のカードを任意の枚数選んで裏向きに脇に置き、'
                 '同じ枚数をメインデッキ置き場の上から引き直します。'
                 '★選ばなかった場合（0 枚）も 6.2.1.6 は成立します。',
                 style: theme.textTheme.bodySmall,

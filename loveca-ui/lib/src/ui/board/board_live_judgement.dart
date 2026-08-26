@@ -100,8 +100,8 @@ class _LiveJudgementDialogState extends State<_LiveJudgementDialog> {
               _Section(
                 ruleRef: '8.4.6',
                 title: 'ライブに勝利したプレイヤー',
-                note: '★8.4.6.1 両方のライブカード置き場にカードが無ければ**勝者なし**。'
-                    '★8.4.6.2 同点なら**両者勝利**（両方を選びます）。',
+                note: '★8.4.6.1 両方のライブカード置き場にカードが無ければ「勝者なし」。'
+                    '★8.4.6.2 同点なら「両者勝利」（両方を選びます）。',
                 keyPrefix: 'winner',
                 selected: _winners,
                 onToggle: (id) => setState(() =>
@@ -112,7 +112,7 @@ class _LiveJudgementDialogState extends State<_LiveJudgementDialog> {
                 ruleRef: '8.4.7',
                 title: '成功ライブカード置き場へ実際に移動したプレイヤー',
                 // ★★ ここが 8.4.13 の入力である（決定 D25 の訂正）★★
-                note: '★★8.4.13 が参照するのは勝敗ではなく**こちら**です。★★'
+                note: '★★8.4.13 が参照するのは勝敗ではなくこちらです。★★'
                     '8.4.7.1 により、両者勝利でライブカード置き場に 2 枚ある'
                     'プレイヤーは移動しません。'
                     '★勝者と一致しないことがあるので、欄を分けてあります。',
