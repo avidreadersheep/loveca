@@ -18,6 +18,7 @@ import 'package:flutter/material.dart' hide Card;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loveca_core/loveca_core.dart';
 import 'package:loveca_ui/src/ui/common/card_thumb.dart';
+import 'package:loveca_ui/src/data/app_settings.dart';
 import 'package:loveca_ui/src/ui/deck/deck_edit_page.dart';
 import 'package:loveca_ui/src/ui/deck/deck_pane.dart';
 
@@ -59,6 +60,33 @@ Future<FakeDeckRepository> _open(
   final decks = FakeDeckRepository(decks: [deck]);
   await pumpInAppScope(tester, DeckEditPage(deck: deck), decks: decks);
   return decks;
+}
+
+/// ★★ 小さい構築条件（決定 D96 / D97 の軸 2 を見るために要る）★★
+///
+/// fixture のメンバーは 2 種しかないので、**4 枚制限（6.1.1.2）を守ったまま
+/// 48 枚は組めない。**「不足がエネルギーだけ」という状態を作るには
+/// 構築条件そのものを小さくするしかない。★6.1.2 が置換を認めている。
+const _smallRules = RuleConfig(memberCount: 4, liveCount: 4);
+
+/// 設定と構築条件を差し替えて開く（★軸 2 の文言は設定で変わる / 決定 D97）。
+Future<void> _openWithSettings(
+  WidgetTester tester, {
+  required Deck deck,
+  AppSettings settings = AppSettings.defaults,
+}) async {
+  tester.view.devicePixelRatio = 1.0;
+  tester.view.physicalSize = const Size(1400, 1000);
+  addTearDown(tester.view.reset);
+
+  final catalog = fakeCatalog(config: _smallRules);
+  await pumpInAppScope(
+    tester,
+    DeckEditPage(deck: deck),
+    decks: FakeDeckRepository(decks: [deck], catalog: catalog),
+    catalog: catalog,
+    settings: settings,
+  );
 }
 
 /// [from] から [to] へ引く。★掴む点は呼び出し側が決める（余白を押す試験のため）。
@@ -435,6 +463,87 @@ void main() {
       // 4 枚超過 + メンバー数不一致 + ライブ + エネルギー = 4 件。
       expect(find.text('未達 4 件'), findsOneWidget);
       expect(find.textContaining('メインデッキの上限4枚'), findsOneWidget);
+    });
+  });
+
+  /// ★★ 軸 2 —— 6.1 の判定は曲げず、盤面の挙動を別行で出す（決定 D96-2）★★
+  ///
+  /// ★上の行（構築条件を満たしていません / エネルギー 0 / 12）は**絶対に変えない。**
+  /// 0 枚を「満たしている」と呼ぶことは 6.1.1.3 に反しており、解けない。
+  group('★★ エネルギー 0 枚のときの軸 2（決定 D96 / D97）★★', () {
+    /// 6.1 を満たすメンバー / ライブを積んだうえで、エネルギーだけ 0 枚にする。
+    /// ★4 枚制限（6.1.1.2）は守る —— 破ると「不足がエネルギーだけ」でなくなる。
+    Deck energyOnlyShort() => _deck(entries: const [
+          DeckEntry(printingId: 'M-1-N', count: 4),
+          DeckEntry(printingId: 'L-1-N', count: 4),
+        ]);
+
+    testWidgets('★★ エネルギーだけが不足しているとき、補う旨が出る ★★', (tester) async {
+      await _openWithSettings(
+        tester,
+        deck: energyOnlyShort(),
+        settings: const AppSettings(energyFillPrintingId: 'E-1-N'),
+      );
+
+      expect(find.byKey(const ValueKey('energyFillNote')), findsOneWidget);
+      expect(find.textContaining('開始時にエネルギーを 12 枚'), findsOneWidget);
+      // ★★ 上の行は変えない（6.1 の判定を曲げない）★★
+      expect(find.text('構築条件を満たしていません'), findsOneWidget);
+      expect(find.text('エネルギー 0 / 12'), findsOneWidget);
+      // ★2 行が別のことを言っていると読める形にする。
+      expect(find.textContaining('上の 6.1 の判定はデッキそのものに対するもの'),
+          findsOneWidget);
+    });
+
+    testWidgets('★★ メンバーも足りないデッキでは出さない ★★', (tester) async {
+      // ★出すと「補完が効かない不足まで補われる」ように読める。
+      await _openWithSettings(
+        tester,
+        deck: _deck(entries: const [DeckEntry(printingId: 'M-1-N', count: 1)]),
+        settings: const AppSettings(energyFillPrintingId: 'E-1-N'),
+      );
+
+      expect(find.text('構築条件を満たしていません'), findsOneWidget);
+      expect(find.byKey(const ValueKey('energyFillNote')), findsNothing);
+    });
+
+    testWidgets('★対: 6.1 を満たしているデッキでも出さない', (tester) async {
+      await _openWithSettings(
+        tester,
+        deck: _deck(entries: const [
+          DeckEntry(printingId: 'M-1-N', count: 4),
+          DeckEntry(printingId: 'L-1-N', count: 4),
+          DeckEntry(printingId: 'E-1-N', count: 12),
+        ]),
+        settings: const AppSettings(energyFillPrintingId: 'E-1-N'),
+      );
+
+      expect(find.text('構築条件を満たしています'), findsOneWidget);
+      expect(find.byKey(const ValueKey('energyFillNote')), findsNothing);
+    });
+
+    testWidgets('★★ 補完しない設定なら文言が変わる（「補います」と嘘を書かない）★★',
+        (tester) async {
+      await _openWithSettings(
+        tester,
+        deck: energyOnlyShort(),
+        settings: AppSettings.defaults.copyWith(clearEnergyFill: true),
+      );
+
+      expect(find.byKey(const ValueKey('energyFillNote')), findsOneWidget);
+      expect(find.textContaining('補完しません'), findsOneWidget);
+      expect(find.textContaining('開始時にエネルギーを 12 枚'), findsNothing);
+    });
+
+    testWidgets('★★ 引けない刷りが設定されていても文言が変わる ★★', (tester) async {
+      await _openWithSettings(
+        tester,
+        deck: energyOnlyShort(),
+        settings: const AppSettings(energyFillPrintingId: 'GHOST-9-9-X'),
+      );
+
+      expect(find.textContaining('補うカードを用意できません'), findsOneWidget);
+      expect(find.textContaining('開始時にエネルギーを 12 枚'), findsNothing);
     });
   });
 

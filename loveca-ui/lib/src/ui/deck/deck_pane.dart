@@ -26,6 +26,7 @@ import 'package:flutter/material.dart' hide Card;
 import 'package:loveca_core/loveca_core.dart';
 
 import '../../data/card_image_source.dart';
+import '../../data/energy_fill.dart';
 import '../../state/deck_edit_degradation.dart';
 import '../../state/deck_edit_store.dart';
 import '../common/card_drag.dart';
@@ -76,6 +77,8 @@ class DeckPane extends StatelessWidget {
     required this.memoController,
     required this.onSave,
     required this.onEditMeta,
+    this.energyFillPlanner,
+    this.energyFillName,
   });
 
   final DeckEditStore store;
@@ -90,6 +93,16 @@ class DeckPane extends StatelessWidget {
 
   /// P3 メタ編集を開く（M6）。★ダイアログは画面側が出す。
   final VoidCallback onEditMeta;
+
+  /// ★★ 軸 2 の材料（決定 D96-2 / D97）★★
+  /// エネルギーの枚数から補完の計画を立てる。
+  /// ★**関数で受け取る** —— `DeckPane` にカタログを持ち込まないため。
+  /// ★呼び出し側は**設定のいまの値**を使うこと（`env.settings` は
+  ///   起動時のスナップショットなので古い / **D97-4**）。
+  final EnergyFillPlan Function(int energyCount)? energyFillPlanner;
+
+  /// 補うカードの表示名。
+  final String? energyFillName;
 
   @override
   Widget build(BuildContext context) => ValueListenableBuilder<DeckEditState>(
@@ -128,6 +141,10 @@ class DeckPane extends StatelessWidget {
                 child: DeckValidationPanel(
                   validation: state.validation,
                   config: config,
+                  // ★枚数は数え直さない（D28）。検証結果をそのまま渡す。
+                  energyFill: energyFillPlanner
+                      ?.call(state.validation.energyCount),
+                  energyFillName: energyFillName,
                 ),
               ),
             ],

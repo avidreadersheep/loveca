@@ -17,15 +17,31 @@ library;
 import 'package:flutter/material.dart' hide Card;
 import 'package:loveca_core/loveca_core.dart';
 
+import '../../data/energy_fill.dart';
+
 class DeckValidationPanel extends StatelessWidget {
   const DeckValidationPanel({
     super.key,
     required this.validation,
     required this.config,
+    this.energyFill,
+    this.energyFillName,
   });
 
   final DeckValidationResult validation;
   final RuleConfig config;
+
+  /// ★★ 軸 2（決定 D96-2）—— 盤面で何が起きるか ★★
+  ///
+  /// ★**軸 1 とは主語が違う。**上の「構築条件を満たしていません」は
+  /// **デッキそのもの**についての 6.1.1.3 の判定であり、
+  /// こちらは**盤面**の挙動（サンドボックス / **D-A** / **D81**）である。
+  /// ★**上の行は絶対に変えない** —— 0 枚を「満たしている」と呼ぶことは
+  /// 6.1.1.3 に反しており、解けない。
+  final EnergyFillPlan? energyFill;
+
+  /// 補うカードの表示名。★`energyFill` が補う場合だけ使う。
+  final String? energyFillName;
 
   /// 枚数の過不足は下の 3 行が見せているので、メッセージでは繰り返さない。
   static const _countCodes = {
@@ -112,9 +128,67 @@ class DeckValidationPanel extends StatelessWidget {
                     ?.copyWith(color: theme.colorScheme.error),
               ),
             ),
+          // ★★ 軸 2（決定 D96-2）★★ 上の行とは主語が違うことが読める形にする。
+          if (_energyOnlyLine case final text?)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Row(
+                key: const ValueKey('energyFillNote'),
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Icons.battery_charging_full_outlined,
+                    size: 14,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(text, style: theme.textTheme.bodySmall),
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
     );
+  }
+
+  /// ★★ エネルギーだけが不足しているときに限って出す（決定 D96-2）★★
+  ///
+  /// ★**メンバー 47 枚のデッキで出してはいけない** ——
+  /// 「盤面では補われます」と読めてしまい、**補完が効かない不足まで
+  /// 補われるように見える。**
+  ///
+  /// ★**補えないときは文言を変える。**「補います」と書いて補われないのは嘘である
+  /// （盤面側の `EnergyFillUnavailable` と揃える）。
+  String? get _energyOnlyLine {
+    final plan = energyFill;
+    if (plan == null) return null;
+    // ★6.1 を満たしているなら言うことは無い。
+    if (validation.issues.isEmpty) return null;
+    // ★★ 不足がエネルギーだけであること ★★
+    final energyOnly = validation.issues
+        .every((i) => i.code == DeckIssueCode.energyCountMismatch);
+    if (!energyOnly) return null;
+
+    if (plan.willFill) {
+      final name = energyFillName;
+      return '盤面では、開始時にエネルギーを ${plan.count} 枚'
+          '${name == null ? '' : '（$name）'}補って始めます。'
+          '上の 6.1 の判定はデッキそのものに対するものなので変わりません。';
+    }
+    return switch (plan.skip!) {
+      // ★補完しないのは利用者の選択。★「エネルギーが出ない」ことだけを言う。
+      EnergyFillSkip.unset => '盤面では補完しません。エネルギーが 1 枚も出ないまま始まります。'
+          '設定で補うカードを選べます。',
+      EnergyFillSkip.unknownCardNumber ||
+      EnergyFillSkip.unknownPrinting ||
+      EnergyFillSkip.notEnergy =>
+        '盤面で補うカードを用意できません。設定で選び直してください。'
+            'このままだとエネルギーが 1 枚も出ません。',
+      // ★0 枚でなければここへ来ない（`energyOnly` が真なら 0 枚か 13 枚以上）。
+      EnergyFillSkip.notNeeded => null,
+    };
   }
 }
 

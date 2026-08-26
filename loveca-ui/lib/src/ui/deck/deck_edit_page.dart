@@ -22,6 +22,7 @@ import 'package:flutter/material.dart' hide Card;
 import 'package:loveca_core/loveca_core.dart' hide Card;
 
 import '../../data/card_list_row.dart';
+import '../../data/energy_fill.dart';
 import '../../state/app_scope.dart';
 import '../../state/card_browse_store.dart';
 import '../../state/deck_edit_store.dart';
@@ -54,6 +55,13 @@ class _DeckEditPageState extends State<DeckEditPage> {
   /// 2 ペインで詳細を出しているカード（決定 D66）。1 ペインでは常に null。
   String? _detailPrintingId;
 
+  /// ★★ 補完に使う刷り（決定 D97）。**起動時のスナップショットを使わない** ★★
+  /// `env.settings` は起動段 3 で 1 回読んだきりなので、盤面の開始ダイアログや
+  /// R6 で変えても古いままである。★この項目は即時に効く（**D-23** / D97-4）ので、
+  /// 画面を開いた時点で読み直す。
+  String? _energyFill;
+  bool _energyFillRequested = false;
+
   late final TextEditingController _nameController =
       TextEditingController(text: widget.deck.name);
   late final TextEditingController _memoController =
@@ -63,6 +71,13 @@ class _DeckEditPageState extends State<DeckEditPage> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     _scope = AppScope.of(context);
+    if (!_energyFillRequested) {
+      _energyFillRequested = true;
+      _scope.environment.settingsStore.load().then((load) {
+        if (!mounted) return;
+        setState(() => _energyFill = load.settings.energyFillPrintingId);
+      });
+    }
     if (_store == null) {
       _store = DeckEditStore(_scope.environment.decks, widget.deck);
       _store!.addListener(_onStoreChanged);
@@ -162,6 +177,17 @@ class _DeckEditPageState extends State<DeckEditPage> {
         memoController: _memoController,
         onSave: _save,
         onEditMeta: _editMeta,
+        // ★★ 軸 2（決定 D96-2）★★ 6.1 の判定は曲げず、盤面の挙動を別行で出す。
+        energyFillPlanner: (energyCount) => planEnergyFill(
+          energyCount: energyCount,
+          printingId: _energyFill,
+          cards: _scope.environment.cards,
+          printings: _scope.environment.printings,
+          config: _scope.environment.ruleConfig,
+        ),
+        energyFillName: _energyFill == null
+            ? null
+            : _scope.environment.cards[cardNumberOfPrinting(_energyFill!)]?.name,
       );
 
   /// 共有形式から取り込む（M6 / 決定 D67 / D68 / D69）。

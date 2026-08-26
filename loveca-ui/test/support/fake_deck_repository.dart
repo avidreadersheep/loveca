@@ -25,7 +25,11 @@ import 'package:loveca_ui/src/data/master_catalog.dart';
 /// ★M4 で 3 区分そろえた。**4 枚制限がメインデッキだけに効く**ことを
 /// 確かめるにはエネルギーが要り、**パラレル違いも合算される**（6.1.1.2）ことを
 /// 確かめるには同じ cardNumber の 2 刷りが要る。
-MasterCatalog fakeCatalog() => MasterCatalog(
+/// ★[config] を差し替えられる —— 総合ルール **6.1.2** により構築条件は
+/// 置換されうるし、fixture のカード種類は少ないので
+/// **48 / 12 の標準値では「4 枚制限を守った合法デッキ」を組めない。**
+MasterCatalog fakeCatalog({RuleConfig config = RuleConfig.standard}) =>
+    MasterCatalog(
       cards: const {
         'M-1': Card(cardNumber: 'M-1', name: 'メンバー1', cardType: CardType.member),
         'M-2': Card(cardNumber: 'M-2', name: 'メンバー2', cardType: CardType.member),
@@ -70,7 +74,7 @@ MasterCatalog fakeCatalog() => MasterCatalog(
           isParallel: false,
         ),
       },
-      config: RuleConfig.standard,
+      config: config,
       rows: fakeRows,
       dataVersion: 1,
     );
