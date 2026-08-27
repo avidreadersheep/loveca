@@ -535,7 +535,58 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.textContaining('ステップ 7.7.2'), findsOneWidget);
-      expect(find.textContaining('先攻メイン 7.7'), findsOneWidget);
+      // ★★ 通過が 1 行で読める（§15-10）★★
+      //   ★歩数とフェイズの移りまで出す。出さないと「勝手に進んだ」になる。
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('last-operation')),
+          matching: find.textContaining(
+              '7.4.1 → 7.7.2（10 ステップ / 先攻アクティブ 7.4 → 先攻メイン 7.7）'),
+        ),
+        findsOneWidget,
+      );
+      // ★★ 止まった理由も出る（新設 / 決定 D98-1）★★
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('stop-reason')),
+          matching: find.textContaining('7.7.2 の手前'),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('★ 対: 「1 ステップ」では歩数もフェイズの移りも出さない', (tester) async {
+      // ★毎回同じ語が並ぶと読み飛ばされる。1 ステップのときは書き分ける。
+      await pumpBoard(tester, _staticBoard());
+
+      await tester.tap(find.byKey(const ValueKey('advance-one-step')));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('直前: 7.4.1 → 7.4.2'), findsOneWidget);
+      expect(find.textContaining('ステップ / '), findsNothing);
+      // ★止まった理由も出ない（自動進行ではないので理由が無い）。
+      expect(find.byKey(const ValueKey('stop-reason')), findsNothing);
+    });
+
+    testWidgets('★★ 8.3.6 の早期終了が 1 押下の中でも読める ★★', (tester) async {
+      // ★★ 11 ステップ飛ぶので、まとめて進むと消えては困る（§15-10）★★
+      await pumpBoard(
+        tester,
+        handcraftedBoard(
+          cursor: const StepCursor(PhaseId.firstPerformance, StepId.s8_3_6),
+        ),
+      );
+
+      await tester.tap(find.byKey(const ValueKey('advance-step')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('last-operation')),
+          matching: find.textContaining('分岐 8.3.6: ライブカード置き場が空'),
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets('★対: 「1 ステップ」1 回では 7.4.2 に居る', (tester) async {

@@ -91,6 +91,9 @@ class BoardProgressBar extends StatelessWidget {
           if (board.operation case final operation?) ...[
             _LastOperationLine(operation: operation),
             // ★★ 「直前」行に混ぜない ★★
+            //   成立した理由が複数あるので、混ぜると通過そのものが読めなくなる。
+            _StopReasonLine(stops: operation.stops),
+            // ★★ 「直前」行に混ぜない ★★
             //   4 フェイズぶん並ぶことがあるので、混ぜると直前の遷移が読めなくなる。
             _SkippedLine(skipped: operation.skipped),
           ],
@@ -479,12 +482,49 @@ class _LastOperationLine extends StatelessWidget {
     if (operation.isEmpty) return const SizedBox.shrink();
     final theme = Theme.of(context);
 
+    final steps = operation.steps;
+    // ★★ 1 ステップと複数ステップで書き分ける ★★
+    //   1 ステップのときに歩数やフェイズ名を足すと、毎回同じ語が並んで読み飛ばされる。
+    final passed = switch (steps.length) {
+      0 => null,
+      1 => '${steps.first.cursor.step.ruleRef} → '
+          '${steps.first.taken.endsPhase ? 'フェイズ終了' : steps.first.taken.target!.ruleRef}'
+          '${steps.first.taken.label.isEmpty ? '' : '（${steps.first.taken.label}）'}',
+      // ★★ 何ステップ進んだか / どのフェイズからどのフェイズへ（§15-10）★★
+      //   1 押下で平均 6 ステップ進むので、出さないと「勝手に進んだ」になる。
+      _ => '${operation.cursorBefore.step.ruleRef} → '
+          '${operation.cursorAfter.step.ruleRef}'
+          '（${steps.length} ステップ / '
+          '${phaseLabel(operation.cursorBefore.phase)} '
+          '${operation.cursorBefore.phase.ruleRef} → '
+          '${phaseLabel(operation.cursorAfter.phase)} '
+          '${operation.cursorAfter.phase.ruleRef}）',
+    };
+
+    // ★★ 条文が定める分岐は個別に出す（既存 / D86）★★
+    //   ★8.3.6 の早期終了は 11 ステップ飛ぶので、1 押下にまとめると読めなくなる。
+    //   ★1 ステップのときは上の行に出ているので繰り返さない。
+    final branches = steps.length == 1
+        ? const <String>[]
+        : [
+            for (final step in steps.where((s) => s.isBranch))
+              '分岐 ${step.cursor.step.ruleRef}: '
+                  '${step.taken.label.isEmpty ? '（記録なし）' : step.taken.label}',
+          ];
+
+    // ★★ リフレッシュはステップ別に出す（§15-10）★★
+    //   10.2.1 はステップ境界を無視して割り込むので、合計だけだと
+    //   「どのステップの途中で起きたか」が失われる。
+    final refreshed = steps.where((step) => step.refreshCount > 0).toList();
+
     final parts = <String>[
-      if (operation.lastStep case final last?)
-        '${operation.steps.first.cursor.step.ruleRef} → '
-            '${last.taken.endsPhase ? 'フェイズ終了' : last.taken.target!.ruleRef}'
-            '${last.taken.label.isEmpty ? '' : '（${last.taken.label}）'}',
-      if (operation.refreshCount > 0)
+      ?passed,
+      ...branches,
+      if (refreshed.isNotEmpty)
+        'リフレッシュが割り込みました'
+            '（10.2.1。処理を中断して実行し、続きを実行します）: '
+            '${refreshed.map((s) => '${s.cursor.step.ruleRef} で ${s.refreshCount} 回').join(' / ')}'
+      else if (operation.refreshCount > 0)
         'リフレッシュが ${operation.refreshCount} 回割り込みました'
             '（10.2.1。処理を中断して実行し、続きを実行します）',
     ];
@@ -499,6 +539,60 @@ class _LastOperationLine extends StatelessWidget {
       ),
     );
   }
+}
+
+/// ★★ 自動進行が止まった理由（M-B7 / 決定 D98-1）★★
+///
+/// ★★ 成立したものを**全部**出す。1 つに絞らない ★★
+/// 新規警告とターン変化が同じ押下で成立することはある（盤面設計メモ §15-6）。
+///
+/// ★★ 5 つを 1 行にまとめない ★★
+/// 原因も「次に何をすればよいか」も違う。**まとめると次の一手が消える。**
+///
+/// ★★ 格を出す（条文由来 / 実装判断）★★
+/// 混ぜると、次に問われたときに**存在しない条文を探すことになる**（D73 / D92-3）。
+/// ★判定は `BoardStopReasonKind.isFromRules` から取る。ここで振り分けない。
+class _StopReasonLine extends StatelessWidget {
+  const _StopReasonLine({required this.stops});
+
+  final List<BoardStopReason> stops;
+
+  @override
+  Widget build(BuildContext context) {
+    if (stops.isEmpty) return const SizedBox.shrink();
+    final theme = Theme.of(context);
+
+    return Padding(
+      key: const ValueKey('stop-reason'),
+      padding: const EdgeInsets.only(top: 2),
+      child: Text(
+        '止まった理由: ${stops.map(_stopReasonText).join(' / ')}',
+        style: theme.textTheme.labelSmall,
+      ),
+    );
+  }
+}
+
+/// 停止理由 1 件の文面。★網羅 switch（[phaseLabel] と同じ作法）。
+///
+/// ★条番号は `ruleRef` から取る。ここに書かない。
+String _stopReasonText(BoardStopReason stop) {
+  final where = stop.cursor.step.ruleRef;
+  final grade = stop.kind.isFromRules ? '' : '★条文由来ではなく実装の判断です';
+  final body = switch (stop.kind) {
+    BoardStopReasonKind.playerAction =>
+      '$where の手前（この手順は、あなたの選択・判断・盤面操作を求めています）',
+    BoardStopReasonKind.playerDeclaration =>
+      '$where の手前（どちらへ進むかをあなたが宣言してください）',
+    BoardStopReasonKind.newWarning =>
+      '新しい警告が出ました（${stop.warnings.map((k) => k.ruleRef).join(' / ')}）。'
+          '手で処理してください',
+    BoardStopReasonKind.refreshed =>
+      '$where でリフレッシュが ${stop.refreshCount} 回割り込みました'
+          '（10.2.1。控え室が空になり、メインデッキが組み直されています）',
+    BoardStopReasonKind.turnChanged => 'ターン ${stop.turnNumber} になりました（8.4.14）',
+  };
+  return grade.isEmpty ? body : '$body。$grade';
 }
 
 /// フェイズの呼び名。

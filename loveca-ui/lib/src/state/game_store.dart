@@ -225,6 +225,7 @@ List<BoardStopReason> autoAdvanceStops(BoardAdvanceProgress progress) {
 class BoardOperationLog {
   const BoardOperationLog({
     required this.cursorBefore,
+    required this.cursorAfter,
     this.steps = const [],
     this.stops = const [],
     this.refreshCount = 0,
@@ -233,6 +234,13 @@ class BoardOperationLog {
 
   /// その押下を始めた時点の進行位置。
   final StepCursor cursorBefore;
+
+  /// ★★ その押下を終えた時点の進行位置（M-B7）★★
+  ///
+  /// ★[steps] から導けない —— 最後の遷移がフェイズを終える場合、着地先は
+  /// 次のフェイズの先頭であり、さらに `skipForward` が飛ばした先になりうる。
+  /// **導けないものを導いたことにしない。**
+  final StepCursor cursorAfter;
 
   /// ★この押下で実行したステップ**全件**。★`AdvanceStep` 以外では空。
   final List<BoardStepLog> steps;
@@ -808,6 +816,7 @@ class GameStore extends Store<BoardState> {
 
     final operation = BoardOperationLog(
       cursorBefore: before.cursor,
+      cursorAfter: run.state.cursor,
       steps: run.steps,
       stops: run.stops,
       refreshCount: run.refreshCount,
