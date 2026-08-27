@@ -53,6 +53,11 @@ class BoardProgressBar extends StatelessWidget {
     final turnPlayer = turnPlayerOf(state, state.cursor.phase);
 
     return Container(
+      // ★★ 段全体の高さを測れるようにする（M-B7）★★
+      //   `progress-bar` は `Wrap` だけに付いており、その下の
+      //   「直前 / 止まった理由 / 通らなかった / 巻き戻し」の行を含まない。
+      //   ★内訳の合計が総高と合わないと、次に測る人が原因を探すことになる。
+      key: const ValueKey('progress-section'),
       color: theme.colorScheme.surfaceContainerHighest,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       child: Column(

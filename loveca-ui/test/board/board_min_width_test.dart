@@ -243,12 +243,21 @@ Future<void> _pumpBoard(
 
   /// ★整理を 1 回押して帯を出す（決定 D95 / §16 の 4 番）。
   bool pressTidy = false,
+
+  /// ★★ 「次へ」を 1 回押して M-B7 の行を出す（決定 D92 / D98）★★
+  ///   ★D95 の `pressTidy` とまったく同じ理由でここに要る ——
+  ///     **出していない段を「変わらなかった」と書いたのが M-B6 の誤り**である。
+  ///   出るのは (1) 通過の行（歩数とフェイズの移り）(2) 止まった理由の行
+  ///   (3) 自動の整理の帯（1 押下で複数の CT を通る）。
+  bool pressAdvance = false,
 }) async {
   tester.view.physicalSize = size;
   await pumpInAppScope(
     tester,
     BoardPage(
-      initialState: pressTidy ? _crowdedWithStuckOrphans() : _crowded(),
+      // ★整理の帯を出す測定は、行が最も増える盤面を使う（決定 D95）。
+    initialState:
+        pressTidy || pressAdvance ? _crowdedWithStuckOrphans() : _crowded(),
       viewerId: kSelfPlayerId,
       mode: mode,
       seed: 1234567890,
@@ -268,6 +277,11 @@ Future<void> _pumpBoard(
   if (pressTidy) {
     // ★★ 押さないと帯は出ない。**ここが M-B6 の測定に無かった 1 行である** ★★
     await tester.tap(find.byKey(const ValueKey('tidy-button')));
+    await tester.pump();
+  }
+  if (pressAdvance) {
+    // ★★ 押さないと「通過」も「止まった理由」も出ない（M-B7）★★
+    await tester.tap(find.byKey(const ValueKey('advance-step')));
     await tester.pump();
   }
 }
@@ -318,6 +332,7 @@ Future<double> _measureHeight(
   double low = 120,
   List<BootNotice> bootNotices = const [],
   bool pressTidy = false,
+  bool pressAdvance = false,
   void Function(List<String> where)? onOverflow,
 }) {
   Future<bool> overflowsAt(double height) async {
@@ -328,6 +343,7 @@ Future<double> _measureHeight(
         mode: mode,
         bootNotices: bootNotices,
         pressTidy: pressTidy,
+        pressAdvance: pressAdvance,
       );
     });
     if (where.isNotEmpty) onOverflow?.call(where);
@@ -529,6 +545,9 @@ void main() {
       mode: BoardMode.localVersus,
     );
     for (final key in const [
+      // ★★ `progress-bar` は `Wrap` だけ。段全体は `progress-section` ★★
+      //   合計が総高に合わないと、次に測る人が原因を探すことになる。
+      'progress-section',
       'progress-bar',
       'tidy-notices',
       'board-notices',
@@ -552,6 +571,10 @@ void main() {
         reason: '★M-B6 の段（整理）が測定に入っていない');
     expect(find.byKey(const ValueKey('summary-live-judgement')), findsOneWidget,
         reason: '★M-B6 の行（ライブ勝敗の記録）が測定に入っていない');
+    // ★★ M-B7 の段（「1 ステップ」ボタン）が測定に入っていること ★★
+    //   ★進行バーの `Wrap` に 1 つ増えたので、折り返しが変わりうる。
+    expect(find.byKey(const ValueKey('advance-one-step')), findsOneWidget,
+        reason: '★M-B7 の段（1 ステップ）が測定に入っていない');
 
     // ★★ 2026-08-26（M-B6）: ここで初めて進行バーが 2 行になった ★★
     //   M-B5 までは「巻き戻しのボタンは『次へ』と同じ高さなので `Wrap` が
@@ -632,6 +655,9 @@ void main() {
       pressTidy: true,
     );
     for (final key in const [
+      // ★★ `progress-bar` は `Wrap` だけ。段全体は `progress-section` ★★
+      //   合計が総高に合わないと、次に測る人が原因を探すことになる。
+      'progress-section',
       'progress-bar',
       'tidy-notices',
       'board-notices',
@@ -793,6 +819,86 @@ void main() {
     print('  ★内訳: 起動時の警告の帯 = '
         '${tester.getSize(find.byType(NoticeBar)).height} 論理px'
         '（帯なしの 598 との差が帯 1 本ぶん）');
+
+    expect(measured, greaterThan(201),
+        reason: '★下限のすぐ上に収束している = 溢れが報告されていない');
+  });
+
+  testWidgets('★★ U19 (最も混んだ押下): 自動進行の行を出した状態の縦の下限（M-B7）★★',
+      (tester) async {
+    // ★★ D95 の教訓をそのまま当てる（§16 の 4 番）★★
+    //   「整理のボタンを足したのに帯そのものは測定に入ったことが 1 度も無い」まま
+    //   「変わらなかった」と書いたのが M-B6 の誤りだった。
+    //   → **押してから測る。そして押した結果が出ていることを先に確かめる。**
+    //
+    // ★★ 最も混んだ押下を作る（§15-10）★★
+    //   1 押下で複数の CT を通るので、整理の帯が最も伸びる条件である。
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    // ★★ 先に「条件が作れること」を確かめる（D-10）★★
+    await _pumpBoard(
+      tester,
+      size: const Size(kBoardMinWidth, 1400),
+      mode: BoardMode.localVersus,
+      pressAdvance: true,
+    );
+    expect(find.byKey(const ValueKey('stop-reason')), findsOneWidget,
+        reason: '★止まった理由の行が出ていない = 測定条件が間違っている');
+    expect(find.textContaining('ステップ / '), findsOneWidget,
+        reason: '★通過の行（歩数とフェイズの移り）が出ていない');
+    final band =
+        tester.getSize(find.byKey(const ValueKey('tidy-notices'))).height;
+    expect(band, greaterThan(0), reason: '★自動の整理の帯が出ていない');
+
+    // ★★ 畳み込みが効いていること（決定 D98-3）★★
+    //   ★効いていないとこの測定は「畳まない実装」の下限を測ってしまう。
+    final store =
+        tester.widget<BoardView>(find.byType(BoardView).first).store;
+    expect(
+      foldedTidyNotices(store.value.tidies).length,
+      lessThanOrEqualTo(kTidyNoticeFoldThreshold + 1),
+      reason: '★種類は 4 つまでなので、畳めば 4 行を超えない',
+    );
+
+    var lastWhere = const <String>[];
+    final measured = await _measureHeight(
+      tester,
+      mode: BoardMode.localVersus,
+      width: kBoardMinWidth,
+      low: 200,
+      pressAdvance: true,
+      onOverflow: (where) => lastWhere = where,
+    );
+
+    // ignore: avoid_print
+    print('★U19 測定（★最も混んだ押下 / M-B7）: '
+        '縦に溢れない最小の高さ = $measured 論理px'
+        '（直前に溢れた向き: ${lastWhere.join(' / ')}）');
+
+    await _pumpBoard(
+      tester,
+      size: Size(kBoardMinWidth, measured),
+      mode: BoardMode.localVersus,
+      pressAdvance: true,
+    );
+    for (final key in const [
+      // ★★ `progress-bar` は `Wrap` だけ。段全体は `progress-section` ★★
+      //   合計が総高に合わないと、次に測る人が原因を探すことになる。
+      'progress-section',
+      'progress-bar',
+      'tidy-notices',
+      'board-notices',
+      'summary-panel',
+    ]) {
+      final finder = find.byKey(ValueKey(key));
+      // ignore: avoid_print
+      print('  ★内訳（最も混んだ押下）: $key = '
+          '${finder.evaluate().isEmpty ? '出ていない' : '${tester.getSize(finder).height} 論理px'}');
+    }
+    // ignore: avoid_print
+    print('  ★内訳（最も混んだ押下）: AppBar = '
+        '${tester.getSize(find.byType(AppBar)).height} 論理px');
 
     expect(measured, greaterThan(201),
         reason: '★下限のすぐ上に収束している = 溢れが報告されていない');
