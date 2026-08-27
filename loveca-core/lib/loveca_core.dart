@@ -9,6 +9,7 @@ export 'src/entities/card.dart';
 export 'src/entities/deck.dart';
 export 'src/entities/product.dart';
 export 'src/master/master_data.dart';
+export 'src/rules/deck_order.dart';
 export 'src/rules/deck_validator.dart';
 export 'src/game/aggregation.dart';
 export 'src/game/card_instance.dart';

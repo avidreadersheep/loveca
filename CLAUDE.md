@@ -263,12 +263,20 @@ git ls-files --others --ignored --exclude-standard \
 | パッケージ | 件数 | 確認コマンド |
 |---|---|---|
 | `loveca-data`（Python） | 33 | `python tests/run_all.py` |
-| `loveca-core`（Dart） | **385** | `dart test` |
+| `loveca-core`（Dart） | **411** | `dart test` |
 | `loveca-db`（Dart） | 127（★skip 0） | `dart test` |
 | `loveca-ui`（Flutter） | **861**（★skip 0） | `flutter test` |
 
-（4 パッケージとも 2026-08-27 時点 / **M-B7（決定 D92 / D98）の完了時**。
-★**4 件とも実測で確認済み**）
+（`loveca-core` は **束 B の commit 2（決定 D99 の比較器）** 時点 / 2026-08-27。
+ほかの 3 つは **M-B7（決定 D92 / D98）の完了時** / 2026-08-27。★**4 件とも実測で確認済み**）
+
+★★**束 B の commit 2 で `loveca-core` が 385 → 411**★★
+（+26 = `deck_order_test.dart` の新設。区分順 3 / 区分ごとの軸 5 / null の末尾 4 /
+副次キー 2 / `sortedByDeckOrder` 3 / 挿入位置 6 / 比較器の性質 3）。
+★★**no-op の比較器を入れると 26 件中 21 件が落ちることを実測した**★★（2026-08-27）。
+★**さらに、フィクスチャを整列済みに直すと `_expectScrambled` が落ちる**ことも実測した
+—— **投入順と期待順が一致していると、比較器が何もしなくても `sort` が入力順を保つので通る。**
+★`loveca_db` / `loveca-data` / `loveca-ui` はこの commit で触っていない。
 
 ★★**M-B7 で増えたのは `loveca-core`（380 → 385）と `loveca-ui`（826 → 861）**★★
 （core: +5 = R-S1 の集合と `stopsAutoAdvance` の導出 / 8.4.12 に立てないこと /
