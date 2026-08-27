@@ -81,6 +81,139 @@ class BoardStepLog {
   bool get isBranch => cursor.step.decision != null;
 }
 
+/// ★★ 自動進行が止まった理由（M-B7 / 決定 D98-1）★★
+///
+/// ★★ 5 つを 1 つにまとめない ★★
+/// 原因も「次に何をすればよいか」も違う ——
+/// [playerAction] は**あなたが操作する**、[playerDeclaration] は**あなたが宣言する**、
+/// [newWarning] は**手で処理する**、[refreshed] は**盤面の前提が変わった**、
+/// [turnChanged] は**区切り**である。
+/// ★M3 の縮退 3 種・決定 D95 の「動かせない理由」2 種と**同じ判断**である
+/// （原因も対処も違うものを 1 行にまとめない）。
+///
+/// ★★ 格を分ける（決定 D92-3 / D73 と同じ作法）★★
+/// 条文由来か実装判断かで [isFromRules] が分かれる。混ぜると、次に問われたときに
+/// **存在しない条文を探すことになる。**
+enum BoardStopReasonKind {
+  /// 条文がプレイヤーの選択・判断・盤面操作を求めている（R-S1 / `StepId.requiresPlayerAction`）。
+  playerAction,
+
+  /// 条文が定める分岐で、プレイヤーの宣言が要る（8.4.12 / `StepDecision.playerDeclared`）。
+  playerDeclaration,
+
+  /// アプリが自動実行しないルール処理が**新しく**成立した（10.3 / 10.6）。
+  newWarning,
+
+  /// ★リフレッシュ（10.2.1）が割り込んだ。★**条文由来ではない**（決定 D92-3）。
+  refreshed,
+
+  /// ★ターン番号が変わった（8.4.14）。★**条文由来ではない**（決定 D92-3 / §15-6）。
+  turnChanged;
+
+  /// ★★ 条文から導いた停止点か（true）、実装の判断か（false）★★
+  /// ★画面の文面にも出す。書かないと、次に「条文由来でないから外そう」となる。
+  bool get isFromRules => switch (this) {
+        playerAction || playerDeclaration || newWarning => true,
+        refreshed || turnChanged => false,
+      };
+}
+
+/// 自動進行が止まった理由 1 件（M-B7 / 決定 D98-1）。
+///
+/// ★★ 成立したものは**全部**出す。1 つに絞らない ★★
+/// 新規警告とターン変化が同じ押下で成立することはある（盤面設計メモ §15-6）。
+class BoardStopReason {
+  const BoardStopReason({
+    required this.kind,
+    required this.cursor,
+    this.warnings = const [],
+    this.refreshCount = 0,
+    this.turnNumber = 0,
+  });
+
+  final BoardStopReasonKind kind;
+
+  /// 止まった位置。★条番号はここから取る（UI に書かない）。
+  final StepCursor cursor;
+
+  /// [BoardStopReasonKind.newWarning] のとき、**新しく**立った警告の種類。
+  final List<RuleProcessWarningKind> warnings;
+
+  /// [BoardStopReasonKind.refreshed] のとき、割り込んだ回数。
+  final int refreshCount;
+
+  /// [BoardStopReasonKind.turnChanged] のとき、変わったあとのターン番号。
+  final int turnNumber;
+}
+
+/// 自動進行の途中経過。★停止判定の入力（M-B7 / 決定 D98-5）。
+class BoardAdvanceProgress {
+  const BoardAdvanceProgress({
+    required this.state,
+    required this.turnNumberBefore,
+    required this.stepsTaken,
+    required this.lastRefreshCount,
+    required this.newWarnings,
+  });
+
+  /// 直前のステップを実行し終えた時点の盤面。★カーソルは**次に実行する**位置。
+  final GameState state;
+
+  /// この押下を始めた時点のターン番号。
+  final int turnNumberBefore;
+
+  /// この押下でここまでに実行したステップ数。★**必ず 1 以上**である。
+  final int stepsTaken;
+
+  /// 直前のステップで割り込んだリフレッシュの回数（10.2.1）。
+  final int lastRefreshCount;
+
+  /// ★直前の整理で**新しく**立った警告の種類（10.3 / 10.6）。
+  final List<RuleProcessWarningKind> newWarnings;
+}
+
+/// ★★ 既定の停止判定（R-S1 + R-S2 / 決定 D92）★★
+///
+/// ★★ bool ではなく理由の一覧を返す ★★
+/// 成立したものを**全部**出すためである（§15-6）。1 つに絞ると
+/// 「なぜ止まったか」が押下ごとに片方だけ見える。
+///
+/// ★★ 10.4 / 10.5 の適用では止まらない ★★
+/// 孤児カード・重複メンバーは**正規の中間状態**で、盤面に残っていれば毎 CT
+/// 適用対象になる。止めると**正常な状態で止まり続ける。**
+/// → **全件を報告するが、止まらない。**
+List<BoardStopReason> autoAdvanceStops(BoardAdvanceProgress progress) {
+  final cursor = progress.state.cursor;
+  return [
+    // ---- R-S1（静的 / 条文由来）----
+    if (cursor.step.requiresPlayerAction)
+      BoardStopReason(
+          kind: BoardStopReasonKind.playerAction, cursor: cursor),
+    if (cursor.step.decision == StepDecision.playerDeclared)
+      BoardStopReason(
+          kind: BoardStopReasonKind.playerDeclaration, cursor: cursor),
+    // ---- R-S2（動的）----
+    if (progress.newWarnings.isNotEmpty)
+      BoardStopReason(
+        kind: BoardStopReasonKind.newWarning,
+        cursor: cursor,
+        warnings: progress.newWarnings,
+      ),
+    if (progress.lastRefreshCount > 0)
+      BoardStopReason(
+        kind: BoardStopReasonKind.refreshed,
+        cursor: cursor,
+        refreshCount: progress.lastRefreshCount,
+      ),
+    if (progress.state.turnNumber != progress.turnNumberBefore)
+      BoardStopReason(
+        kind: BoardStopReasonKind.turnChanged,
+        cursor: cursor,
+        turnNumber: progress.state.turnNumber,
+      ),
+  ];
+}
+
 /// ★★ 直前の 1 押下の結果（M-B3 / 決定 D86 / ★M-B7 で押下 1 回ぶんへ広げた）★★
 ///
 /// ★★ 単数だったものを列にした理由（新所見 D-21 の本体 / 決定 D98-2）★★
@@ -93,6 +226,7 @@ class BoardOperationLog {
   const BoardOperationLog({
     required this.cursorBefore,
     this.steps = const [],
+    this.stops = const [],
     this.refreshCount = 0,
     this.skipped = const [],
   });
@@ -102,6 +236,10 @@ class BoardOperationLog {
 
   /// ★この押下で実行したステップ**全件**。★`AdvanceStep` 以外では空。
   final List<BoardStepLog> steps;
+
+  /// ★★ 自動進行が止まった理由（M-B7 / 決定 D98-1）★★
+  /// ★成立したものを**全部**。1 ステップだけ進める口では空である。
+  final List<BoardStopReason> stops;
 
   /// この押下の中で割り込んだリフレッシュの合計回数（総合ルール 10.2.1）。
   ///
@@ -292,6 +430,74 @@ class _AppliedLog {
   final List<BoardTidyLog> tidies;
 
   final bool rngConsumed;
+}
+
+/// 1 押下ぶんの積み上げ（M-B7 / 決定 D98-5）。
+///
+/// ★★ `refreshCount` / `tidies` / `steps` / `skipped` は**すべて積む** ★★
+/// 最後の 1 件で上書きすると、自動進行が複数ステップ進んだときに
+/// 途中の警告も分岐もスキップも黙って消える（新所見 **D-21**）。
+class _Run {
+  _Run(this.state, this._warningBaseline);
+
+  GameState state;
+
+  /// ★★ 直前に観測した警告の集合（決定 D92 / §15-5）★★
+  /// 押下の中で走りながら更新する。
+  Set<RuleProcessWarningKind> _warningBaseline;
+
+  final applied = <GameAction>[];
+  final steps = <BoardStepLog>[];
+  final stops = <BoardStopReason>[];
+  final tidies = <BoardTidyLog>[];
+  final skipped = <StepCursor>[];
+  var refreshCount = 0;
+
+  /// 直前のアクションで割り込んだリフレッシュの回数。
+  var lastRefreshCount = 0;
+
+  /// ★直前の整理で**新しく**立った警告の種類。整理が起きなければ空。
+  var lastNewWarnings = const <RuleProcessWarningKind>[];
+
+  void absorb(StepCursor cursorBefore, GameAction action, ReduceReport report) {
+    state = report.state;
+    applied.add(action);
+    refreshCount += report.refreshCount;
+    lastRefreshCount = report.refreshCount;
+    lastNewWarnings = const [];
+
+    // ★★ 整理は**全件**積む（M-B6 / 決定 D93-5 / 新所見 D-21 の器）★★
+    //   最後の 1 件で上書きすると、自動進行が複数の CT を通ったときに
+    //   途中の 10.3 / 10.6 の警告が黙って落ちる。
+    if (report.tidy case final result?) {
+      tidies.add(BoardTidyLog(
+        cursor: cursorBefore,
+        applied: result.applied,
+        warnings: result.warnings,
+        unmovable: result.unmovable,
+        // ★手で押した [Tidy] だけが「何も当たらなかった」を出す。
+        manual: action is Tidy,
+      ));
+      // ★★ 同一視は**種類だけ**（決定 D92 / 未決 U25）★★
+      //   `RuleProcessResult.warnings` は対象カードを 1 つも持たない。
+      //   **持っていないものを比較に使わない。**
+      lastNewWarnings = result.warnings
+          .where((kind) => !_warningBaseline.contains(kind))
+          .toSet()
+          .toList();
+      _warningBaseline = result.warnings.toSet();
+    }
+
+    // ★★ 進行も**全件**積む（M-B7 / 新所見 D-21 の本体 / 決定 D98-2）★★
+    if (report.advance case final result?) {
+      steps.add(BoardStepLog(
+        cursor: cursorBefore,
+        taken: result.taken,
+        refreshCount: report.refreshCount,
+      ));
+      skipped.addAll(result.skipped);
+    }
+  }
 }
 
 /// 盤面 1 セッションぶんの状態。
@@ -488,61 +694,133 @@ class GameStore extends Store<BoardState> {
   /// これは未決 **U15**（巻き戻しても乱数が張り直されない）と同じ性質であり、
   /// **同じ引き金を踏んだときに一緒に解く。**
   void dispatchAll(List<GameAction> actions) {
+    var index = 0;
+    _run((run) => index < actions.length ? actions[index++] : null);
+  }
+
+  /// ★★ 次の停止点まで進む（M-B7 / 決定 D92）。1 押下 = 履歴 1 件 ★★
+  ///
+  /// ★★ 最低 1 ステップは必ず実行する ★★
+  /// 停止点の上で押したということは、プレイヤーがそこを済ませたということである。
+  /// 実行してから、次の停止点まで進む。
+  ///
+  /// ★★ [stopsAt] を関数で受ける理由 ★★
+  /// 「停止点が 1 つも無い設定」を**テストから実際に踏ませる**ため。
+  /// `loveca_core` の `skipForward` が `isSkipped` を関数で受けているのと同じ手当てで、
+  /// **到達しない列挙値を足す（＝死んだ枝を作る）代わり**である。
+  /// ★bool ではなく**理由の一覧**を返す —— 成立したものを全部出すため（§15-6）。
+  ///
+  /// ★★ 無限ループの番人 ★★
+  /// 1 押下で [maxPhaseHops] を超えてフェイズを跨いだら [StateError]。
+  /// `skipForward` の `hop()` と同じ形である。
+  ///
+  /// ★★ 既定値には**到達できない**（実測で確かめた）★★
+  /// 停止点を 1 つも持たない設定にしても、8.4.12 が `choice` なしで
+  /// [ArgumentError] を投げるので、**フェイズを 1 周する前に必ず止まる。**
+  /// → **番人が働くことを見るには上限を下げるしかない。**
+  /// ★`historyMaxDepth`（512 は手では到達させられない / M-B5）と同じ手当てである。
+  /// ★**本番でこれを渡さない。**
+  ///
+  /// ★[choice] は**最初の 1 ステップにだけ**渡る。2 歩目以降で宣言が要る位置
+  /// （8.4.12）に着いたら、その手前で必ず止まる（`stopsAutoAdvance`）。
+  void advanceToStop({
+    StepTransition? choice,
+    List<BoardStopReason> Function(BoardAdvanceProgress) stopsAt =
+        autoAdvanceStops,
+    int? maxPhaseHops,
+  }) {
+    final hopLimit = maxPhaseHops ?? phaseCycle.length;
+    final turnNumberBefore = value.state.turnNumber;
+    var phase = value.state.cursor.phase;
+    var phaseHops = 0;
+
+    _run((run) {
+      if (run.steps.isNotEmpty) {
+        final reasons = stopsAt(BoardAdvanceProgress(
+          state: run.state,
+          turnNumberBefore: turnNumberBefore,
+          stepsTaken: run.steps.length,
+          lastRefreshCount: run.lastRefreshCount,
+          newWarnings: run.lastNewWarnings,
+        ));
+        if (reasons.isNotEmpty) {
+          run.stops.addAll(reasons);
+          return null;
+        }
+        if (run.state.cursor.phase != phase) {
+          phase = run.state.cursor.phase;
+          phaseHops++;
+          if (phaseHops > hopLimit) {
+            // ★停止点が 1 つも無い設定を入れると無限ループになる。数えて止める。
+            throw StateError(
+              '1 回の「次へ」でフェイズを $hopLimit 回より多く跨いだ。'
+              '停止点が 1 つも無い設定になっている（${run.state.cursor}）',
+            );
+          }
+        }
+      }
+      return AdvanceStep(choice: run.steps.isEmpty ? choice : null);
+    });
+  }
+
+  /// ★★ `reduce` を呼ぶ唯一の場所 ★★
+  ///
+  /// ★★ 固定列（[dispatchAll]）も自動進行（[advanceToStop]）もここを通る ★★
+  /// 経路を 2 本にすると `reduce` の呼び出し口が 2 つになる。
+  /// `test/board/reduce_call_site_test.dart` が「`game_store.dart` にちょうど 1 件」を
+  /// 走査で固定しているのは、Phase 6 の差し替え点を 1 箇所に保つためである。
+  /// ★[nextAction] が null を返すまで回す。**次に何をするかだけが違う。**
+  ///
+  /// ★★ 合成コマンド（決定 D78 / 盤面設計メモ §8-2）★★
+  /// `reduce` を N 回回して合成状態を作り、`record` を **1 回だけ**呼ぶ。
+  /// これにより N 個のアクションが**履歴 1 件 = 1 undo** になる。
+  /// ★N は固定列なら渡された件数、自動進行なら**実行時に決まる**が、
+  /// 記録するのは**決まったあとの具体列**なので `board_session_test.dart` の
+  /// 再生（`dispatchAll` / `undo` / `undoStep`）はそのまま通る。
+  ///
+  /// ★★ 途中で投げたときの扱い ★★
+  /// N 回のうち k 回目が投げたら、**1〜k-1 回目の結果も残らない。**
+  /// [state] への代入がループの外に 1 回しか無いので、`value` は `identical` のまま。
+  /// 履歴も 1 件も増えない（`record` に到達しない）。
+  /// ★**ただし乱数は進む。**1〜k-1 回目が消費したぶんは戻せない。
+  /// これは未決 **U15**（巻き戻しても乱数が張り直されない）と同じ性質であり、
+  /// **同じ引き金を踏んだときに一緒に解く。**
+  void _run(GameAction? Function(_Run run) nextAction) {
     final before = value.state;
     final rngBefore = _rng.count;
+    // ★★ 「新規の警告」の基準は**直前に観測した集合**である（決定 D92 / §15-5）★★
+    //   ★`BoardTidyLog` は「次の整理まで残す」設計なので、最後の 1 件が最新の観測。
+    //   ★押下の中で**走りながら更新する** —— 固定基準だと「押下の途中で解消され、
+    //     同じ押下の中で再び立つ」を取りこぼす。
+    final run = _Run(
+      before,
+      value.tidies.isEmpty ? const {} : value.tidies.last.warnings.toSet(),
+    );
 
-    var next = before;
-    var refreshCount = 0;
-    final tidies = <BoardTidyLog>[];
-    final steps = <BoardStepLog>[];
-    final skipped = <StepCursor>[];
-
-    for (final action in actions) {
-      final cursorBefore = next.cursor;
+    while (true) {
+      final action = nextAction(run);
+      if (action == null) break;
+      final cursorBefore = run.state.cursor;
       // ★★ 投げたらここで終わる。下の record にも state の代入にも到達しない ★★
-      final report = reduceWithReport(next, action, context: _context);
-      next = report.state;
-      refreshCount += report.refreshCount;
-      // ★★ 整理は**全件**積む（M-B6 / 決定 D93-5 / 新所見 D-21 の器）★★
-      //   最後の 1 件で上書きすると、M-B7 の自動進行が複数の CT を通ったときに
-      //   途中の 10.3 / 10.6 の警告が黙って落ちる。
-      if (report.tidy case final result?) {
-        tidies.add(BoardTidyLog(
-          cursor: cursorBefore,
-          applied: result.applied,
-          warnings: result.warnings,
-          unmovable: result.unmovable,
-          // ★手で押した [Tidy] だけが「何も当たらなかった」を出す。
-          manual: action is Tidy,
-        ));
-      }
-      // ★★ 進行も**全件**積む（M-B7 / 新所見 D-21 の本体 / 決定 D98-2）★★
-      //   最後の 1 件で上書きすると、自動進行が複数ステップ進んだときに
-      //   8.3.6 の早期終了も、跨いだフェイズのスキップも黙って消える。
-      if (report.advance case final result?) {
-        steps.add(BoardStepLog(
-          cursor: cursorBefore,
-          taken: result.taken,
-          refreshCount: report.refreshCount,
-        ));
-        skipped.addAll(result.skipped);
-      }
+      final report = reduceWithReport(run.state, action, context: _context);
+      run.absorb(cursorBefore, action, report);
     }
 
     final operation = BoardOperationLog(
       cursorBefore: before.cursor,
-      steps: steps,
-      refreshCount: refreshCount,
+      steps: run.steps,
+      stops: run.stops,
+      refreshCount: run.refreshCount,
       // ★飛ばしたカーソルを黙って落とさない（決定 D88）。
-      skipped: skipped,
+      skipped: run.skipped,
     );
-    final session = value.session.record(next);
+    final session = value.session.record(run.state);
     // ★整理が 1 件も起きていないときは前の値を残す（[BoardTidyLog] の doc）。
     _pushApplied(
       session,
       _AppliedLog(
         operation: operation,
-        tidies: tidies.isEmpty ? value.tidies : tidies,
+        tidies: run.tidies.isEmpty ? value.tidies : run.tidies,
         rngConsumed: _rng.count > rngBefore,
       ),
     );
@@ -550,10 +828,10 @@ class GameStore extends Store<BoardState> {
     state = value.copyWith(
       session: session,
       operation: operation,
-      tidies: tidies.isEmpty ? null : tidies,
+      tidies: run.tidies.isEmpty ? null : run.tidies,
       // ★巻き戻しの行は次の操作で消す（寿命は「次の操作まで」）。
       clearRewind: true,
-      log: [...value.log, Act(actions)],
+      log: [...value.log, Act(run.applied)],
     );
   }
 

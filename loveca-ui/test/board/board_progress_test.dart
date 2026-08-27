@@ -407,13 +407,15 @@ void main() {
       );
     }
 
-    testWidgets('「次へ」でステップが進み、進行バーが変わる', (tester) async {
+    testWidgets('★「1 ステップ」で 1 つだけ進み、進行バーが変わる', (tester) async {
+      // ★★ M-B7 で「次へ」は次の停止点まで進むようになった（決定 D92）★★
+      //   1 ステップだけ進む口は `advance-one-step` である（恒久 / D92-4）。
       await pumpBoard(tester, _oneTurnBoard());
 
       expect(find.textContaining('ステップ 7.4.1'), findsOneWidget);
       expect(find.textContaining('先攻アクティブ 7.4'), findsOneWidget);
 
-      await tester.tap(find.byKey(const ValueKey('advance-step')));
+      await tester.tap(find.byKey(const ValueKey('advance-one-step')));
       await tester.pumpAndSettle();
 
       expect(find.textContaining('ステップ 7.4.2'), findsOneWidget);
@@ -435,10 +437,27 @@ void main() {
       expect(find.text('まだ処理がある'), findsOneWidget);
       expect(find.text('処理は無い'), findsOneWidget);
 
+      // ★★ 「1 ステップ」も無効になる（黙って効かないボタンにしない）★★
+      final oneStep = find.byKey(const ValueKey('advance-one-step'));
+      expect(oneStep, findsOneWidget, reason: '★消してはいけない');
+      expect(tester.widget<OutlinedButton>(oneStep).onPressed, isNull);
+
       await tester.tap(find.text('まだ処理がある'));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('ステップ 8.4.9'), findsOneWidget);
+      // ★★ 選んだあとも次の停止点まで進む（決定 D92 / §15-7）★★
+      //   8.4.9 へ戻り、8.4.9 / 8.4.11 のチェックタイミングを回して 8.4.12 へ帰る。
+      //   ★つまり 1 押下 = 8.4.12 のループ 1 周である。
+      final executed = tester
+          .widget<BoardView>(find.byType(BoardView).first)
+          .store
+          .value
+          .operation!
+          .steps;
+      expect(executed.map((step) => step.cursor.step),
+          containsAll(const [StepId.s8_4_12, StepId.s8_4_9, StepId.s8_4_11]));
+      expect(find.textContaining('ステップ 8.4.12'), findsOneWidget,
+          reason: '★宣言が要る位置なので、また止まる');
     });
 
     testWidgets('★対: 分岐でないステップでは 2 択が出ない', (tester) async {
@@ -456,7 +475,9 @@ void main() {
         ),
       );
 
-      await tester.tap(find.byKey(const ValueKey('advance-step')));
+      // ★1 ステップだけ進めて、分岐そのものを読む。
+      //   ★1 押下で通り過ぎたときの見え方は `board_auto_advance_test.dart`。
+      await tester.tap(find.byKey(const ValueKey('advance-one-step')));
       await tester.pumpAndSettle();
 
       // ★「ライブカード置き場が空」は集計の帯（8.4.2 が null の理由）にも出る。
@@ -519,7 +540,7 @@ void main() {
     testWidgets('★★ 押す前に着地先がラベルに出る（Tooltip に隠さない）★★', (tester) async {
       await pumpBoard(tester, rngBoard());
 
-      await tester.tap(find.byKey(const ValueKey('advance-step')));
+      await tester.tap(find.byKey(const ValueKey('advance-one-step')));
       await tester.pumpAndSettle();
 
       // ★★ 条番号はラベル自身に出す ★★ Tooltip はマウスを乗せないと出ない。
@@ -570,7 +591,7 @@ void main() {
     testWidgets('★ 押すと戻り、戻ったことが行に出る', (tester) async {
       await pumpBoard(tester, rngBoard());
 
-      await tester.tap(find.byKey(const ValueKey('advance-step')));
+      await tester.tap(find.byKey(const ValueKey('advance-one-step')));
       await tester.pumpAndSettle();
       expect(
         find.descendant(

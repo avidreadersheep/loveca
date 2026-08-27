@@ -24,6 +24,7 @@ import 'package:loveca_ui/src/state/game_store.dart';
 import 'package:loveca_ui/src/ui/board/board_start_dialog.dart';
 
 import '../support/board_fixture.dart';
+import '../support/board_signature.dart';
 import '../support/real_shaped_catalog.dart';
 
 const _seed = 20260825;
@@ -170,58 +171,6 @@ void _replay(GameStore store, List<BoardLogEntry> log) {
 }
 
 // ===========================================================================
-// 盤面の署名
-// ===========================================================================
-
-/// ★★ `GameState` に `==` が無い（`StepCursor` にしかない）★★
-/// 一致を見るには構造を writing out するしかない。**手で列挙する以上、
-/// 落ちた項目は検査されない**ので、領域は `Zone.values` から回して漏れを防ぐ。
-String _signature(GameState state) {
-  final out = StringBuffer()
-    ..writeln('turn=${state.turnNumber}')
-    ..writeln('first=${state.firstPlayerId}')
-    ..writeln('cursor=${state.cursor.phase.ruleRef}/${state.cursor.step.ruleRef}')
-    ..writeln('judgeWin=${_sorted(state.liveJudgement?.winnerIds)}')
-    ..writeln('judgeMoved=${_sorted(state.liveJudgement?.movedToSuccessIds)}')
-    ..writeln('resolution=${state.resolution.map(_card).join(',')}');
-
-  for (final player in state.players) {
-    out.writeln('-- ${player.playerId}');
-    for (final zone in Zone.values) {
-      // ★実体を持たない / 専用の入れ物がある 3 つは `cardsIn` が受け取らない。
-      if (zone == Zone.stage ||
-          zone == Zone.memberArea ||
-          zone == Zone.resolution) {
-        continue;
-      }
-      final cards = cardsIn(state, player.playerId, zone);
-      out.writeln('${zone.ruleRef}=${cards.map(_card).join(',')}');
-    }
-    for (final area in player.memberAreas) {
-      final stacks = [
-        for (final stack in area.stacks)
-          '${_card(stack.member)}[${stack.beneath.map(_card).join('+')}]',
-      ];
-      out.writeln('area(${area.slot.name})=${stacks.join(' ')}'
-          ' orphans=${area.orphans.map(_card).join(',')}');
-    }
-    for (final zone in OutOfRuleZone.values) {
-      final cards = cardsInOutOfRule(state, player.playerId, zone);
-      out.writeln('outOfRule(${zone.name})=${cards.map(_card).join(',')}');
-    }
-  }
-  return out.toString();
-}
-
-/// 8.4.6 / 8.4.7 の記録。★`Set` は順が不定なので並べてから写す。
-String _sorted(Set<String>? ids) =>
-    ids == null ? '-' : (ids.toList()..sort()).join(',');
-
-/// ★向き・表裏まで見る。位置だけ見ると 5.2 / 5.3 の取り消しが検査から漏れる。
-String _card(CardInstance card) => '${card.instanceId}'
-    '/${card.face.name}/${card.orientation?.name ?? '-'}';
-
-// ===========================================================================
 
 void main() {
   group('★★ 巻き戻しを含むログの再生（決定 D78 / §8-3）★★', () {
@@ -239,7 +188,7 @@ void main() {
       final replayed = _store(initial);
       _replay(replayed, live.value.log);
 
-      expect(_signature(replayed.value.state), _signature(live.value.state));
+      expect(boardSignature(replayed.value.state), boardSignature(live.value.state));
       // ★履歴の深さも一致する（巻き戻しの着地先が同じであることの裏づけ）。
       expect(replayed.value.session.history.depth,
           live.value.session.history.depth);
@@ -267,8 +216,8 @@ void main() {
       final replayed = _store(initial);
       _replay(replayed, actionsOnly);
 
-      expect(_signature(replayed.value.state),
-          isNot(_signature(live.value.state)));
+      expect(boardSignature(replayed.value.state),
+          isNot(boardSignature(live.value.state)));
 
       live.dispose();
       replayed.dispose();
@@ -307,7 +256,7 @@ void main() {
       final solo = _store(initial, mode: BoardMode.solo);
       _replay(solo, log);
 
-      expect(_signature(solo.value.state), isNot(_signature(versus.value.state)));
+      expect(boardSignature(solo.value.state), isNot(boardSignature(versus.value.state)));
 
       versus.dispose();
       solo.dispose();
@@ -322,7 +271,7 @@ void main() {
       final a = _store(initial)..let(_replay, log);
       final b = _store(initial)..let(_replay, log);
 
-      expect(_signature(b.value.state), _signature(a.value.state));
+      expect(boardSignature(b.value.state), boardSignature(a.value.state));
 
       a.dispose();
       b.dispose();

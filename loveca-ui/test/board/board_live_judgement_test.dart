@@ -191,7 +191,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('live-judgement-apply')));
       await tester.pumpAndSettle();
 
-      await _advanceUntil(tester, StepId.s8_4_14);
+      await _advancePast(tester, StepId.s8_4_13);
 
       expect(_view(tester).state.firstPlayerId, kOpponentPlayerId,
           reason: '★★8.4.13「一方のプレイヤーのみが移動していた場合」★★');
@@ -209,7 +209,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('live-judgement-apply')));
       await tester.pumpAndSettle();
 
-      await _advanceUntil(tester, StepId.s8_4_14);
+      await _advancePast(tester, StepId.s8_4_13);
 
       expect(_view(tester).state.firstPlayerId, kSelfPlayerId);
     });
@@ -225,7 +225,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('live-judgement-apply')));
       await tester.pumpAndSettle();
 
-      await _advanceUntil(tester, StepId.s8_4_14);
+      await _advancePast(tester, StepId.s8_4_13);
 
       expect(_view(tester).state.firstPlayerId, kSelfPlayerId,
           reason: '★8.4.13 は 8.4.6 の勝敗を読まない');
@@ -233,16 +233,20 @@ void main() {
   });
 }
 
-/// [target] のステップに着くまで「次へ」を押す。
+/// [target] のステップを**実行する**まで進める。
 ///
 /// ★★ 分岐（8.4.12）では**前へ進む**側を選ぶ ★★
 /// 8.4.12 は「処理がある → 8.4.9 へ戻る」というループを持つので、
 /// 最初の候補を選ぶと戻り続けて着かない。
 /// ★どちらが前かは `PhaseId.steps` の並びから導く（テストに条番号を書かない）。
-Future<void> _advanceUntil(WidgetTester tester, StepId target) async {
+///
+/// ★★ M-B7 で条件を「着いたか」から「実行したか」へ変えた（決定 D92）★★
+/// 「次へ」は**次の停止点まで**進むので、目的のステップを 1 押下で
+/// **通り過ぎる**ことがある。カーソル位置で見ると永久に着かない。
+/// → **1 押下で実行したステップ**（`BoardOperationLog.steps`）で見る。
+Future<void> _advancePast(WidgetTester tester, StepId target) async {
   for (var i = 0; i < 12; i++) {
     final cursor = _view(tester).state.cursor;
-    if (cursor.step == target) return;
 
     if (find.byKey(const ValueKey('advance-choice')).evaluate().isNotEmpty) {
       final steps = cursor.phase.steps;
@@ -257,6 +261,9 @@ Future<void> _advanceUntil(WidgetTester tester, StepId target) async {
       await tester.tap(find.byKey(const ValueKey('advance-step')));
     }
     await tester.pumpAndSettle();
+
+    final executed = _view(tester).store.value.operation?.steps ?? const [];
+    if (executed.any((step) => step.cursor.step == target)) return;
   }
-  fail('${target.ruleRef} に着かなかった');
+  fail('${target.ruleRef} を実行しなかった');
 }

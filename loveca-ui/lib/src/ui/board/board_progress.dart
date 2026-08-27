@@ -101,27 +101,66 @@ class BoardProgressBar extends StatelessWidget {
   }
 }
 
-/// 「次へ」。★8.4.12 のように宣言が要る分岐では 2 択に置き換わる。
+/// ★★ 進行の 2 つのボタン（M-B7 / 決定 D92-4）★★
+///
+/// | | key | 進む量 |
+/// |---|---|---|
+/// | 「次へ」 | `advance-step` | ★**次の停止点まで**（主） |
+/// | 「1 ステップ」 | `advance-one-step` | ★**1 ステップだけ**（恒久・副） |
+///
+/// ★8.4.12 のように宣言が要る分岐では、「次へ」が 2 択に置き換わる（既存 / D86）。
+/// ★**選んだあとも、そのまま次の停止点まで進む。**
+///
+/// ★★ 設定で切り替えない ★★
+/// 挙動の空間が 2 倍になり、検査が**モード 3 × 設定 2** に増える。
+/// M-B4 が [BoardMode] を required にして「どのテストがどのモードを試しているかを
+/// 型で見せた」利得（D88）が薄まる。
 class _AdvanceControls extends StatelessWidget {
   const _AdvanceControls({required this.store});
 
   final GameStore store;
 
   @override
+  Widget build(BuildContext context) => Wrap(
+        key: const ValueKey('advance-controls'),
+        spacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          if (store.requiresChoice)
+            _AdvanceChoice(store: store)
+          else
+            Tooltip(
+              message: '次の停止点まで進みます（決定 D92）。\n'
+                  '★止まるのは、条文があなたの選択・判断・盤面操作を求めるステップの'
+                  '手前と、\n'
+                  '　アプリが自動実行しないルール処理（10.3 / 10.6）が新しく成立した'
+                  'とき、\n'
+                  '　リフレッシュ（10.2.1）が割り込んだとき、ターンが変わったときです。\n'
+                  '★1 押下 = 履歴 1 件なので、「1 つ戻す」で押す前に戻ります。',
+              child: FilledButton.icon(
+                key: const ValueKey('advance-step'),
+                onPressed: store.advanceToStop,
+                icon: const Icon(Icons.skip_next, size: 18),
+                label: const Text('次へ'),
+              ),
+            ),
+          _AdvanceOneStepButton(store: store),
+        ],
+      );
+}
+
+/// ★★ 8.4.12 の 2 択（既存 / 決定 D86）★★
+///
+/// ★文言は遷移表の `label` をそのまま出す。UI に選択肢を書くと、
+/// 遷移表を直したときに片方だけ古くなる（D-15）。
+class _AdvanceChoice extends StatelessWidget {
+  const _AdvanceChoice({required this.store});
+
+  final GameStore store;
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-
-    if (!store.requiresChoice) {
-      return FilledButton.icon(
-        key: const ValueKey('advance-step'),
-        onPressed: () => store.dispatch(const AdvanceStep()),
-        icon: const Icon(Icons.skip_next, size: 18),
-        label: const Text('次へ'),
-      );
-    }
-
-    // ★★ 文言は遷移表の `label` をそのまま出す ★★
-    //   UI に選択肢を書くと、遷移表を直したときに片方だけ古くなる（D-15）。
     return Wrap(
       key: const ValueKey('advance-choice'),
       spacing: 8,
@@ -136,7 +175,8 @@ class _AdvanceControls extends StatelessWidget {
         for (final transition in store.transitions)
           FilledButton.tonal(
             key: ValueKey('advance-choice-${transition.label}'),
-            onPressed: () => store.dispatch(AdvanceStep(choice: transition)),
+            // ★選んだあとも、そのまま次の停止点まで進む（決定 D92 / §15-7）。
+            onPressed: () => store.advanceToStop(choice: transition),
             style: FilledButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 10),
               textStyle: theme.textTheme.labelMedium,
@@ -144,6 +184,55 @@ class _AdvanceControls extends StatelessWidget {
             child: Text(transition.label),
           ),
       ],
+    );
+  }
+}
+
+/// ★★ 「1 ステップ」は恒久である（決定 D92-4）★★
+///
+/// ★D81 / D87 が `DrawEnergy` を「恒久である。M-B1 限りの足場ではない」と明記したのと
+/// 同じ扱いにする。**書かないと、次に「使われていないから消そう」となる。**
+///
+/// ★★ 日常的に使うものではない。だが正当な用途が 3 つある（§15-7）★★
+///
+/// | # | 用途 |
+/// |---|---|
+/// | 1 | **不具合追跡** —— 1 ステップずつ盤面を見る |
+/// | 2 | ★**検査が本番の口を通り続ける** —— 73 / 42 ステップの通し（D86 / D88）が、テストだけの別経路を作らずに成立する |
+/// | 3 | ★**自動進行の途中へ戻りたいとき**（1 押下 = 1 undo の代償の退避先） |
+///
+/// ★★ 2 つのボタンは役割分担している ★★
+/// 「まとめて進む」と「細かく進む」であり、**細かく戻したいときは細かく進む。**
+/// 片方だけを見て消さないこと。
+///
+/// ★★ 8.4.12 では無効にして理由を出す ★★
+/// 宣言が要る分岐なので 1 ステップだけ進める口が無い。
+/// **黙って効かないボタンを作らない**（`_UndoButton` / `_DrawEnergyButton` と同じ形）。
+class _AdvanceOneStepButton extends StatelessWidget {
+  const _AdvanceOneStepButton({required this.store});
+
+  final GameStore store;
+
+  @override
+  Widget build(BuildContext context) {
+    final blocked = store.requiresChoice;
+    return Tooltip(
+      message: blocked
+          ? 'ここはどちらへ進むかの宣言が要るので、1 ステップだけ進めることは'
+              'できません。左の 2 択から選んでください。'
+          : '1 ステップだけ進みます（${store.value.state.cursor.step.ruleRef}）。\n'
+              '★日常的に使うものではありません。1 ステップずつ盤面を見たいときと、\n'
+              '　自動進行の途中へ戻したいとき（細かく戻すには細かく進む）に使います。',
+      child: OutlinedButton.icon(
+        key: const ValueKey('advance-one-step'),
+        onPressed: blocked ? null : () => store.dispatch(const AdvanceStep()),
+        icon: const Icon(Icons.chevron_right, size: 18),
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          textStyle: Theme.of(context).textTheme.labelMedium,
+        ),
+        label: const Text('1 ステップ'),
+      ),
     );
   }
 }
