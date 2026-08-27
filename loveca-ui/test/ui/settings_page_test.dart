@@ -159,28 +159,32 @@ void main() {
           findsNothing);
     });
 
-    testWidgets('★★ 直っている記録には「そのあと取り込めています」と添える（D-13）★★',
+    testWidgets('★★ 「そのあと取り込めています」はもう出ない（D-13 の根治）★★',
         (tester) async {
+      // ★★ 2026-08-27: 当座の手当てを撤去した ★★
+      //   `MasterStateDao.recordFile` が同じ path の過去の失敗を消すので、
+      //   **ここに並ぶのは「いま読めていないファイル」だけ**になった。
+      //   ★残しておくと逆に嘘をつく —— `currentHash != hash` になるのは
+      //     「**古い**版が取り込まれていて**新しい**版で失敗した」ときで、
+      //     「新しい版で取り込めています」は向きが逆である。
       await _open(
         tester,
         master: FakeMasterRepository(
-          issues: [_issue(currentHash: 'sha256:fixed')],
+          issues: [_issue(currentHash: 'sha256:other')],
         ),
       );
       await _scrollToEnd(tester);
 
-      expect(
-        find.textContaining('そのあと別の版で取り込めています'),
-        findsOneWidget,
-      );
-    });
-
-    testWidgets('★直っていなければ添えない（上の対）', (tester) async {
-      await _open(tester, master: FakeMasterRepository(issues: [_issue()]));
-      await _scrollToEnd(tester);
-
-      expect(find.textContaining('そのあと別の版で取り込めています'), findsNothing,
-          reason: '出る側だけ見ると、常に「直っています」と出す実装でも通る');
+      expect(find.textContaining('そのあと別の版で取り込めています'), findsNothing);
+      // ★対: 記録そのものは出ている（節ごと壊していないこと）。
+      expect(find.byKey(const ValueKey('importIssue:cards/BP01.json')),
+          findsOneWidget);
+      // ★現在ハッシュは手がかりとして残す。
+      //   ★「詳しい内容」は畳んである（内部語彙を最初から見せない）ので、
+      //     **開かないと出ない**。開かずに見ると常に通る検査になる。
+      await tester.tap(find.text('詳しい内容'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('sha256:other'), findsOneWidget);
     });
 
     testWidgets('★読めなければエラーを出す。0 件にすり替えない（決定 D53）',

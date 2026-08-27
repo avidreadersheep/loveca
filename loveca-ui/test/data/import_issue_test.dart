@@ -141,7 +141,6 @@ void main() {
       expect(issues.single.firstSeenAt.toUtc(), _t0);
       // ★一度も取り込めていないので現在ハッシュは無い。
       expect(issues.single.currentHash, isNull);
-      expect(issues.single.supersededByNewerFile, isFalse);
     });
 
     test('★壊れていなければ 1 件も出ない（出ない側）', () async {
@@ -206,8 +205,14 @@ void main() {
           reason: 'D39 が「取り込み成功で自動的に未解消から外れる」と書いた経路');
     });
 
-    test('★★ 配信側が直してハッシュが変わると、取り込めても未解消のまま残る（D-13）★★',
+    test('★★ 配信側が直してハッシュが変わっても 0 件に戻る（D-13 の根治）★★',
         () async {
+      // ★★ 2026-08-27: 向きが逆になった ★★
+      //   ここは「取り込めても未解消のまま残る」ことを固定していた。
+      //   それが **D-13 そのもの**であり、UI 側で
+      //   `supersededByNewerFile` を立てて言い添えるのが当座の手当てだった。
+      //   `MasterStateDao.recordFile` が同じ path の過去の失敗を消すようになり、
+      //   **記録そのものが残らなくなった。**
       writeDist(
         cards: _cardsJson(heartColor: 'CYAN'),
         hash: 'sha256:broken',
@@ -222,31 +227,32 @@ void main() {
       final result = await runImport();
       expect(result.failedPaths, isEmpty, reason: '今度は取り込めている');
 
-      // ★未解消の判定は NOT EXISTS(master_files WHERE path=? AND hash=?) で、
-      //   master_files は path ごとに現在のハッシュ 1 件しか持たない。
-      //   → 古いハッシュの記録は永久に残り、消す API も無い。
-      expect(await master.outstandingImportIssueCount(), 1,
-          reason: '★これが D-13。loveca_db を変更しないので UI 側で見分ける');
-
-      final issues = await master.outstandingImportIssues();
-      expect(issues.single.hash, 'sha256:broken');
-      expect(issues.single.currentHash, 'sha256:fixed');
-      expect(issues.single.supersededByNewerFile, isTrue,
-          reason: '「いま壊れている」と「壊れた記録が残っている」を混ぜない');
+      expect(await master.outstandingImportIssueCount(), 0);
+      expect(await master.outstandingImportIssues(), isEmpty,
+          reason: '★「未解消でない」ではなく「行が無い」');
     });
 
-    test('★まだ直っていなければ supersededByNewerFile は立たない（上の対）',
-        () async {
+    test('★対: 成功のあとに別の版で失敗したら、それは未解消である', () async {
+      // ★★ 却下案「判定を path だけの NOT EXISTS にする」を排除する ★★
+      //   それだと**本物の失敗を隠す。**
+      writeDist(cards: _cardsJson(), hash: 'sha256:v1-ok', dataVersion: 1);
+      await runImport();
+      expect(await master.outstandingImportIssueCount(), 0);
+
       writeDist(
         cards: _cardsJson(heartColor: 'CYAN'),
-        hash: 'sha256:broken',
-        dataVersion: 1,
+        hash: 'sha256:v2-broken',
+        dataVersion: 2,
       );
       await runImport();
 
+      expect(await master.outstandingImportIssueCount(), 1);
       final issues = await master.outstandingImportIssues();
-      expect(issues.single.supersededByNewerFile, isFalse,
-          reason: '出る側だけ見ると、常に「直っています」と出す実装でも通る');
+      expect(issues.single.hash, 'sha256:v2-broken');
+      // ★現在ハッシュは「いま取り込まれている版」= 古い版のほう。
+      //   ★これが `supersededByNewerFile` を撤去した理由でもある ——
+      //     残しておくと**この状態で「新しい版で取り込めています」と嘘をつく。**
+      expect(issues.single.currentHash, 'sha256:v1-ok');
     });
   });
 

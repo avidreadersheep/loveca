@@ -61,12 +61,10 @@ class _IssueTile extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(
-                  issue.supersededByNewerFile
-                      ? Icons.history
-                      : Icons.warning_amber_outlined,
-                  size: 16,
-                ),
+                // ★★ 2026-08-27: 「記録だけが残っている」の枝を撤去した ★★
+                //   D-13 を根治したので、ここに並ぶのは
+                //   **いま読めていないファイルだけ**である（D-13 / 決定 D39）。
+                const Icon(Icons.warning_amber_outlined, size: 16),
                 const SizedBox(width: 6),
                 Expanded(
                   child: SelectableText(
@@ -85,27 +83,6 @@ class _IssueTile extends StatelessWidget {
               '最後に起きたのは ${_formatDate(issue.lastSeenAt)}',
               style: small,
             ),
-            if (issue.supersededByNewerFile) ...[
-              const SizedBox(height: 6),
-              // ★★ 「いま壊れている」と「壊れた記録が残っている」を混ぜない ★★
-              //   未解消の判定は (path, hash) の突き合わせで決まるので、
-              //   配信側が直して**内容が変わるとハッシュも変わり**、
-              //   取り込めるようになっても記録は残る
-              //   （`ルール整合性チェック_v1.06.md` D-13）。
-              //   ここで言わないと「ずっと壊れている」と誤解される。
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  'このファイルは、そのあと別の版で取り込めています。'
-                  'いま困っていることはありません（記録だけが残っています）。',
-                  style: small,
-                ),
-              ),
-            ],
             const SizedBox(height: 6),
             // ★例外の toString() は内部語彙そのものなので、畳んでおく。
             //   ただし**捨てない**。原因を追える唯一の手がかりである。

@@ -55,18 +55,46 @@ class MasterStateDao {
   /// ★成功したファイルだけ記録する★
   /// 行が無ければ `planUpdate` から見て `localHash == null` になり、
   /// 次回の計画で再取得対象に残る。これが失敗の再試行を成立させている。
-  Future<void> recordFile(ManifestFile file, DateTime importedAt) async {
-    await db.into(db.masterFiles).insertOnConflictUpdate(
-          MasterFilesCompanion.insert(
-            path: file.path,
-            hash: file.hash,
-            bytes: Value(file.bytes),
-            cardCount: Value(file.cardCount),
-            // ★DB 層は日時を UTC に正規化する（deck_dao.dart と同じ理由）。
-            importedAt: importedAt.toUtc(),
-          ),
-        );
-  }
+  ///
+  /// ★★ 同じ path の過去の失敗を同じトランザクションで消す（D-13）★★
+  /// 意味は「そのファイルが**いまの版で読めた**なら、そのファイルについての
+  /// 過去の失敗は未解消ではない」。
+  ///
+  /// ★★ なぜ消す必要があるのか ★★
+  /// 「未解消」の判定は `(path, hash)` の一致で行う（[_outstandingWhere]）。
+  /// `master_files` は path ごとに**現在のハッシュ 1 件だけ**を持つので、
+  /// **配信側がファイルを直すとハッシュが変わり、古い失敗の行と永久に照合できない。**
+  /// 決定 D39 の「取り込みに成功した時点で自動的に未解消から外れる」は、
+  /// **同じハッシュで再取得が成功する場合（一時的な読み取り失敗）にしか
+  /// 当てはまっていなかった。**
+  ///
+  /// ★★ 失敗の記録を捨ててよい理由 ★★
+  /// `import_issues` は「**いま何が読めないか**」を出すための表であって履歴ではない。
+  /// 1 回ごとの失敗は起動 Notice が出しており、繰り返しは `occurrenceCount` が持っている。
+  /// ★また壊れれば**新しい行が入る**（`firstSeenAt` も新しくなる）。
+  /// これは正しい —— **別の版の別の失敗**である。
+  ///
+  /// ★★ 判定を `path` だけの `NOT EXISTS` にしなかった理由 ★★
+  /// ★**逆方向に壊れる。** v1 で成功 → v2 で失敗、のときに「解消済み」に見え、
+  /// **本物の失敗を隠す。**
+  ///
+  /// ★`schemaVersion` は上げない。列も索引も変えないので移行が要らない。
+  Future<void> recordFile(ManifestFile file, DateTime importedAt) =>
+      db.transaction(() async {
+        await db.into(db.masterFiles).insertOnConflictUpdate(
+              MasterFilesCompanion.insert(
+                path: file.path,
+                hash: file.hash,
+                bytes: Value(file.bytes),
+                cardCount: Value(file.cardCount),
+                // ★DB 層は日時を UTC に正規化する（deck_dao.dart と同じ理由）。
+                importedAt: importedAt.toUtc(),
+              ),
+            );
+        await (db.delete(db.importIssues)
+              ..where((i) => i.path.equals(file.path)))
+            .go();
+      });
 
   Future<void> forgetFile(String path) async {
     await (db.delete(db.masterFiles)..where((f) => f.path.equals(path))).go();

@@ -139,11 +139,16 @@ class MasterRepository {
   /// 未解消の取り込み失敗の一覧（R6 / P2）。
   ///
   /// ★★ `master_files` の現在ハッシュを一緒に引く ★★
-  /// `import_issues` の「未解消」は `(path, hash)` の突き合わせで決まるため、
-  /// **配信側が直してハッシュが変わると永久に未解消のまま残る**
-  /// （`ルール整合性チェック_v1.06.md` D-13）。
-  /// 現在ハッシュを添えて `ImportIssue.supersededByNewerFile` を立て、
-  /// 「いま壊れている」と「壊れた記録が残っている」を画面で区別できるようにする。
+  /// 「いま何の版が取り込まれているか」は、失敗を調べるときの手がかりになる
+  /// （R6 の「詳しい内容」に出す）。
+  ///
+  /// ★★ 2026-08-27: D-13 は根治した ★★
+  /// 以前ここは `ImportIssue.supersededByNewerFile` を立てるためにあった。
+  /// **配信側が直すとハッシュが変わり、古い失敗が永久に未解消のまま残る**
+  /// という穴の当座の手当てである。
+  /// `MasterStateDao.recordFile` が同じ path の過去の失敗を消すようになったので
+  /// **その状態そのものが作れなくなり、フラグは撤去した。**
+  /// ★現在ハッシュ自体は手がかりとして残す。
   Future<List<ImportIssue>> outstandingImportIssues() =>
       guardRepository('master.outstandingImportIssues', () async {
         final dao = MasterStateDao(_db);

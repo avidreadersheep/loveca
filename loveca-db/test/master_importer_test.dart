@@ -308,6 +308,9 @@ void main() {
       expect(await state.outstandingImportIssueCount(), 1);
 
       // ★取り込みに成功したら自動で未解消から外れる（手で消す運用にしない）。
+      // ★★ ここは「同じハッシュ文字列で直した版」である（一時的な読み取り失敗の形）★★
+      //   **内容を直せばハッシュも変わる**という実際の配信の形は、下の
+      //   「別のハッシュで直しても 0 件に戻る」が見る（**D-13**）。
       final fixed = _Dist();
       fixed.replace(
         'cards/BP01.json',
@@ -316,6 +319,106 @@ void main() {
       );
       await run(fixed);
       expect(await state.outstandingImportIssueCount(), 0);
+    });
+
+    test('★★ 別のハッシュで直しても 0 件に戻る（D-13）★★', () async {
+      // ★★ この穴が D-13 である ★★
+      //   上のテストは**同じハッシュ文字列で直した版を publish している**ので、
+      //   `(path, hash)` の照合が成立していた。
+      //   実際の配信は**内容を直せばハッシュも変わる**ので、
+      //   古い失敗の行と永久に照合できず「未解消」のまま残っていた。
+      expect(await state.outstandingImportIssueCount(), 0);
+
+      final broken = _Dist();
+      broken.replace(
+        'cards/BP01.json',
+        _withUnknownHeartColor(readFixture('cards/BP01.json')),
+        'sha256:bp01-v1-broken',
+      );
+      await run(broken);
+      expect(await state.outstandingImportIssueCount(), 1);
+
+      final fixed = _Dist();
+      fixed.replace(
+        'cards/BP01.json',
+        readFixture('cards/BP01.json'),
+        // ★★ ここが違う。直した内容なのでハッシュも変わる ★★
+        'sha256:bp01-v2-fixed',
+      );
+      await run(fixed);
+
+      expect(await state.outstandingImportIssueCount(), 0);
+      // ★行そのものが消えていること（「未解消でない」ではなく「無い」）。
+      expect(await state.outstandingImportIssues(), isEmpty);
+    });
+
+    test('★対: 直っていなければ 0 件に戻らない（判定を path だけにすると壊れる）',
+        () async {
+      // ★★ 却下案 (c)「判定を path だけの NOT EXISTS にする」を排除する ★★
+      //   それだと v1 で成功 → v2 で失敗 のときに「解消済み」に見え、
+      //   **本物の失敗を隠す。**
+      final ok = _Dist();
+      ok.replace(
+        'cards/BP01.json',
+        readFixture('cards/BP01.json'),
+        'sha256:bp01-v1-ok',
+      );
+      await run(ok);
+      expect(await state.outstandingImportIssueCount(), 0);
+
+      // ★★ dataVersion を上げること ★★
+      //   1 回目が成功したので `data_version` が進んでいる（決定 D39）。
+      //   据え置くと `upToDate` になり **1 件も読まれない**ので、
+      //   「失敗しなかった」ではなく「試してすらいない」状態を測ることになる。
+      final broken = _Dist().bump(3);
+      broken.replace(
+        'cards/BP01.json',
+        _withUnknownHeartColor(readFixture('cards/BP01.json')),
+        'sha256:bp01-v2-broken',
+      );
+      await run(broken);
+
+      expect(await state.outstandingImportIssueCount(), 1,
+          reason: '★成功のあとに失敗したら、それは未解消の失敗である');
+    });
+
+    test('★ 別のファイルの失敗は巻き込まない（消すのは同じ path だけ）', () async {
+      final broken = _Dist();
+      broken.replace(
+        'cards/BP01.json',
+        _withUnknownHeartColor(readFixture('cards/BP01.json')),
+        'sha256:bp01-broken-x',
+      );
+      // ★★ BP03 ではなく BP05 を使う ★★
+      //   `_withUnknownHeartColor` は `"BLUE"` を置き換える。
+      //   **BP03 の fixture に `"BLUE"` は 1 つも無い**ので空振りし、
+      //   「壊したつもりで壊れていない」状態になる（実際に一度そうなった）。
+      broken.replace(
+        'cards/BP05.json',
+        _withUnknownHeartColor(readFixture('cards/BP05.json')),
+        'sha256:bp05-broken-x',
+      );
+      await run(broken);
+      expect(await state.outstandingImportIssueCount(), 2,
+          reason: '★2 ファイルとも本当に壊れていること');
+
+      // ★BP01 だけを直す。
+      final half = _Dist();
+      half.replace(
+        'cards/BP01.json',
+        readFixture('cards/BP01.json'),
+        'sha256:bp01-fixed-x',
+      );
+      half.replace(
+        'cards/BP05.json',
+        _withUnknownHeartColor(readFixture('cards/BP05.json')),
+        'sha256:bp05-broken-x',
+      );
+      await run(half);
+
+      final issues = await state.outstandingImportIssues();
+      expect(issues, hasLength(1));
+      expect(issues.single.path, 'cards/BP05.json');
     });
 
     test('watch が件数の変化を流す', () async {
