@@ -554,14 +554,26 @@ void main() {
       //   `deck_entries` に `ord` が入り**並びは保存される**ので、
       //   「開き直すとカード番号順に戻ります」という予告は嘘になった。
       //   ★縮退の型ごと撤去した（`DeckOrderNotPersisted`）。
+      // ★★ マスタに無い刷りを 1 枚混ぜてある ★★
+      //   これが陽性対照である。混ぜないと**この test は findsNothing だけ**になり、
+      //   **縮退の描画経路を丸ごと殺しても通る。**
+      //   ★2026-08-27 の自己検査で、実際にそうなっていたのを直した
+      //   （コメントは「別の縮退はまだ出る」と言っているのに `findsNothing` を
+      //     見ていた。フィクスチャに未知の刷りが無いので通っていた）。
       await _open(
         tester,
         deck: _deck(entries: const [
           DeckEntry(printingId: 'M-1-N', count: 1),
           DeckEntry(printingId: 'M-2-N', count: 1),
+          DeckEntry(printingId: '知らない刷り', count: 1),
         ]),
       );
 
+      // ★★ 対: 別の縮退が出ている（＝縮退の帯そのものは生きている）★★
+      //   ★見るのは `_DeckDegradationLine` が出す文言でなければならない。
+      //   「表示できないカード」は**区分の見出し**（`_section`）なので、
+      //   縮退の描画を丸ごと殺しても出たままである。**実測で確かめた。**
+      expect(find.textContaining('カードデータが未取得の刷りが'), findsOneWidget);
       expect(find.textContaining('カード番号順に戻ります'), findsNothing);
 
       final target = tester.getRect(_deckRow('M-1-N'));
@@ -571,9 +583,9 @@ void main() {
         Offset(target.center.dx, target.top + 4),
       );
 
+      // ★並べ替えても予告は出ない。★対のほうは出たまま。
       expect(find.textContaining('カード番号順に戻ります'), findsNothing);
-      // ★対: 別の縮退はまだ出る（縮退の仕組みごと壊していないこと）。
-      expect(find.textContaining('表示できないカード'), findsNothing);
+      expect(find.textContaining('カードデータが未取得の刷りが'), findsOneWidget);
     });
 
     testWidgets('★★ 並べ替えると保存ボタンが光る（D65 の手当て 4 は前提が反転）★★',
