@@ -53,38 +53,74 @@ import 'board_session.dart';
 import 'counting_rng.dart';
 import 'store.dart';
 
-/// 直前の 1 操作の結果（M-B3 / 決定 D86）。
+/// 1 つの `AdvanceStep` で起きたこと（M-B7 / 決定 D98-2）。
 ///
 /// ★[GameState] を保持しない。値だけを写し取る。
+class BoardStepLog {
+  const BoardStepLog({
+    required this.cursor,
+    required this.taken,
+    this.refreshCount = 0,
+  });
+
+  /// 実行した位置。★`AdvanceResult.executed` と同じ事実なので二重に持たない。
+  final StepCursor cursor;
+
+  /// たどった遷移。★8.3.6 の早期終了もこれで読める。
+  final StepTransition taken;
+
+  /// ★★ このステップの中で割り込んだリフレッシュの回数（10.2.1）★★
+  /// ★**ステップ別に持つ**（盤面設計メモ §15-10）。1 押下で複数ステップ進むので、
+  /// 合計だけだと「どのステップの途中で起きたか」が失われる。
+  final int refreshCount;
+
+  /// 条文が定める分岐（8.3.6 / 8.4.12）をたどったか。
+  ///
+  /// ★条番号を UI に書かないための入口。`StepDecision` は
+  /// **分岐を持つステップだけ**が非 null である（`step.dart`）。
+  bool get isBranch => cursor.step.decision != null;
+}
+
+/// ★★ 直前の 1 押下の結果（M-B3 / 決定 D86 / ★M-B7 で押下 1 回ぶんへ広げた）★★
+///
+/// ★★ 単数だったものを列にした理由（新所見 D-21 の本体 / 決定 D98-2）★★
+/// M-B6 までは `executed` / `taken` が**最後の 1 件**を指し、`cursorBefore` は
+/// **合成全体の開始位置**だった。2 つ以上の `AdvanceStep` を合成すると
+/// **2 つのフィールドが別のステップを指す。**
+/// 自動進行（決定 D92）は 1 押下で平均 6 ステップ進むのでこれを直接踏む。
+/// → **[steps] に全件を積む。**★`refreshCount` が元から `+=` だったのと同じ形である。
 class BoardOperationLog {
   const BoardOperationLog({
     required this.cursorBefore,
-    this.executed,
-    this.taken,
+    this.steps = const [],
     this.refreshCount = 0,
     this.skipped = const [],
   });
 
-  /// その操作を行った時点の進行位置。
+  /// その押下を始めた時点の進行位置。
   final StepCursor cursorBefore;
 
-  /// 実行したステップ。★`AdvanceStep` のときだけ非 null。
-  final StepId? executed;
+  /// ★この押下で実行したステップ**全件**。★`AdvanceStep` 以外では空。
+  final List<BoardStepLog> steps;
 
-  /// たどった遷移。★8.3.6 の早期終了もこれで読める。
-  final StepTransition? taken;
-
-  /// この操作の中で割り込んだリフレッシュの回数（総合ルール 10.2.1）。
+  /// この押下の中で割り込んだリフレッシュの合計回数（総合ルール 10.2.1）。
+  ///
+  /// ★内訳は [BoardStepLog.refreshCount]。★`AdvanceStep` 以外でも起こりうるので
+  /// **合計は [steps] の和とは限らない**（だから別に持つ）。
   final int refreshCount;
 
   /// ★★ 実行せずに通り越したカーソル（決定 D88）★★
   /// ソロでのみ空でなくなる。**黙って飛ばさない** —— 1 回の「次へ」で
   /// 4 フェイズを跨ぐことがあるので、出さないと「勝手に飛んだ」ように見える。
+  /// ★M-B7 で**押下ぶん連結**するようにした（最後の 1 件で上書きしない）。
   final List<StepCursor> skipped;
+
+  /// たどった遷移の最後の 1 件。★1 ステップだけ進んだときの読みやすさのために持つ。
+  BoardStepLog? get lastStep => steps.isEmpty ? null : steps.last;
 
   /// 見せるものが何も無いか。
   bool get isEmpty =>
-      taken == null && refreshCount == 0 && skipped.isEmpty;
+      steps.isEmpty && refreshCount == 0 && skipped.isEmpty;
 }
 
 /// 直前の整理（チェックタイミング 9.5.3）の結果（M-B3 / 決定 D86 / D93）。
@@ -458,8 +494,8 @@ class GameStore extends Store<BoardState> {
     var next = before;
     var refreshCount = 0;
     final tidies = <BoardTidyLog>[];
-    AdvanceResult? advance;
-    var skipped = const <StepCursor>[];
+    final steps = <BoardStepLog>[];
+    final skipped = <StepCursor>[];
 
     for (final action in actions) {
       final cursorBefore = next.cursor;
@@ -480,17 +516,22 @@ class GameStore extends Store<BoardState> {
           manual: action is Tidy,
         ));
       }
-      // ★★ 進行はまだ「最後に起きたもの」を採る（新所見 D-21 の本体は M-B7）★★
-      //   いま合成に [AdvanceStep] が入る経路は無い（1 件版からしか渡らない）。
-      //   ★自動進行はこれを直接踏むので、そのとき同じ形へ直す。
-      advance = report.advance ?? advance;
-      if (report.skipped.isNotEmpty) skipped = report.skipped;
+      // ★★ 進行も**全件**積む（M-B7 / 新所見 D-21 の本体 / 決定 D98-2）★★
+      //   最後の 1 件で上書きすると、自動進行が複数ステップ進んだときに
+      //   8.3.6 の早期終了も、跨いだフェイズのスキップも黙って消える。
+      if (report.advance case final result?) {
+        steps.add(BoardStepLog(
+          cursor: cursorBefore,
+          taken: result.taken,
+          refreshCount: report.refreshCount,
+        ));
+        skipped.addAll(result.skipped);
+      }
     }
 
     final operation = BoardOperationLog(
       cursorBefore: before.cursor,
-      executed: advance?.executed,
-      taken: advance?.taken,
+      steps: steps,
       refreshCount: refreshCount,
       // ★飛ばしたカーソルを黙って落とさない（決定 D88）。
       skipped: skipped,

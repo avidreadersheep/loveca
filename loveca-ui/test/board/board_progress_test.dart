@@ -223,8 +223,8 @@ void main() {
 
       expect(store.value.state.cursor.phase, PhaseId.secondPerformance,
           reason: '★フェイズ終了 → 次のフェイズの先頭へ');
-      expect(store.value.operation!.taken!.endsPhase, isTrue);
-      expect(store.value.operation!.taken!.label, contains('空'));
+      expect(store.value.operation!.lastStep!.taken.endsPhase, isTrue);
+      expect(store.value.operation!.lastStep!.taken.label, contains('空'));
     });
 
     test('★対: ライブカードがあれば 8.3.7 へ進む', () {
@@ -240,7 +240,7 @@ void main() {
 
       expect(store.value.state.cursor,
           const StepCursor(PhaseId.firstPerformance, StepId.s8_3_7));
-      expect(store.value.operation!.taken!.endsPhase, isFalse);
+      expect(store.value.operation!.lastStep!.taken.endsPhase, isFalse);
     });
   });
 

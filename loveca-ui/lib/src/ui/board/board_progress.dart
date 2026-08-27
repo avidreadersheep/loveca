@@ -391,10 +391,10 @@ class _LastOperationLine extends StatelessWidget {
     final theme = Theme.of(context);
 
     final parts = <String>[
-      if (operation.taken case final taken?)
-        '${operation.cursorBefore.step.ruleRef} → '
-            '${taken.endsPhase ? 'フェイズ終了' : taken.target!.ruleRef}'
-            '${taken.label.isEmpty ? '' : '（${taken.label}）'}',
+      if (operation.lastStep case final last?)
+        '${operation.steps.first.cursor.step.ruleRef} → '
+            '${last.taken.endsPhase ? 'フェイズ終了' : last.taken.target!.ruleRef}'
+            '${last.taken.label.isEmpty ? '' : '（${last.taken.label}）'}',
       if (operation.refreshCount > 0)
         'リフレッシュが ${operation.refreshCount} 回割り込みました'
             '（10.2.1。処理を中断して実行し、続きを実行します）',

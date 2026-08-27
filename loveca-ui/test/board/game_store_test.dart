@@ -200,7 +200,7 @@ void main() {
       expect(store.value.operation!.cursorBefore,
           const StepCursor(PhaseId.firstActive, StepId.s7_4_1));
       // ★DrawEnergy は進行ではないので遷移も整理も無い。
-      expect(store.value.operation!.taken, isNull);
+      expect(store.value.operation!.lastStep, isNull);
       expect(store.value.tidies, isEmpty);
       store.dispose();
     });
@@ -290,6 +290,85 @@ void main() {
       expect(many.value.operation!.cursorBefore, one.value.operation!.cursorBefore);
       one.dispose();
       many.dispose();
+    });
+  });
+
+  // =========================================================================
+  // ★★ 合成が「報告を持つアクション」を 2 つ以上含められる（M-B7 / 新所見 D-21 の本体）★★
+  //
+  // ★★ 器（tidy）は M-B6 で直した。ここは本体（advance / skipped）である ★★
+  //   M-B6 までは `executed` / `taken` が**最後の 1 件**を指し、`cursorBefore` は
+  //   **合成全体の開始位置**だったので、2 つ以上の `AdvanceStep` を合成すると
+  //   2 つのフィールドが別のステップを指した。
+  //   ★自動進行（決定 D92）は 1 押下で平均 6 ステップ進むのでこれを直接踏む。
+  // =========================================================================
+  group('★★ 進行の報告を全件積む（新所見 D-21 / 決定 D98-2）★★', () {
+    test('★★ AdvanceStep を 2 つ合成すると steps が 2 件になる ★★', () {
+      final store = storeWith(
+        state: handcraftedBoard(
+          cursor: const StepCursor(PhaseId.firstActive, StepId.s7_4_1),
+        ),
+      );
+
+      store.dispatchAll(const [AdvanceStep(), AdvanceStep()]);
+
+      final operation = store.value.operation!;
+      // ★最後の 1 件で上書きしていたら 1 件になる。
+      expect(operation.steps, hasLength(2));
+      expect(operation.steps.first.cursor.step, StepId.s7_4_1);
+      expect(operation.steps.last.cursor.step, StepId.s7_4_2);
+      // ★★ cursorBefore と 1 件目が同じステップを指す（食い違いの解消）★★
+      expect(operation.cursorBefore, operation.steps.first.cursor);
+      expect(store.value.session.history.depth, 1, reason: '★1 押下 = 履歴 1 件');
+      store.dispose();
+    });
+
+    test('★ 対: AdvanceStep が 1 つなら 1 件のまま（常に増える形にしない）', () {
+      final store = storeWith(
+        state: handcraftedBoard(
+          cursor: const StepCursor(PhaseId.firstActive, StepId.s7_4_1),
+        ),
+      );
+      store.dispatch(const AdvanceStep());
+      expect(store.value.operation!.steps, hasLength(1));
+      store.dispose();
+    });
+
+    test('★★ ソロで飛ばしたカーソルが押下ぶん連結される ★★', () {
+      // ★★ 8.4.2 から 3 歩進めると、別々の advance が 8.4.3 と 8.4.6 を飛ばす ★★
+      //   最後の 1 件で上書きしていると 8.4.3 が黙って消える（決定 D88 が
+      //   「黙って飛ばさない」と決めたものが黙る）。
+      final store = GameStore(
+        initialState: handcraftedBoard(
+          cursor: const StepCursor(PhaseId.liveJudgement, StepId.s8_4_2),
+        ),
+        viewerId: kSelfPlayerId,
+        mode: BoardMode.solo,
+        seed: 1,
+        cards: realShapedCatalog().cards,
+        rng: SeededRng(1),
+      );
+
+      store.dispatchAll(const [AdvanceStep(), AdvanceStep(), AdvanceStep()]);
+
+      final skipped = store.value.operation!.skipped.map((c) => c.step);
+      expect(skipped, containsAll(const [StepId.s8_4_3, StepId.s8_4_6]));
+      expect(store.value.operation!.steps, hasLength(3));
+      expect(store.value.state.cursor.step, StepId.s8_4_7,
+          reason: '★8.4.6 を飛ばして 8.4.7 に載る');
+      store.dispose();
+    });
+
+    test('★ 対: ローカル対戦では同じ 3 歩で 1 つも飛ばない（陽性対照）', () {
+      final store = storeWith(
+        state: handcraftedBoard(
+          cursor: const StepCursor(PhaseId.liveJudgement, StepId.s8_4_2),
+        ),
+      );
+      store.dispatchAll(const [AdvanceStep(), AdvanceStep(), AdvanceStep()]);
+      expect(store.value.operation!.skipped, isEmpty);
+      expect(store.value.state.cursor.step, StepId.s8_4_5);
+      store.dispose();
     });
   });
 
