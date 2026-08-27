@@ -29,9 +29,16 @@ final _t0 = DateTime.utc(2026, 8, 24, 12, 0, 0);
 /// （決定 D55: 検証は DB へ行かない）。
 MasterCatalog _catalog() => MasterCatalog(
       cards: const {
-        'M-1': Card(cardNumber: 'M-1', name: 'メンバー1', cardType: CardType.member),
-        'M-2': Card(cardNumber: 'M-2', name: 'メンバー2', cardType: CardType.member),
-        'L-1': Card(cardNumber: 'L-1', name: 'ライブ1', cardType: CardType.live),
+        // ★★ cost / score は「規則順 ≠ printingId 昇順」になるように選んである ★★
+        //   M-1 のほうが printingId は小さいが cost は**小さい**ので、
+        //   規則順（cost 降順 / 決定 D99）では **M-2 が先**に来る。
+        //   値をそろえると、比較器が何もしなくてもテストが通ってしまう。
+        'M-1': Card(
+            cardNumber: 'M-1', name: 'メンバー1', cardType: CardType.member, cost: 2),
+        'M-2': Card(
+            cardNumber: 'M-2', name: 'メンバー2', cardType: CardType.member, cost: 9),
+        'L-1': Card(
+            cardNumber: 'L-1', name: 'ライブ1', cardType: CardType.live, score: 5),
         'E-1':
             Card(cardNumber: 'E-1', name: 'エネルギー1', cardType: CardType.energy),
       },
@@ -442,22 +449,32 @@ void main() {
     });
   });
 
-  group('★★ 並び順は保存されない（決定 D65）★★', () {
-    // ★★ 2026-08-27: ここは向きが逆になった（決定 D99）★★
+  group('★★ 並び順は保存される（決定 D99 / D65 の ord）★★', () {
+    // ★★ 2026-08-27: この group は向きが逆になった（決定 D99）★★
     //   `deck_entries` に `ord` が入り、`byId` / `all` が `ORDER BY ord` で読む。
-    //   **並べ替えは保存される。**
-    //   ★元のテスト（「開き直すとカード番号順に戻る」）は D65 の事実を固定して
-    //     いたもので、**誤っていたのではなく前提が変わった**。
-    //   ★画面側の撤去（`normalizedEntries` / `DeckOrderNotPersisted` /
-    //     `isReordered`）はこの commit の範囲外。この group の残りはまだ生きている。
-    test('★★ 並べ替えて保存すると、開き直しても並びが残る（決定 D99）★★', () async {
+    //   ★元のテスト群は D65 の事実（保存されない）を固定していたもので、
+    //     **誤っていたのではなく前提が変わった**。
+    //
+    // ★★ このカタログでは 規則順 ≠ printingId 昇順 である ★★
+    //   M-1 は cost 2 / M-2 は cost 9 なので、規則順では **M-2 が先**。
+    //   （`_catalog()` の doc を参照。値をそろえると比較器が no-op でも通る）
+    test('★前提: 規則順と printingId 昇順が食い違う', () {
+      final repository = repositoryOn(db);
+      final sorted = repository.sortedByRule(const [
+        DeckEntry(printingId: 'M-1-N', count: 1),
+        DeckEntry(printingId: 'M-2-N', count: 1),
+      ]);
+      expect(sorted.map((e) => e.printingId), ['M-2-N', 'M-1-N'],
+          reason: '★ここが一致していると、以下のテストは比較器が何もしなくても通る');
+    });
+
+    test('★★ 並べ替えて保存すると、開き直しても並びが残る ★★', () async {
       final created = await repositoryOn(db).create(name: 'X');
       final repository = repositoryOn(db);
 
       var draft = repository.draftOf(created).addCopy('M-1-N').addCopy('M-2-N');
-      draft = draft.moveEntry('M-2-N', 'M-1-N', after: false);
-      // ★★ 保存する並びが「開き直したときの既定」と違うこと ★★
-      //   同じだと、並びを 1 ビットも保存しない実装でも通る。
+      draft = draft.moveEntry('M-1-N', 'M-2-N', after: true);
+      // ★★ 保存する並びが規則順とも printingId 昇順とも違うこと ★★
       expect(draft.entries.map((e) => e.printingId), ['M-2-N', 'M-1-N']);
 
       await repository.save(created, draft);
@@ -468,64 +485,56 @@ void main() {
       expect(restored!.entries.map((e) => e.printingId), ['M-2-N', 'M-1-N']);
     });
 
-    test('★★ 区分をまたいで足しただけでは縮退にしない（実機で誤検知した）★★', () async {
-      // ★★ 画面は区分ごとに分けて出す ★★
-      //   平坦なリストで比べると、エネルギーの次にメンバーを足した瞬間に
-      //   「並べ替えました」と出る。**利用者は並べ替えていない。**
-      //   M4 の実機確認で実際に出た誤検知。比べるのは各区分の中の並びである。
+    test('★ 一覧（all）から来た Deck も同じ並び（D-11 の経路差）', () async {
       final created = await repositoryOn(db).create(name: 'X');
       final repository = repositoryOn(db);
 
       final draft = repository
           .draftOf(created)
-          .addCopy('E-1-N') // 先にエネルギー
-          .addCopy('M-1-N'); // あとからメンバー（平坦には E, M の順）
+          .addCopy('E-1-N')
+          .addCopy('M-1-N')
+          .addCopy('L-1-N');
+      // ★★ 区分順ですらない並びで保存する ★★
+      //   `all` に ORDER BY が無かった時代は、ここが取得経路で違っていた。
+      expect(draft.entries.map((e) => e.printingId),
+          ['E-1-N', 'M-1-N', 'L-1-N']);
+      await repository.save(created, draft);
+      await db.close();
 
-      expect(repository.isReordered(draft), isFalse);
+      final reopened = await open();
+      final repo2 = repositoryOn(reopened);
+      final viaAll =
+          (await repo2.all()).firstWhere((d) => d.deckId == created.deckId);
+      final viaById = await repo2.byId(created.deckId);
+
+      expect(viaAll.entries.map((e) => e.printingId),
+          ['E-1-N', 'M-1-N', 'L-1-N']);
+      expect(viaById!.entries.map((e) => e.printingId),
+          ['E-1-N', 'M-1-N', 'L-1-N']);
     });
 
-    test('★同じ区分の中で順が崩れていれば縮退になる（出る側）', () async {
+    test('★ 開いた直後は DB の並びをそのまま使う（正規化しない）', () async {
+      // ★★ `normalizedEntries` を撤去した根拠（決定 D99）★★
+      //   経路差は `DeckDao` 側で解消したので、画面で並べ直す理由が無い。
+      //   並べ直すと、**利用者が保存した手動順が開くたびに消える。**
       final created = await repositoryOn(db).create(name: 'X');
       final repository = repositoryOn(db);
-
-      final draft = repository
-          .draftOf(created)
-          .addCopy('M-2-N')
-          .addCopy('M-1-N'); // メンバーの中で降順になった
-
-      expect(repository.isReordered(draft), isTrue);
-    });
-
-    test('★並べ替えていなければ isReordered は false（出ない側）', () async {
-      final created = await repositoryOn(db).create(name: 'X');
-      final repository = repositoryOn(db);
-
-      final draft =
-          repository.draftOf(created).addCopy('M-1-N').addCopy('L-1-N');
-
-      expect(repository.isReordered(draft), isFalse);
-    });
-
-    test('★区分順に正規化する（メンバー → ライブ → エネルギー → 未知）', () async {
-      final repository = repositoryOn(db);
-
-      final normalized = repository.normalizedEntries(const [
-        DeckEntry(printingId: '知らない刷り', count: 1),
-        DeckEntry(printingId: 'E-1-N', count: 1),
-        DeckEntry(printingId: 'L-1-N', count: 1),
-        DeckEntry(printingId: 'M-2-N', count: 1),
-        DeckEntry(printingId: 'M-1-N', count: 1),
-      ]);
-
-      expect(
-        normalized.map((e) => e.printingId),
-        ['M-1-N', 'M-2-N', 'L-1-N', 'E-1-N', '知らない刷り'],
+      final saved = await repository.save(
+        created,
+        repository
+            .draftOf(created)
+            .addCopy('E-1-N')
+            .addCopy('M-1-N'), // ★区分順でもない
       );
+
+      expect(repository.draftOf(saved).entries.map((e) => e.printingId),
+          ['E-1-N', 'M-1-N']);
     });
 
-    test('★並べ替えただけなら保存ボタンを光らせない', () async {
-      // ★★ 光らせると「保存したのに戻る」という最悪の形になる ★★
-      //   並べ替えたこと自体は縮退として別に見せる。
+    test('★★ 並べ替えたら保存ボタンが光る（D65 の手当て 4 は前提が反転）★★', () async {
+      // ★★ 保存されるようになったので、光らせないほうが誤りになった ★★
+      //   D65 は「押せると『保存したのに戻る』という最悪の形になる」ので
+      //   光らせなかった。いまは「並べ替えたのに保存できない」になる。
       final created = await repositoryOn(db).create(name: 'X');
       final repository = repositoryOn(db);
 
@@ -534,13 +543,72 @@ void main() {
         repository.draftOf(created).addCopy('M-1-N').addCopy('M-2-N'),
       );
 
-      final reordered =
-          repository.draftOf(saved).moveEntry('M-2-N', 'M-1-N', after: false);
+      final reordered = repository
+          .draftOf(saved)
+          .moveEntry(saved.entries.first.printingId,
+              saved.entries.last.printingId, after: true);
 
-      expect(reordered.isDirtyAgainst(saved), isFalse);
-      // 枚数が変われば当然 true。
-      expect(reordered.addCopy('M-1-N').isDirtyAgainst(saved), isTrue);
+      expect(reordered.entries.map((e) => e.printingId),
+          isNot(equals(saved.entries.map((e) => e.printingId).toList())));
+      expect(reordered.isDirtyAgainst(saved), isTrue);
     });
+
+    test('★対: 並べ替えていなければ光らない（枚数も名前も同じ）', () async {
+      final created = await repositoryOn(db).create(name: 'X');
+      final repository = repositoryOn(db);
+      final saved = await repository.save(
+        created,
+        repository.draftOf(created).addCopy('M-1-N').addCopy('M-2-N'),
+      );
+
+      expect(repository.draftOf(saved).isDirtyAgainst(saved), isFalse);
+    });
+
+    test('★ 枚数だけ変えても光る（並びを見るようになっても壊れていない）', () async {
+      final created = await repositoryOn(db).create(name: 'X');
+      final repository = repositoryOn(db);
+      final saved = await repository.save(
+        created,
+        repository.draftOf(created).addCopy('M-1-N'),
+      );
+
+      final more = repository.draftOf(saved).addCopy('M-1-N');
+      // ★並びは同じ（1 行のまま枚数が増えただけ）。
+      expect(more.entries.map((e) => e.printingId),
+          saved.entries.map((e) => e.printingId));
+      expect(more.isDirtyAgainst(saved), isTrue);
+    });
+
+    group('★★ 規則順に戻す（決定 D99）★★', () {
+      test('区分順 → メンバー cost 降順 / ライブ score 降順 → 未知は末尾', () async {
+        final repository = repositoryOn(db);
+        final sorted = repository.sortedByRule(const [
+          DeckEntry(printingId: '知らない刷り', count: 1),
+          DeckEntry(printingId: 'E-1-N', count: 1),
+          DeckEntry(printingId: 'L-1-N', count: 1),
+          DeckEntry(printingId: 'M-1-N', count: 1),
+          DeckEntry(printingId: 'M-2-N', count: 1),
+        ]);
+
+        expect(
+          sorted.map((e) => e.printingId),
+          // ★M-2 は cost 9 / M-1 は cost 2。**printingId 昇順ではない。**
+          ['M-2-N', 'M-1-N', 'L-1-N', 'E-1-N', '知らない刷り'],
+        );
+      });
+
+      test('★ 未知の刷りも消えない（決定 D35）', () async {
+        final repository = repositoryOn(db);
+        final sorted = repository.sortedByRule(const [
+          DeckEntry(printingId: '知らない刷り', count: 3),
+          DeckEntry(printingId: 'M-1-N', count: 1),
+        ]);
+        expect(sorted, hasLength(2));
+        expect(sorted.last.printingId, '知らない刷り');
+        expect(sorted.last.count, 3);
+      });
+    });
+
   });
 
   group('★★ save が明示コンストラクタである代償の受け（決定 D70）★★', () {

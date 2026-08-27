@@ -548,8 +548,12 @@ void main() {
   });
 
   group('★★ 縮退は起きたときだけ出す ★★', () {
-    testWidgets('★並べ替えると「開き直すとカード番号順に戻ります」が出る（決定 D65）',
+    testWidgets('★★ 並べ替えの予告はもう出ない（決定 D99 で撤去）★★',
         (tester) async {
+      // ★★ 2026-08-27: 向きが逆になった ★★
+      //   `deck_entries` に `ord` が入り**並びは保存される**ので、
+      //   「開き直すとカード番号順に戻ります」という予告は嘘になった。
+      //   ★縮退の型ごと撤去した（`DeckOrderNotPersisted`）。
       await _open(
         tester,
         deck: _deck(entries: const [
@@ -558,7 +562,6 @@ void main() {
         ]),
       );
 
-      // ★出ない側。並べ替える前は出ていない。
       expect(find.textContaining('カード番号順に戻ります'), findsNothing);
 
       final target = tester.getRect(_deckRow('M-1-N'));
@@ -568,14 +571,16 @@ void main() {
         Offset(target.center.dx, target.top + 4),
       );
 
-      expect(
-        find.text('並び順はこの画面の中だけです。開き直すとカード番号順に戻ります。'),
-        findsOneWidget,
-      );
+      expect(find.textContaining('カード番号順に戻ります'), findsNothing);
+      // ★対: 別の縮退はまだ出る（縮退の仕組みごと壊していないこと）。
+      expect(find.textContaining('表示できないカード'), findsNothing);
     });
 
-    testWidgets('★並べ替えても保存ボタンは光らない（押せると「保存したのに戻る」になる）',
+    testWidgets('★★ 並べ替えると保存ボタンが光る（D65 の手当て 4 は前提が反転）★★',
         (tester) async {
+      // ★★ D65 は「押せると『保存したのに戻る』という最悪の形になる」ので
+      //    光らせなかった。保存されるようになったので、
+      //    今度は**光らせないほうが**「並べ替えたのに保存できない」になる。★★
       await _open(
         tester,
         deck: _deck(entries: const [
@@ -584,6 +589,9 @@ void main() {
         ]),
       );
 
+      // ★出ない側。並べ替える前は光っていない。
+      expect(tester.widget<FilledButton>(_saveButton).onPressed, isNull);
+
       final target = tester.getRect(_deckRow('M-1-N'));
       await _dragTo(
         tester,
@@ -591,7 +599,34 @@ void main() {
         Offset(target.center.dx, target.top + 4),
       );
 
-      expect(tester.widget<FilledButton>(_saveButton).onPressed, isNull);
+      expect(tester.widget<FilledButton>(_saveButton).onPressed, isNotNull);
+    });
+
+    testWidgets('★★ 「規則順に戻す」が 1 押しで届く（決定 D99）★★', (tester) async {
+      // ★★ 入口は 1 つ・2 段以内（U27 を繰り返さない）★★
+      //   ★アイコンだけにしない —— `Tooltip` はマウスを乗せないと出ない（D90-3）。
+      //   **ラベルが見えていること**を固定する。
+      await _open(
+        tester,
+        deck: _deck(entries: const [
+          DeckEntry(printingId: 'M-1-N', count: 1),
+          DeckEntry(printingId: 'M-2-N', count: 1),
+        ]),
+      );
+
+      // ★メニューを開く操作を挟まずに、いきなり見えていること。
+      expect(find.text('規則順に戻す'), findsOneWidget);
+
+      // ★M-1 は cost 2 / M-2 は cost 9。規則順では M-2 が先（決定 D99）。
+      await tester.tap(find.byKey(const Key('deckSortByRuleButton')));
+      await tester.pump();
+
+      // ★画面上の縦位置で見る（並びそのもの）。
+      expect(
+        tester.getCenter(_deckRow('M-2-N')).dy,
+        lessThan(tester.getCenter(_deckRow('M-1-N')).dy),
+      );
+      expect(tester.widget<FilledButton>(_saveButton).onPressed, isNotNull);
     });
 
     testWidgets('★★ マスタに無い刷りを黙って落とさない（決定 D35）★★', (tester) async {

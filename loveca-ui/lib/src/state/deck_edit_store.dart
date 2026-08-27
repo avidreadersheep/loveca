@@ -112,9 +112,12 @@ class DeckEditStore extends Store<DeckEditState> {
         super(_initialState(repository, deck));
 
   static DeckEditState _initialState(DeckRepository repository, Deck deck) {
-    // ★開いた直後の並びを正規化する（決定 D65）。
-    //   DeckDao.all は entries に ORDER BY を持たず byId は printing_id 順なので、
-    //   経路によって並びが違う（D-11）。画面に持ち込まない。
+    // ★★ 開いた直後の並びは DB のものをそのまま使う（決定 D99）★★
+    //   以前はここで正規化していた。`DeckDao.all` が entries に ORDER BY を
+    //   持たず、経路で並びが違ったため（**D-11**）。
+    //   `ord` の導入（`schemaVersion` 3）で**経路差が DAO 側で解消された**ので、
+    //   画面で並べ直す理由が無くなった。
+    //   ★並べ直すと、利用者が保存した手動順が**開くたびに消える。**
     final draft = repository.draftOf(deck);
     return DeckEditState(
       saved: deck,
@@ -134,7 +137,7 @@ class DeckEditStore extends Store<DeckEditState> {
     return [
       // ★★ 起きたときだけ出す ★★
       //   常に出すと「なんか出てる」で無視される。
-      if (repository.isReordered(draft)) const DeckOrderNotPersisted(),
+      // ★2026-08-27: 並べ替えの縮退は撤去した（決定 D99）。並びは保存される。
       if (validation.hasUnknownCards)
         DeckUnknownPrintings(validation.unknownPrintingIds.length),
     ];
@@ -201,6 +204,13 @@ class DeckEditStore extends Store<DeckEditState> {
   ///
   /// [before] を渡すと、**新しく入る行だけ**その手前／後ろへ差し込む。
   /// すでにある行は位置を変えない（枚数が変わっただけなので）。
+  ///
+  /// ★★ [before] が無いときは規則順の位置へ挿入する（決定 D99）★★
+  /// 末尾に足すと、区分をまたいで
+  /// 「メンバーの列の下にライブが来て、その下にまたメンバー」になる。
+  /// ★**落とし先が指定されているときは利用者の指示が勝つ。**
+  /// ★手動順が混ざったデッキでは規則順の正しい位置とは限らない
+  /// （`deckOrderInsertionIndex` の doc / 決定 D99）。
   AddCardRefusal? addCard(
     String printingId, {
     String? before,
@@ -218,8 +228,19 @@ class DeckEditStore extends Store<DeckEditState> {
 
     final existed = value.draft.countOf(printingId) > 0;
     var next = value.draft.addCopy(printingId);
-    if (!existed && before != null) {
-      next = next.moveEntry(printingId, before, after: edge == DropEdge.trailing);
+    if (!existed) {
+      if (before != null) {
+        next =
+            next.moveEntry(printingId, before, after: edge == DropEdge.trailing);
+      } else {
+        // ★規則順の位置 = 「自分より後ろに来る最初の札」。末尾なら動かさない
+        //   （`addCopy` が既に末尾へ足している）。
+        final entries = value.draft.entries;
+        final at = _repository.insertionIndexOf(entries, printingId);
+        if (at < entries.length) {
+          next = next.moveEntry(printingId, entries[at].printingId, after: false);
+        }
+      }
     }
     _apply(next);
     return null;
@@ -235,12 +256,24 @@ class DeckEditStore extends Store<DeckEditState> {
 
   /// デッキの中で並べ替える。
   ///
-  /// ★★ 保存されない（決定 D65）★★
-  /// 結果として [DeckOrderNotPersisted] が立ち、画面が
-  /// 「開き直すとカード番号順に戻る」と予告する。
+  /// ★★ 保存される（決定 D99）★★
+  /// `deck_entries.ord` に入るので、`isDirtyAgainst` が並びを見て
+  /// **保存ボタンが光る。** 予告（`DeckOrderNotPersisted`）は撤去した。
   void moveEntry(String printingId, String target, DropEdge edge) => _apply(
         value.draft
             .moveEntry(printingId, target, after: edge == DropEdge.trailing),
+      );
+
+  /// 並び順を規則順に戻す（決定 D99）.
+  ///
+  /// ★★ これが無いと、一度並べ替えたデッキは二度と規則順に戻らない ★★
+  /// `ord` が保存される以上、手動順は永続する。
+  /// ★入口は 1 つ・2 段以内（決定 D99。**U27 を繰り返さない**）。
+  ///
+  /// ★保存はしない。ほかの編集と同じくドラフトを差し替えるだけで、
+  /// `revision` は保存 1 回につき +1 のままである（§9-1）。
+  void sortByRule() => _apply(
+        value.draft.copyWith(entries: _repository.sortedByRule(value.draft.entries)),
       );
 
   // ---------------------------------------------------------------------------

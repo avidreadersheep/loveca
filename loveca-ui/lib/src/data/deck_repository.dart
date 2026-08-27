@@ -120,17 +120,24 @@ class DeckDraft {
 
   /// 保存済みの [deck] と違いがあるか。保存ボタンの活性はこれで決める。
   ///
-  /// ★★ 並び順を見ない ★★
-  /// `deck_entries` に順序列が無いため**並び順は保存できない**（決定 D65）。
-  /// 見てしまうと「並べ替えただけで保存ボタンが光り、押しても何も変わらない」
-  /// ——**保存したのに戻る**という最悪の形になる。
-  /// 並べ替えたこと自体は縮退（`DeckOrderNotPersisted`）として別に見せる。
+  /// ★★ 並び順を見る（決定 D99）★★
+  /// D65 の手当て 4 は「並べ替えでは保存ボタンを光らせない」だった。理由は
+  /// **押せると「保存したのに戻る」という最悪の形になる**こと。
+  /// `deck_entries` に `ord` が入って**保存されるようになったので、前提が反転した。**
+  /// 今度は**光らせないほうが**「並べ替えたのに保存できない」になる。
+  ///
+  /// ★★ 枚数の Map ではなく「並び + 枚数」の列で比べる ★★
+  /// `countsByPrintingId` は `Map` なので順序を落とす。
   bool isDirtyAgainst(Deck deck) =>
       name != deck.name ||
       memo != deck.memo ||
       coverPrintingId != deck.coverPrintingId ||
       !listEquals(tags, deck.tags) ||
-      !mapEquals(countsByPrintingId, DeckDraft.of(deck).countsByPrintingId);
+      !listEquals(_orderedCounts, DeckDraft.of(deck)._orderedCounts);
+
+  /// 並びと枚数をまとめて比べるための列。★`DeckEntry` に `==` が無いので作る。
+  List<String> get _orderedCounts =>
+      [for (final e in entries) '${e.printingId}\u0000${e.count}'];
 
   /// 名前が空白だけなら保存させない（`decks.name` は NOT NULL だが空は入る）。
   bool get isValid => name.trim().isNotEmpty;
@@ -325,61 +332,51 @@ class DeckCatalogView {
   /// 一覧と同じ投影行（決定 D48）。マスタに無ければ null。
   CardListRow? rowOf(String printingId) => _rows[printingId];
 
-  /// ★★ 開き直したときの並び（決定 D65）★★
-  /// ★★ 並びの規則そのものはここに書かない —— 正は **決定 D99** ★★
-  /// 区分順も区分内の並びも、以前はこの doc にしか書かれていなかった
-  /// （`docs/UI設計メモ.md` §12-2。**変えるときに直す場所が 2 つある**状態だった）。
-  /// D99 で決定に一本化した。**ここに規則を書き戻さないこと。**
+  /// 並びの規則（**決定 D99**）に要る値を引く。
   ///
-  /// 2 つの役目がある。
-  /// 1. **開いた直後の並びを決定的にする。** `DeckDao.all` は entries に
-  ///    `ORDER BY` を持たず、`DeckDao.byId` は `ORDER BY printing_id`。
-  ///    R2 は `all()` の `Deck` を R3 へ渡すので、**経路で並びが違う**
-  ///    （`ルール整合性チェック_v1.06.md` D-11）。ここで正規化して画面に持ち込まない。
-  /// 2. **「開き直すとこうなる」を先に言うため。** `printing_id` 昇順という
-  ///    `byId` の並びを区分ごとに再現しているので、予告が実際と一致する。
-  List<DeckEntry> normalizedEntries(List<DeckEntry> entries) {
-    int rank(DeckEntry e) => switch (cardTypeOf(e.printingId)) {
-          CardType.member => 0,
-          CardType.live => 1,
-          CardType.energy => 2,
-          null => 3,
-        };
-    return [...entries]..sort((a, b) {
-        final byRank = rank(a).compareTo(rank(b));
-        return byRank != 0 ? byRank : a.printingId.compareTo(b.printingId);
-      });
+  /// ★★ 規則そのものはここに書かない ★★
+  /// 比較器は `loveca_core` の `compareDeckOrder` 1 つだけで、
+  /// `loveca_db` の backfill も**同じものを呼ぶ**（決定 D99）。
+  /// ここが持つのは「引き方」だけである。
+  DeckOrderKey deckOrderKeyOf(String printingId) {
+    final printing = _printings[printingId];
+    final card = printing == null ? null : _cards[printing.cardNumber];
+    if (card == null) return DeckOrderKey.unknown;
+    return DeckOrderKey(
+      cardType: card.cardType,
+      cost: card.cost,
+      score: card.score,
+    );
   }
 
-  /// 開いた直後のドラフト。★並びを正規化する（上記）。
+  /// 規則順に並べ替える（決定 D99）。
+  ///
+  /// ★★ 開いた直後には呼ばない ★★
+  /// `ord` が保存されるようになったので（決定 D65 / D99 / `schemaVersion` 3）、
+  /// **開いた直後の並びは DB が持っている。** 以前ここにあった
+  /// `normalizedEntries` は、順序列が無かった時代に
+  /// 「取得経路で並びが違う」（**D-11**）を画面へ持ち込まないための正規化だった。
+  /// **経路差は `DeckDao` 側で解消済み**なので、正規化そのものが要らない。
+  ///
+  /// 呼ぶのは**利用者が「規則順に戻す」を押したとき**だけである。
+  List<DeckEntry> sortedByRule(List<DeckEntry> entries) =>
+      sortedByDeckOrder(entries, deckOrderKeyOf);
+
+  /// [printingId] を規則順に差し込む位置（決定 D99）。
+  ///
+  /// ★手動順が混ざったデッキでは「規則順の正しい位置」とは限らない
+  /// （`deckOrderInsertionIndex` の doc）。
+  int insertionIndexOf(List<DeckEntry> entries, String printingId) =>
+      deckOrderInsertionIndex(entries, printingId, deckOrderKeyOf);
+
+  /// 開いた直後のドラフト。★並びは DB から来たものをそのまま使う（上記）。
   DeckDraft draftOf(Deck deck) => DeckDraft(
         name: deck.name,
         memo: deck.memo,
-        entries: normalizedEntries(deck.entries),
+        entries: deck.entries,
         tags: deck.tags,
         coverPrintingId: deck.coverPrintingId,
       );
-
-  /// ドラフトの**画面に見えている並び**が「開き直したときの並び」と違うか（決定 D65）。
-  ///
-  /// ★★ 平坦なリストを比べてはいけない ★★
-  /// 画面は区分ごとに分けて出す（）ので、
-  /// **区分をまたいで足しただけでは見た目の並びは変わらない。**
-  /// 平坦なリストで比べると、エネルギーの次にメンバーを足した瞬間に
-  /// 「並べ替えました」と出てしまう。★実機確認（M4）で実際に出た。
-  /// 比べるのは**各区分の中が printingId 昇順かどうか**である。
-  bool isReordered(DeckDraft draft) {
-    final sections = sectionsOf(draft.entries);
-    bool ascending(List<DeckEntry> entries) {
-      final ids = entries.map((e) => e.printingId).toList();
-      return listEquals(ids, [...ids]..sort());
-    }
-
-    return !(ascending(sections.members) &&
-        ascending(sections.lives) &&
-        ascending(sections.energies) &&
-        ascending(sections.unknown));
-  }
 }
 
 /// デッキの読み書き。★カタログだけで済む分は [DeckCatalogView] へ預ける。
@@ -571,10 +568,13 @@ class DeckRepository {
 
   CardListRow? rowOf(String printingId) => _view.rowOf(printingId);
 
-  List<DeckEntry> normalizedEntries(List<DeckEntry> entries) =>
-      _view.normalizedEntries(entries);
-
   DeckDraft draftOf(Deck deck) => _view.draftOf(deck);
 
-  bool isReordered(DeckDraft draft) => _view.isReordered(draft);
+  /// 決定 D99。★呼ぶのは「規則順に戻す」を押したときだけ。
+  List<DeckEntry> sortedByRule(List<DeckEntry> entries) =>
+      _view.sortedByRule(entries);
+
+  /// 決定 D99。★カードを足すときの挿入位置。
+  int insertionIndexOf(List<DeckEntry> entries, String printingId) =>
+      _view.insertionIndexOf(entries, printingId);
 }

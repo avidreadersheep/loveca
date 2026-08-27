@@ -13,22 +13,14 @@
 ///
 /// | 縮退 | 原因 | 利用者に伝えること |
 /// |---|---|---|
-/// | [DeckOrderNotPersisted] | `deck_entries` に順序列が無い（決定 D65） | 開き直すとカード番号順に戻る |
 /// | [DeckUnknownPrintings] | マスタに無い刷りを持っている（決定 D35） | 消していない・触れないだけ |
+///
+/// ★★ 2026-08-27: `DeckOrderNotPersisted` を撤去した（決定 D99）★★
+/// `deck_entries` に `ord` が入り**並びは保存される**ようになったので、
+/// **予告する内容そのものが無くなった。**
+/// ★縮退は「起きたときだけ出す」もので、起きなくなったものを残すと
+/// 「なんか出てる」で無視されるようになる（この `sealed` を作った動機そのもの）。
 library;
-
-/// 並べ替えた並びは保存されない（決定 D65）.
-///
-/// ★★ 「保存されません」で止めない ★★
-/// それだけだと**次に開いたとき何が起きるか**が伝わらない。
-/// `deck_entries` の主キーは `{deckId, printingId}` で順序列が無く、
-/// `DeckDao.byId` は `ORDER BY printing_id` で読み戻す。
-/// したがって**戻る先はカード番号順**であり、そこまで言えば驚きにならない。
-///
-/// ★根治は `loveca_db` に `ord` 列を足すこと。方式は決定 D65 に書いてある。
-final class DeckOrderNotPersisted extends DeckEditDegradation {
-  const DeckOrderNotPersisted();
-}
 
 /// カードマスタに無い刷りを持っている（決定 D35）.
 ///

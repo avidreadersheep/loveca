@@ -228,14 +228,35 @@ class _Header extends StatelessWidget {
               maxLines: 2,
               onChanged: store.setMemo,
             ),
-            if (state.isDirty)
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Text(
-                  '未保存の変更があります',
-                  style: Theme.of(context).textTheme.bodySmall,
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                // ★★ 「規則順に戻す」の入口（決定 D99）★★
+                //   これが無いと、一度並べ替えたデッキは二度と規則順に戻らない
+                //   （`ord` が保存されるので手動順は永続する）。
+                //
+                //   ★★ アイコンだけにしない ★★
+                //   `Tooltip` はマウスを乗せないと出ない（決定 D90-3）。
+                //   **U27（入口が深く、手がかりが無い）を繰り返さない**ので、
+                //   ラベルを出したまま常時 1 押しで届く場所に置く。
+                TextButton.icon(
+                  key: const Key('deckSortByRuleButton'),
+                  onPressed: state.draft.entries.isEmpty ? null : store.sortByRule,
+                  icon: const Icon(Icons.sort, size: 18),
+                  label: const Text('規則順に戻す'),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    visualDensity: VisualDensity.compact,
+                  ),
                 ),
-              ),
+                const Spacer(),
+                if (state.isDirty)
+                  Text(
+                    '未保存の変更があります',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+              ],
+            ),
           ],
         ),
       );
@@ -615,12 +636,6 @@ class _DeckDegradationLine extends StatelessWidget {
     // 3 つ目を足したとき、ここを直し忘れると**コンパイルエラーになる。**
     final (IconData icon, DegradationSeverity severity, String text) =
         switch (degradation) {
-      DeckOrderNotPersisted() => (
-          Icons.swap_vert,
-          DegradationSeverity.report,
-          // ★「保存されません」で止めない。**戻る先**まで言う。
-          '並び順はこの画面の中だけです。開き直すとカード番号順に戻ります。',
-        ),
       DeckUnknownPrintings(:final count) => (
           Icons.report_problem_outlined,
           DegradationSeverity.warning,

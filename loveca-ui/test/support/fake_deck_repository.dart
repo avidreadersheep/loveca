@@ -31,10 +31,18 @@ import 'package:loveca_ui/src/data/master_catalog.dart';
 MasterCatalog fakeCatalog({RuleConfig config = RuleConfig.standard}) =>
     MasterCatalog(
       cards: const {
-        'M-1': Card(cardNumber: 'M-1', name: 'メンバー1', cardType: CardType.member),
-        'M-2': Card(cardNumber: 'M-2', name: 'メンバー2', cardType: CardType.member),
-        'L-1': Card(cardNumber: 'L-1', name: 'ライブ1', cardType: CardType.live),
-        'E-1': Card(cardNumber: 'E-1', name: 'エネルギー1', cardType: CardType.energy),
+        // ★★ cost / score は「規則順 ≠ printingId 昇順」になるように選んである ★★
+        //   M-1 のほうが printingId は小さいが cost は**小さい**ので、
+        //   規則順（cost 降順 / 決定 D99）では **M-2 が先**に来る。
+        //   値をそろえると、比較器が何もしなくてもテストが通ってしまう。
+        'M-1': Card(
+            cardNumber: 'M-1', name: 'メンバー1', cardType: CardType.member, cost: 2),
+        'M-2': Card(
+            cardNumber: 'M-2', name: 'メンバー2', cardType: CardType.member, cost: 9),
+        'L-1': Card(
+            cardNumber: 'L-1', name: 'ライブ1', cardType: CardType.live, score: 5),
+        'E-1':
+            Card(cardNumber: 'E-1', name: 'エネルギー1', cardType: CardType.energy),
       },
       printings: const {
         'M-1-N': Printing(
@@ -281,12 +289,13 @@ class FakeDeckRepository implements DeckRepository {
   CardListRow? rowOf(String printingId) => _view.rowOf(printingId);
 
   @override
-  List<DeckEntry> normalizedEntries(List<DeckEntry> entries) =>
-      _view.normalizedEntries(entries);
-
-  @override
   DeckDraft draftOf(Deck deck) => _view.draftOf(deck);
 
   @override
-  bool isReordered(DeckDraft draft) => _view.isReordered(draft);
+  List<DeckEntry> sortedByRule(List<DeckEntry> entries) =>
+      _view.sortedByRule(entries);
+
+  @override
+  int insertionIndexOf(List<DeckEntry> entries, String printingId) =>
+      _view.insertionIndexOf(entries, printingId);
 }
