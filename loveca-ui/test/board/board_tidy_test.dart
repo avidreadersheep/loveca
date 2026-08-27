@@ -432,6 +432,118 @@ void main() {
     });
   });
 
+  // =========================================================================
+  // ★★ 帯の畳み込み（M-B7 / 決定 D98-3 / 盤面設計メモ §15-10）★★
+  //
+  // ★★ 自動進行は 1 押下で複数の CT を通る ★★
+  //   1 CT 最大 5 行 × 6 CT = 最大 30 行。畳まないと画面を埋める。
+  //   ★**種類を跨いで畳まない。**次の一手が違うものを 1 行にまとめない。
+  // =========================================================================
+  group('★★ 整理の帯の畳み込み（決定 D98-3）★★', () {
+    BoardTidyLog log(
+      StepId step, {
+      List<RuleProcessKind> applied = const [],
+      List<RuleProcessWarningKind> warnings = const [],
+      List<UnmovableCard> unmovable = const [],
+    }) =>
+        BoardTidyLog(
+          cursor: StepCursor(PhaseId.firstPerformance, step),
+          applied: applied,
+          warnings: warnings,
+          unmovable: unmovable,
+        );
+
+    UnmovableCard stuck(String number, UnmovableReason reason) => UnmovableCard(
+          instanceId: 'i-$number-${reason.name}',
+          cardNumber: number,
+          reason: reason,
+        );
+
+    test('★ 対: しきい値以下では畳まない（常に畳む実装を潰す）', () {
+      final notices = foldedTidyNotices([
+        log(StepId.s8_3_9, applied: const [RuleProcessKind.duplicateMember]),
+        log(StepId.s8_3_13, applied: const [RuleProcessKind.orphanMember]),
+      ]);
+
+      expect(notices, hasLength(2));
+      expect(
+        notices.whereType<RuleProcessApplied>().map((n) => n.stepRuleRef),
+        ['8.3.9', '8.3.13'],
+        reason: '★畳まないときは条番号が別々の行に残る',
+      );
+    });
+
+    test('★★ しきい値を超えたら種類ごとに畳む（種類を跨がない）★★', () {
+      final notices = foldedTidyNotices([
+        log(StepId.s8_3_9,
+            applied: const [RuleProcessKind.duplicateMember],
+            warnings: const [RuleProcessWarningKind.invalidResolution],
+            unmovable: [stuck('PL!-1', UnmovableReason.unknownCard)]),
+        log(StepId.s8_3_13,
+            applied: const [RuleProcessKind.orphanMember],
+            warnings: const [RuleProcessWarningKind.invalidResolution],
+            unmovable: [
+              stuck('PL!-2', UnmovableReason.unknownCard),
+              stuck('PL!-3', UnmovableReason.noRuleForCardType),
+            ]),
+      ]);
+
+      // ★★ 4 種が畳んだ後も分かれている（次の一手が違う）★★
+      expect(notices.whereType<RuleProcessApplied>(), hasLength(1));
+      expect(notices.whereType<RuleProcessNotAutomatic>(), hasLength(1));
+      expect(notices.whereType<TidyUnknownCard>(), hasLength(1));
+      expect(notices.whereType<TidyNoRuleForCardType>(), hasLength(1));
+      expect(notices, hasLength(4), reason: '★これ以上増えも減りもしない');
+
+      // ★★ どの時点かが残る（8.4 には CT が 4 つある）★★
+      expect(notices.whereType<RuleProcessApplied>().single.stepRuleRef,
+          '8.3.13 / 8.3.9');
+      expect(notices.whereType<RuleProcessApplied>().single.kinds, hasLength(2));
+
+      // ★★ カード番号が消えない（対処そのものである）★★
+      final unknown = notices.whereType<TidyUnknownCard>().single;
+      expect(unknown.count, 2);
+      expect(unknown.cardNumbers, ['PL!-1', 'PL!-2']);
+      final noRule = notices.whereType<TidyNoRuleForCardType>().single;
+      expect(noRule.count, 1);
+      expect(noRule.cardNumbers, ['PL!-3']);
+    });
+
+    test('★ 同じ警告が何度立っても 1 行に畳む（行の意味は「立っている」）', () {
+      final notices = foldedTidyNotices([
+        for (final step in const [
+          StepId.s8_3_5,
+          StepId.s8_3_9,
+          StepId.s8_3_13,
+          StepId.s8_3_17,
+        ])
+          log(step, warnings: const [RuleProcessWarningKind.invalidResolution]),
+      ]);
+
+      expect(notices, hasLength(1));
+      expect(notices.whereType<RuleProcessNotAutomatic>().single.kinds,
+          [RuleProcessWarningKind.invalidResolution]);
+    });
+
+    test('★ しきい値は暫定であることを値として持っている', () {
+      // ★★ 数を 2 箇所に書かない（D-15）★★ 画面もテストもこの定数を見る。
+      expect(kTidyNoticeFoldThreshold, 3);
+      expect(
+        foldedTidyNotices(
+          [
+            log(StepId.s8_3_9,
+                applied: const [RuleProcessKind.duplicateMember]),
+            log(StepId.s8_3_13,
+                applied: const [RuleProcessKind.orphanMember]),
+          ],
+          threshold: 1,
+        ),
+        hasLength(1),
+        reason: '★しきい値は引数で動く（測ってから決め直せる）',
+      );
+    });
+  });
+
   group('★★ 整理ログの器は複数件（§14-7 の持ち越し 4 つ目 / 新所見 D-21 の器）★★', () {
     test('★ 1 件なら 1 件', () {
       final store = _storeFor(_duplicateMembers());

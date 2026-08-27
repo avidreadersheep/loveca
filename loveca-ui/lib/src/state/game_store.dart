@@ -381,6 +381,116 @@ class BoardTidyLog {
   }
 }
 
+/// ★★ 整理の帯を畳み始める行数（M-B7 / 決定 D98-3 / 盤面設計メモ §15-10）★★
+///
+/// ★★ この値は暫定である ★★
+/// 条文にも外部標準にも根拠が無い（整理の報告量を定めた条は無い）。
+/// **実装の判断**であり、判断基準を**測る前に**宣言してある ——
+/// 「**整理の帯が U19 の採用値を押し上げないこと**」。
+/// ★見直す条件: `test/board/board_min_width_test.dart` の U19 の測定で、
+/// 最も混んだ押下の帯が採用値を押し上げたとき。
+/// ★D61 / U16 / U20 が「外部標準 / 条文由来 / 実測」の格を分けたのと同じ扱いである。
+const int kTidyNoticeFoldThreshold = 3;
+
+/// ★★ 1 押下ぶんの整理の報告を帯の行へ畳む（M-B7 / 決定 D98-3）★★
+///
+/// ★★ 既定は「チェックタイミングごと・理由ごとに 1 行」である ★★
+/// 自動進行は 1 押下で複数の CT を通るので、1 CT 最大 5 行 × 6 CT = 最大 30 行になる。
+/// **「なんか出てる」を超えて画面を埋める**ので、[kTidyNoticeFoldThreshold] を
+/// 超えたら畳む。
+///
+/// ★★ 種類を跨いで畳まない ★★
+/// D94-2 / D95 が行を分けたのは「**次の一手が違う**」からである ——
+/// カードデータを取り込み直す / 手で動かす / 手で処理する / 報告のみ。
+/// **種類を混ぜると次の一手が消える。**
+///
+/// ★★ カード番号を落とさない ★★
+/// `TidyUnknownCard` は「どの札を取り込み直すか」、`TidyNoRuleForCardType` は
+/// 「どの札を手で動かすか」が**対処そのもの**である。
+/// → 畳むときは**和集合・重複排除・昇順**にする。
+///
+/// ★★ どの時点かも落とさない ★★
+/// 8.4 にはチェックタイミングが 4 つあり、まとめると「**どの時点で消えたか**」が
+/// 読めなくなる（§15-10）。→ **起きた条番号を並べて残す。**
+List<BoardNotice> foldedTidyNotices(
+  List<BoardTidyLog> tidies, {
+  int threshold = kTidyNoticeFoldThreshold,
+}) {
+  final flat = [for (final tidy in tidies) ...tidy.notices];
+  if (flat.length <= threshold) return flat;
+
+  final applied = <RuleProcessKind>[];
+  final warnings = <RuleProcessWarningKind>[];
+  final unknown = _FoldedUnmovable();
+  final noRule = _FoldedUnmovable();
+  final appliedRefs = <String>{};
+  final warningRefs = <String>{};
+  final nothing = <BoardNotice>[];
+
+  for (final notice in flat) {
+    switch (notice) {
+      case RuleProcessApplied(:final stepRuleRef, :final kinds):
+        applied.addAll(kinds);
+        appliedRefs.add(stepRuleRef);
+      case RuleProcessNotAutomatic(:final stepRuleRef, :final kinds):
+        warnings.addAll(kinds);
+        warningRefs.add(stepRuleRef);
+      case TidyUnknownCard(:final stepRuleRef, :final count, :final cardNumbers):
+        unknown.add(stepRuleRef, count, cardNumbers);
+      case TidyNoRuleForCardType(
+          :final stepRuleRef,
+          :final count,
+          :final cardNumbers
+        ):
+        noRule.add(stepRuleRef, count, cardNumbers);
+      // ★手で押したときだけ出るので、自動進行の押下には現れない。畳まない。
+      default:
+        nothing.add(notice);
+    }
+  }
+
+  return [
+    if (applied.isNotEmpty)
+      RuleProcessApplied(stepRuleRef: _joinRefs(appliedRefs), kinds: applied),
+    ...nothing,
+    if (warnings.isNotEmpty)
+      RuleProcessNotAutomatic(
+        stepRuleRef: _joinRefs(warningRefs),
+        // ★警告は同じ種類が何度も立つ。行の意味は「立っている」なので重複を畳む。
+        kinds: warnings.toSet().toList(),
+      ),
+    if (unknown.count > 0)
+      TidyUnknownCard(
+        stepRuleRef: _joinRefs(unknown.refs),
+        count: unknown.count,
+        cardNumbers: unknown.sortedNumbers,
+      ),
+    if (noRule.count > 0)
+      TidyNoRuleForCardType(
+        stepRuleRef: _joinRefs(noRule.refs),
+        count: noRule.count,
+        cardNumbers: noRule.sortedNumbers,
+      ),
+  ];
+}
+
+/// ★並びを決定的にする（`_countedRuleProcess` と同じ方針）。
+String _joinRefs(Set<String> refs) => (refs.toList()..sort()).join(' / ');
+
+class _FoldedUnmovable {
+  final refs = <String>{};
+  final _numbers = <String>{};
+  var count = 0;
+
+  void add(String ref, int n, List<String> numbers) {
+    refs.add(ref);
+    count += n;
+    _numbers.addAll(numbers);
+  }
+
+  List<String> get sortedNumbers => _numbers.toList()..sort();
+}
+
 /// 直前の巻き戻しの結果（M-B5 / 決定 D78 / D90）。
 ///
 /// ★★ 寿命は「次の操作まで」である ★★
