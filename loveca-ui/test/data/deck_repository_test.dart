@@ -242,7 +242,7 @@ void main() {
     });
   });
 
-  group('★ 論理削除は一覧から消え、DB には残る（P3）', () {
+  group('★ 論理削除は一覧から消え、DB には残る（決定 D102）', () {
     test('all から外れ、byId では取れる', () async {
       final deck = await repositoryOn(db).create(name: '消すデッキ');
       await repositoryOn(db, deckId: 'other').create(name: '残すデッキ');
@@ -803,7 +803,7 @@ void main() {
       expect(copy.deletedAt, isNull);
     });
 
-    test('★★ masterDataVersion（P5）は元の値を引き継ぐ ★★', () async {
+    test('★★ masterDataVersion（決定 D35）は元の値を引き継ぐ ★★', () async {
       final created = await repositoryOn(db, deckId: 'src').create(name: '元');
       expect(created.masterDataVersion, 7, reason: '前提: 作成時の版');
 

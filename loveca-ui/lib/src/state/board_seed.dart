@@ -37,7 +37,7 @@ final Random _secureRandom = Random.secure();
 /// 「同じ seed で盤面を再現できないと不具合を追えない」）なので、
 /// 64bit の全域を使わず 9 桁までに収める。
 ///
-/// ★衝突しても困らない。`deckId`（P1）と違って同期も識別もしない。
+/// ★衝突しても困らない。`deckId`（決定 D100）と違って同期も識別もしない。
 int newBoardSeed() => _secureRandom.nextInt(1000000000);
 
 /// 総合ルール 6.2.1.4 の 1 段目「無作為にどちらかのプレイヤーを選択し」。

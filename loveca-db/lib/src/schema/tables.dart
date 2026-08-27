@@ -233,8 +233,13 @@ class RuleConfigs extends Table {
 /// デッキ。
 ///
 /// ★Phase 4（同期）のための先行対応をそのまま列にしてある★
-/// P1 deckId は UUID / P2 revision・updatedAt / P3 論理削除 /
-/// P4 printingId 単位 / P5 masterDataVersion。後付けが極めて高コストなため。
+/// 決定 D100 deckId は UUID / ★決定 D101 revision・updatedAt・deletedAt の 3 つ /
+/// 決定 D102 論理削除 / 決定 D11 printingId 単位 / 決定 D35 masterDataVersion。
+/// 後付けが極めて高コストなため。
+///
+/// ★★ 旧番号 P1〜P5 を置き換えた (2026-08-27) ★★
+/// ★ここは以前「P2 revision・updatedAt」と書いており deletedAt が落ちていた。
+///   決定 D101 は 3 つで 1 組である。
 ///
 /// ★メイン/エネルギーの区分は列に持たない（決定 D41）★
 /// `cards.card_type` から導出する。区分を保存すると
@@ -243,7 +248,7 @@ class RuleConfigs extends Table {
 /// 真実は 1 つに保つ。D35 の未知カード表示で区分が要ると分かったら改めて判断する。
 @DataClassName('DeckRow')
 class Decks extends Table {
-  /// ★UUID v4。連番にすると端末間で衝突する（P1）。
+  /// ★UUID v4。連番にすると端末間で衝突する（決定 D100）。
   TextColumn get deckId => text()();
   TextColumn get name => text()();
   TextColumn get memo => text().withDefault(const Constant(''))();
@@ -252,14 +257,14 @@ class Decks extends Table {
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();
 
-  /// ★論理削除（P3）。物理削除すると削除が同期で伝播しない。
+  /// ★論理削除（決定 D102）。物理削除すると削除が同期で伝播しない。
   DateTimeColumn get deletedAt => dateTime().nullable()();
 
-  /// ★更新のたびに +1（P2）。同期の差分検出に使う。
+  /// ★更新のたびに +1（決定 D101）。同期の差分検出に使う。
   IntColumn get revision => integer().withDefault(const Constant(0))();
   TextColumn get lastDeviceId => text().withDefault(const Constant(''))();
 
-  /// ★作成時のカードマスタ版（P5）。未知カード検出に使う（決定 D35）。
+  /// ★作成時のカードマスタ版（決定 D35）。未知カード検出に使う（決定 D35）。
   IntColumn get masterDataVersion => integer().withDefault(const Constant(0))();
 
   @override

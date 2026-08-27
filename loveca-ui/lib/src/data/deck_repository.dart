@@ -484,7 +484,7 @@ class DeckRepository {
           // ★Clock から供給する（§9-1）。既定値の DateTime.now() を踏まない。
           updatedAt: _clock(),
           deletedAt: base.deletedAt,
-          // ★保存 1 回につき 1 度だけ。ここが唯一の +1 である（P2）。
+          // ★保存 1 回につき 1 度だけ。ここが唯一の +1 である（決定 D101）。
           revision: base.revision + 1,
           lastDeviceId: base.lastDeviceId,
           masterDataVersion: base.masterDataVersion,
@@ -500,7 +500,7 @@ class DeckRepository {
   /// （同じ cardNumber の `-SD` と `-SD2` が合算される / 決定 D67）。
   /// 複製は**刷りを保ったまま写せる唯一の手段**である。
   ///
-  /// ★★ `masterDataVersion`（P5）は元の値を引き継ぐ ★★
+  /// ★★ `masterDataVersion`（決定 D35）は元の値を引き継ぐ ★★
   /// P5 は「作成時のカードマスタ版。未知カード検出に使う」。
   /// 現在版を打つと、元デッキが持つ**未知の刷り**が
   /// 「今の版で作ったのに未知」という説明不能な状態になり、P5 の用途を壊す。
@@ -529,12 +529,12 @@ class DeckRepository {
         return copy;
       });
 
-  /// 論理削除（P3）。物理削除すると削除が同期で伝播しない。
+  /// 論理削除（決定 D102）。物理削除すると削除が同期で伝播しない。
   ///
   /// ★★ `revision` は上がらない ★★
   /// `DeckDao.softDelete` は `deletedAt` / `updatedAt` だけを書き、
   /// `revision` に触れない（`loveca-db/lib/src/dao/deck_dao.dart:121-128`）。
-  /// `tables.dart:255` が revision を「更新のたびに +1（P2）。同期の差分検出に使う」と
+  /// `tables.dart:255` が revision を「更新のたびに +1（決定 D101）。同期の差分検出に使う」と
   /// 定めているので食い違うが、直す先は `loveca_db` 側であり、
   /// UI 側で `save()` に迂回すると DAO の意図と二重になる。
   /// → `ルール整合性チェック_v1.06.md` **D-9** に記録し、判断は Phase 4。

@@ -3,11 +3,16 @@
 /// 設計書 STEP 7 §7.4 / §0.1 に対応。
 ///
 /// ★ Phase 2 の時点で必ず入れておく先行対応 (案B: PC先行) ★
-///   P1 deckId は UUID              … 端末間で衝突しないため
-///   P2 revision / updatedAt / deletedAt … 同期の差分検出
-///   P3 物理削除をしない (論理削除)   … 削除の伝播
-///   P4 printingId 単位で保持         … 決定 D11
-///   P5 masterDataVersion を記録      … 未知カード検出 (決定 D35)
+///   決定 D100 deckId は UUID                      … 端末間で衝突しないため
+///   決定 D101 revision / updatedAt / deletedAt    … 同期の差分検出
+///   決定 D102 物理削除をしない (論理削除)          … 削除の伝播
+///   決定 D11  printingId 単位で保持                … 保持は刷り・検証は cardNumber
+///   決定 D35  masterDataVersion を記録             … 未知カード検出
+///
+/// ★★ 旧番号 P1〜P5 はこの 5 つに置き換えた (2026-08-27) ★★
+///   参照先の無い体系だったため。P4 / P5 は最初から D11 / D35 として
+///   採番済みで、新規採番は P1〜P3 の 3 つだけ
+///   (`ルール整合性チェック_v1.06.md` D-5 の訂正 / D-29)。
 ///
 /// 同期エンジン本体は Phase 4 でよいが、これらの構造だけは後付けが極めて高コスト。
 
@@ -49,7 +54,7 @@ class Deck {
     this.masterDataVersion = 0,
   });
 
-  /// ★UUID v4。連番にすると端末間で衝突する (P1)。
+  /// ★UUID v4。連番にすると端末間で衝突する (決定 D100)。
   final String deckId;
   final String name;
   final List<DeckEntry> entries;
@@ -60,14 +65,14 @@ class Deck {
   final DateTime createdAt;
   final DateTime updatedAt;
 
-  /// ★論理削除 (P3)。物理削除すると削除が同期で伝播しない。
+  /// ★論理削除 (決定 D102)。物理削除すると削除が同期で伝播しない。
   final DateTime? deletedAt;
 
-  /// ★更新のたびに +1 (P2)。同期の差分検出に使う。
+  /// ★更新のたびに +1 (決定 D101)。同期の差分検出に使う。
   final int revision;
   final String lastDeviceId;
 
-  /// ★作成時のカードマスタ版 (P5)。未知カード検出に使う。
+  /// ★作成時のカードマスタ版 (決定 D35)。未知カード検出に使う。
   final int masterDataVersion;
 
   bool get isDeleted => deletedAt != null;

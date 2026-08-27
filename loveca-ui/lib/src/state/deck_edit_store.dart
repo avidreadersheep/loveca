@@ -310,7 +310,7 @@ class DeckEditStore extends Store<DeckEditState> {
     }
   }
 
-  /// ★論理削除（P3）。DB には残るが、戻す口はまだ無い（未決 U9）。
+  /// ★論理削除（決定 D102）。DB には残るが、戻す口はまだ無い（未決 U9）。
   Future<bool> softDelete() async {
     if (value.busy) return false;
     state = value.copyWith(busy: true, clearActionError: true);

@@ -118,7 +118,7 @@ class DeckDao {
         });
       });
 
-  /// ★論理削除（P3）。物理削除すると削除が同期で伝播しない。
+  /// ★論理削除（決定 D102）。物理削除すると削除が同期で伝播しない。
   ///
   /// [at] は呼び出し側から渡す。`DateTime.now()` を層の内側で呼ばない。
   Future<void> softDelete(String deckId, DateTime at) async {

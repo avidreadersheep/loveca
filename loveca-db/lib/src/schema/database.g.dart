@@ -4378,7 +4378,7 @@ class $DecksTable extends Decks with TableInfo<$DecksTable, DeckRow> {
 }
 
 class DeckRow extends DataClass implements Insertable<DeckRow> {
-  /// ★UUID v4。連番にすると端末間で衝突する（P1）。
+  /// ★UUID v4。連番にすると端末間で衝突する（決定 D100）。
   final String deckId;
   final String name;
   final String memo;
@@ -4386,14 +4386,14 @@ class DeckRow extends DataClass implements Insertable<DeckRow> {
   final DateTime createdAt;
   final DateTime updatedAt;
 
-  /// ★論理削除（P3）。物理削除すると削除が同期で伝播しない。
+  /// ★論理削除（決定 D102）。物理削除すると削除が同期で伝播しない。
   final DateTime? deletedAt;
 
-  /// ★更新のたびに +1（P2）。同期の差分検出に使う。
+  /// ★更新のたびに +1（決定 D101）。同期の差分検出に使う。
   final int revision;
   final String lastDeviceId;
 
-  /// ★作成時のカードマスタ版（P5）。未知カード検出に使う（決定 D35）。
+  /// ★作成時のカードマスタ版（決定 D35）。未知カード検出に使う（決定 D35）。
   final int masterDataVersion;
   const DeckRow({
     required this.deckId,

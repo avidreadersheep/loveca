@@ -107,7 +107,7 @@ void main() {
     expect(decks.createCalls, 0);
   });
 
-  group('★ 論理削除（P3）', () {
+  group('★ 論理削除（決定 D102）', () {
     testWidgets('確認してから消える。★戻せないことを画面に書いてある', (tester) async {
       final decks = FakeDeckRepository(decks: [_deck('a', '消すデッキ')]);
       await pumpInAppScope(tester, const DeckListPage(), decks: decks);
