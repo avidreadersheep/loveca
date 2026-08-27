@@ -546,7 +546,7 @@ void main() {
       // ★★ 条番号はラベル自身に出す ★★ Tooltip はマウスを乗せないと出ない。
       //   ★ステップに入った直後なので、どちらも 1 つ前のステップへ着く。
       expect(labelOf(tester, 'undo-button'), '1 つ戻す（7.4.1）');
-      expect(labelOf(tester, 'undo-step-button'), '1 ステップ戻す（7.4.1）');
+      expect(labelOf(tester, 'undo-step-button'), 'このステップの入口へ戻す（7.4.1）');
 
       // ★文（フェイズ名 / ターン番号）は Tooltip に置く。
       expect(
@@ -569,7 +569,7 @@ void main() {
       // ★1 操作戻すほうは「そのステップの中の 1 つ前」なので入口ではない。
       expect(labelOf(tester, 'undo-button'), '1 つ戻す（7.4.1）');
       // ★1 ステップ戻すほうは 2 件まとめて入口まで戻る。
-      expect(labelOf(tester, 'undo-step-button'), '1 ステップ戻す（7.4.1 の入口）');
+      expect(labelOf(tester, 'undo-step-button'), 'このステップの入口へ戻す（7.4.1 の入口）');
       expect(
         find.byTooltip('このステップ（7.4.1）の入口へ戻ります（ターン 1）'),
         findsOneWidget,
@@ -581,7 +581,7 @@ void main() {
       expect(
         find.descendant(
           of: find.byKey(const ValueKey('last-rewind')),
-          matching: find.textContaining('1 ステップ戻しました（2 操作）'),
+          matching: find.textContaining('このステップの入口へ戻しました（2 操作）'),
         ),
         findsOneWidget,
       );

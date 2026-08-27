@@ -302,7 +302,16 @@ class _TidyButton extends StatelessWidget {
 ///
 /// ★★ 2 つを 1 つのボタンにしない ★★
 /// `undo` は直前の 1 操作を取り消し、`undoStep` は**そのステップの入口**または
-/// **1 つ前のステップ**へ着地する。**着地先が違うものを同じボタンにしない。**
+/// **1 つ前の操作単位**へ着地する。**着地先が違うものを同じボタンにしない。**
+///
+/// ★★ M-B7 で `undoStep` の呼び名を改めた（決定 D92-5）★★
+/// 「**1 ステップ戻す**」は**誤りになった** —— 自動進行の 1 押下は履歴 1 件なので、
+/// それを取り消すと**9 ステップ戻ることがある。**
+/// → 呼び名は「**このステップの入口へ戻す**」。★着地先そのものはラベルの括弧に出る。
+/// ★**語と実体の食い違いを放置しない**のは D88 が廃止した語と同じ型である
+/// （★語そのものはここに書かない。`board/abolished_term_test.dart` が走査している）。
+/// ★**D78 の根拠（着地先が違う）は崩れていない** —— そのステップ内で操作していれば
+/// `undo` は直前の 1 操作へ、`undoStep` はそのステップの入口へ着く。
 ///
 /// ★★ 着地先を Tooltip だけに置かない ★★
 /// D78 の目的は「**押す前に**着地先が分かる」ことだが、Tooltip はマウスを
@@ -349,7 +358,7 @@ class _UndoControls extends StatelessWidget {
         _UndoButton(
           buttonKey: const ValueKey('undo-step-button'),
           icon: Icons.first_page,
-          label: '1 ステップ戻す',
+          label: 'このステップの入口へ戻す',
           target: stepTarget,
           entrance: stepIsEntrance,
           onPressed: canUndo ? store.undoStep : null,
@@ -429,7 +438,13 @@ class _LastRewindLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final what = rewind.wholeStep ? '1 ステップ戻しました' : '1 つ戻しました';
+    // ★★ 「1 ステップ戻しました」とは書けない（M-B7 / 決定 D92-5）★★
+    //   自動進行の 1 押下は履歴 1 件なので、取り消すと 9 ステップ戻ることがある。
+    final what = switch ((rewind.wholeStep, rewind.landedOnSameStep)) {
+      (false, _) => '1 つ戻しました',
+      (true, true) => 'このステップの入口へ戻しました',
+      (true, false) => 'ステップ単位で戻しました',
+    };
     final where = rewind.landedOnSameStep
         ? '${rewind.landedCursor.step.ruleRef} の入口'
         : '${phaseLabel(rewind.landedCursor.phase)} '
