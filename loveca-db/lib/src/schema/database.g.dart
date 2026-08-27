@@ -5028,8 +5028,18 @@ class $DeckEntriesTable extends DeckEntries
     type: DriftSqlType.int,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _ordMeta = const VerificationMeta('ord');
   @override
-  List<GeneratedColumn> get $columns => [deckId, printingId, count];
+  late final GeneratedColumn<int> ord = GeneratedColumn<int>(
+    'ord',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [deckId, printingId, count, ord];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -5066,6 +5076,12 @@ class $DeckEntriesTable extends DeckEntries
     } else if (isInserting) {
       context.missing(_countMeta);
     }
+    if (data.containsKey('ord')) {
+      context.handle(
+        _ordMeta,
+        ord.isAcceptableOrUnknown(data['ord']!, _ordMeta),
+      );
+    }
     return context;
   }
 
@@ -5087,6 +5103,10 @@ class $DeckEntriesTable extends DeckEntries
         DriftSqlType.int,
         data['${effectivePrefix}count'],
       )!,
+      ord: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}ord'],
+      )!,
     );
   }
 
@@ -5100,10 +5120,24 @@ class DeckEntryRow extends DataClass implements Insertable<DeckEntryRow> {
   final String deckId;
   final String printingId;
   final int count;
+
+  /// デッキの中の並び順（決定 D65 / **D99**）。0 始まりの添字。
+  ///
+  /// ★★ 主キーに入れない ★★
+  /// 「同じ刷りは 1 行」の不変条件は `{deckId, printingId}` が守っている。
+  /// `ord` を鍵に入れると、同じ刷りが違う `ord` で 2 行入れられるようになる。
+  ///
+  /// ★★ 既定値 0 は移行のためである ★★
+  /// `schemaVersion` 2 → 3 の `ALTER TABLE ... ADD COLUMN` が NOT NULL 列に
+  /// 既定値を要求する。**書き込み時は [DeckDao.save] が必ず添字を明示する**ので、
+  /// 既定値が実際に使われるのは移行の一瞬だけである
+  /// （直後に backfill が上書きする / `database.dart` の `from < 3` の枝）。
+  final int ord;
   const DeckEntryRow({
     required this.deckId,
     required this.printingId,
     required this.count,
+    required this.ord,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -5111,6 +5145,7 @@ class DeckEntryRow extends DataClass implements Insertable<DeckEntryRow> {
     map['deck_id'] = Variable<String>(deckId);
     map['printing_id'] = Variable<String>(printingId);
     map['count'] = Variable<int>(count);
+    map['ord'] = Variable<int>(ord);
     return map;
   }
 
@@ -5119,6 +5154,7 @@ class DeckEntryRow extends DataClass implements Insertable<DeckEntryRow> {
       deckId: Value(deckId),
       printingId: Value(printingId),
       count: Value(count),
+      ord: Value(ord),
     );
   }
 
@@ -5131,6 +5167,7 @@ class DeckEntryRow extends DataClass implements Insertable<DeckEntryRow> {
       deckId: serializer.fromJson<String>(json['deckId']),
       printingId: serializer.fromJson<String>(json['printingId']),
       count: serializer.fromJson<int>(json['count']),
+      ord: serializer.fromJson<int>(json['ord']),
     );
   }
   @override
@@ -5140,15 +5177,21 @@ class DeckEntryRow extends DataClass implements Insertable<DeckEntryRow> {
       'deckId': serializer.toJson<String>(deckId),
       'printingId': serializer.toJson<String>(printingId),
       'count': serializer.toJson<int>(count),
+      'ord': serializer.toJson<int>(ord),
     };
   }
 
-  DeckEntryRow copyWith({String? deckId, String? printingId, int? count}) =>
-      DeckEntryRow(
-        deckId: deckId ?? this.deckId,
-        printingId: printingId ?? this.printingId,
-        count: count ?? this.count,
-      );
+  DeckEntryRow copyWith({
+    String? deckId,
+    String? printingId,
+    int? count,
+    int? ord,
+  }) => DeckEntryRow(
+    deckId: deckId ?? this.deckId,
+    printingId: printingId ?? this.printingId,
+    count: count ?? this.count,
+    ord: ord ?? this.ord,
+  );
   DeckEntryRow copyWithCompanion(DeckEntriesCompanion data) {
     return DeckEntryRow(
       deckId: data.deckId.present ? data.deckId.value : this.deckId,
@@ -5156,6 +5199,7 @@ class DeckEntryRow extends DataClass implements Insertable<DeckEntryRow> {
           ? data.printingId.value
           : this.printingId,
       count: data.count.present ? data.count.value : this.count,
+      ord: data.ord.present ? data.ord.value : this.ord,
     );
   }
 
@@ -5164,37 +5208,42 @@ class DeckEntryRow extends DataClass implements Insertable<DeckEntryRow> {
     return (StringBuffer('DeckEntryRow(')
           ..write('deckId: $deckId, ')
           ..write('printingId: $printingId, ')
-          ..write('count: $count')
+          ..write('count: $count, ')
+          ..write('ord: $ord')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(deckId, printingId, count);
+  int get hashCode => Object.hash(deckId, printingId, count, ord);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is DeckEntryRow &&
           other.deckId == this.deckId &&
           other.printingId == this.printingId &&
-          other.count == this.count);
+          other.count == this.count &&
+          other.ord == this.ord);
 }
 
 class DeckEntriesCompanion extends UpdateCompanion<DeckEntryRow> {
   final Value<String> deckId;
   final Value<String> printingId;
   final Value<int> count;
+  final Value<int> ord;
   final Value<int> rowid;
   const DeckEntriesCompanion({
     this.deckId = const Value.absent(),
     this.printingId = const Value.absent(),
     this.count = const Value.absent(),
+    this.ord = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   DeckEntriesCompanion.insert({
     required String deckId,
     required String printingId,
     required int count,
+    this.ord = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : deckId = Value(deckId),
        printingId = Value(printingId),
@@ -5203,12 +5252,14 @@ class DeckEntriesCompanion extends UpdateCompanion<DeckEntryRow> {
     Expression<String>? deckId,
     Expression<String>? printingId,
     Expression<int>? count,
+    Expression<int>? ord,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
       if (deckId != null) 'deck_id': deckId,
       if (printingId != null) 'printing_id': printingId,
       if (count != null) 'count': count,
+      if (ord != null) 'ord': ord,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -5217,12 +5268,14 @@ class DeckEntriesCompanion extends UpdateCompanion<DeckEntryRow> {
     Value<String>? deckId,
     Value<String>? printingId,
     Value<int>? count,
+    Value<int>? ord,
     Value<int>? rowid,
   }) {
     return DeckEntriesCompanion(
       deckId: deckId ?? this.deckId,
       printingId: printingId ?? this.printingId,
       count: count ?? this.count,
+      ord: ord ?? this.ord,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -5239,6 +5292,9 @@ class DeckEntriesCompanion extends UpdateCompanion<DeckEntryRow> {
     if (count.present) {
       map['count'] = Variable<int>(count.value);
     }
+    if (ord.present) {
+      map['ord'] = Variable<int>(ord.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -5251,6 +5307,7 @@ class DeckEntriesCompanion extends UpdateCompanion<DeckEntryRow> {
           ..write('deckId: $deckId, ')
           ..write('printingId: $printingId, ')
           ..write('count: $count, ')
+          ..write('ord: $ord, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -10837,6 +10894,7 @@ typedef $$DeckEntriesTableCreateCompanionBuilder =
       required String deckId,
       required String printingId,
       required int count,
+      Value<int> ord,
       Value<int> rowid,
     });
 typedef $$DeckEntriesTableUpdateCompanionBuilder =
@@ -10844,6 +10902,7 @@ typedef $$DeckEntriesTableUpdateCompanionBuilder =
       Value<String> deckId,
       Value<String> printingId,
       Value<int> count,
+      Value<int> ord,
       Value<int> rowid,
     });
 
@@ -10885,6 +10944,11 @@ class $$DeckEntriesTableFilterComposer
 
   ColumnFilters<int> get count => $composableBuilder(
     column: $table.count,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get ord => $composableBuilder(
+    column: $table.ord,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -10931,6 +10995,11 @@ class $$DeckEntriesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<int> get ord => $composableBuilder(
+    column: $table.ord,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   $$DecksTableOrderingComposer get deckId {
     final $$DecksTableOrderingComposer composer = $composerBuilder(
       composer: this,
@@ -10971,6 +11040,9 @@ class $$DeckEntriesTableAnnotationComposer
 
   GeneratedColumn<int> get count =>
       $composableBuilder(column: $table.count, builder: (column) => column);
+
+  GeneratedColumn<int> get ord =>
+      $composableBuilder(column: $table.ord, builder: (column) => column);
 
   $$DecksTableAnnotationComposer get deckId {
     final $$DecksTableAnnotationComposer composer = $composerBuilder(
@@ -11027,11 +11099,13 @@ class $$DeckEntriesTableTableManager
                 Value<String> deckId = const Value.absent(),
                 Value<String> printingId = const Value.absent(),
                 Value<int> count = const Value.absent(),
+                Value<int> ord = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => DeckEntriesCompanion(
                 deckId: deckId,
                 printingId: printingId,
                 count: count,
+                ord: ord,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -11039,11 +11113,13 @@ class $$DeckEntriesTableTableManager
                 required String deckId,
                 required String printingId,
                 required int count,
+                Value<int> ord = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => DeckEntriesCompanion.insert(
                 deckId: deckId,
                 printingId: printingId,
                 count: count,
+                ord: ord,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

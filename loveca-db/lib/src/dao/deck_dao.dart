@@ -104,12 +104,15 @@ class DeckDao {
                 tag: tag,
               ),
           ]);
+          // ★★ 並び順は `deck.entries` の添字である（決定 D65 / D99）★★
+          //   save は毎回「全削除 → 全挿入」なので、増分の保守が要らない。
           batch.insertAll(db.deckEntries, [
-            for (final entry in deck.entries)
+            for (final (i, entry) in deck.entries.indexed)
               DeckEntriesCompanion.insert(
                 deckId: deck.deckId,
                 printingId: entry.printingId,
                 count: entry.count,
+                ord: Value(i),
               ),
           ]);
         });
@@ -142,9 +145,10 @@ class DeckDao {
             ..where((t) => t.deckId.equals(deckId))
             ..orderBy([(t) => OrderingTerm(expression: t.ord)]))
           .get(),
+      // ★並びは保存されている（決定 D65 / D99）。printing_id 昇順ではない。
       await (db.select(db.deckEntries)
             ..where((t) => t.deckId.equals(deckId))
-            ..orderBy([(t) => OrderingTerm(expression: t.printingId)]))
+            ..orderBy([(t) => OrderingTerm(expression: t.ord)]))
           .get(),
     );
   }
@@ -167,10 +171,17 @@ class DeckDao {
             .get()) {
       (tags[t.deckId] ??= []).add(t);
     }
+    // ★★ `byId` と同じ並びで返す（決定 D65 / `ルール整合性チェック_v1.06.md` D-11）★★
+    //   ここに ORDER BY が無かったため、**同じデッキでも取得経路で並びが違った。**
+    //   deck_id ごとに束ねるので、並べ替えの単位は (deck_id, ord) である。
     final entries = <String, List<DeckEntryRow>>{};
-    for (final e
-        in await (db.select(db.deckEntries)..where((t) => t.deckId.isIn(ids)))
-            .get()) {
+    for (final e in await (db.select(db.deckEntries)
+          ..where((t) => t.deckId.isIn(ids))
+          ..orderBy([
+            (t) => OrderingTerm(expression: t.deckId),
+            (t) => OrderingTerm(expression: t.ord),
+          ]))
+        .get()) {
       (entries[e.deckId] ??= []).add(e);
     }
 
@@ -182,6 +193,73 @@ class DeckDao {
           entries[row.deckId] ?? const [],
         ),
     ];
+  }
+
+  // -------------------------------------------------------------------------
+  // 移行（schemaVersion 2 -> 3）
+  // -------------------------------------------------------------------------
+
+  /// `ord` 列の backfill（決定 D65 / **D99**）.
+  ///
+  /// ★★ 基準は「移行の前後で見た目が変わらないこと」である ★★
+  /// D65 はそのために `printing_id` 昇順を凍結すると書いていた。
+  /// **D99 で基準は目的として維持し、凍結する値だけ規則順へ差し替えた。**
+  /// 旧値のまま backfill すると、**既存デッキだけ永久に旧順で残り、
+  /// 新規デッキだけコスト降順**になる——同じアプリの中で規則が 2 つになる。
+  ///
+  /// ★★ SQL ではなく Dart で書く（決定 D99）★★
+  /// 規則順は区分と `cost` / `score` を見るので、SQL で書くと規則が
+  /// 「Dart の比較器」と「移行の SQL」の**2 箇所**に載る。
+  /// **UI と同じ比較器**（`loveca_core` の `sortedByDeckOrder`）を呼ぶ。
+  ///
+  /// ★★ マスタが空でも落ちない ★★
+  /// `cards` / `printings` が空なら全件が「マスタに無い刷り」になり
+  /// （決定 D35）、段 3 の `printingId` 昇順だけが効く。
+  /// **これは移行前の並びと同じ**なので、その端末では見た目が変わらない。
+  ///
+  /// ★★ この経路は `revision` を上げない ★★
+  /// `save` を通らないので意図どおりだが、端末間で並びがずれる経路が
+  /// 1 本できる（`ルール整合性チェック_v1.06.md` **D-26**）。Phase 4 で見ること。
+  Future<void> backfillOrd() async {
+    final rows = await db.select(db.deckEntries).get();
+    if (rows.isEmpty) return;
+
+    final printings = await CardDao(db).printingsById();
+    final cards = await CardDao(db).cardsByNumber();
+    DeckOrderKey keyOf(String printingId) {
+      final printing = printings[printingId];
+      final card = printing == null ? null : cards[printing.cardNumber];
+      if (card == null) return DeckOrderKey.unknown;
+      return DeckOrderKey(
+        cardType: card.cardType,
+        cost: card.cost,
+        score: card.score,
+      );
+    }
+
+    final byDeck = <String, List<DeckEntryRow>>{};
+    for (final row in rows) {
+      (byDeck[row.deckId] ??= []).add(row);
+    }
+
+    await db.transaction(() async {
+      for (final entry in byDeck.entries) {
+        final sorted = sortedByDeckOrder(
+          [
+            for (final r in entry.value)
+              DeckEntry(printingId: r.printingId, count: r.count),
+          ],
+          keyOf,
+        );
+        for (final (i, e) in sorted.indexed) {
+          await (db.update(db.deckEntries)
+                ..where((t) =>
+                    t.deckId.equals(entry.key) &
+                    t.printingId.equals(e.printingId)))
+              .write(DeckEntriesCompanion(ord: Value(i)));
+        }
+      }
+    });
   }
 
   // -------------------------------------------------------------------------

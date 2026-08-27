@@ -443,30 +443,29 @@ void main() {
   });
 
   group('★★ 並び順は保存されない（決定 D65）★★', () {
-    // ★deck_entries に順序列が無く、DeckDao.byId は ORDER BY printing_id。
-    //   直せる場所は loveca_db 側なので、M4 は**そうなることを固定して見せる**。
-    test('並べ替えて保存しても、開き直すとカード番号順に戻る', () async {
+    // ★★ 2026-08-27: ここは向きが逆になった（決定 D99）★★
+    //   `deck_entries` に `ord` が入り、`byId` / `all` が `ORDER BY ord` で読む。
+    //   **並べ替えは保存される。**
+    //   ★元のテスト（「開き直すとカード番号順に戻る」）は D65 の事実を固定して
+    //     いたもので、**誤っていたのではなく前提が変わった**。
+    //   ★画面側の撤去（`normalizedEntries` / `DeckOrderNotPersisted` /
+    //     `isReordered`）はこの commit の範囲外。この group の残りはまだ生きている。
+    test('★★ 並べ替えて保存すると、開き直しても並びが残る（決定 D99）★★', () async {
       final created = await repositoryOn(db).create(name: 'X');
       final repository = repositoryOn(db);
 
       var draft = repository.draftOf(created).addCopy('M-1-N').addCopy('M-2-N');
-      expect(
-        draft.entries.map((e) => e.printingId),
-        ['M-1-N', 'M-2-N'],
-        reason: '開いた直後は正規化された並び',
-      );
-
       draft = draft.moveEntry('M-2-N', 'M-1-N', after: false);
+      // ★★ 保存する並びが「開き直したときの既定」と違うこと ★★
+      //   同じだと、並びを 1 ビットも保存しない実装でも通る。
       expect(draft.entries.map((e) => e.printingId), ['M-2-N', 'M-1-N']);
-      expect(repository.isReordered(draft), isTrue);
 
       await repository.save(created, draft);
       await db.close();
       final reopened = await open();
       final restored = await repositoryOn(reopened).byId(created.deckId);
 
-      // ★★ ここが決定 D65 の中身。画面はこれを先に予告している ★★
-      expect(restored!.entries.map((e) => e.printingId), ['M-1-N', 'M-2-N']);
+      expect(restored!.entries.map((e) => e.printingId), ['M-2-N', 'M-1-N']);
     });
 
     test('★★ 区分をまたいで足しただけでは縮退にしない（実機で誤検知した）★★', () async {

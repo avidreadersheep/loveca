@@ -292,6 +292,19 @@ class DeckEntries extends Table {
   TextColumn get printingId => text()();
   IntColumn get count => integer()();
 
+  /// デッキの中の並び順（決定 D65 / **D99**）。0 始まりの添字。
+  ///
+  /// ★★ 主キーに入れない ★★
+  /// 「同じ刷りは 1 行」の不変条件は `{deckId, printingId}` が守っている。
+  /// `ord` を鍵に入れると、同じ刷りが違う `ord` で 2 行入れられるようになる。
+  ///
+  /// ★★ 既定値 0 は移行のためである ★★
+  /// `schemaVersion` 2 → 3 の `ALTER TABLE ... ADD COLUMN` が NOT NULL 列に
+  /// 既定値を要求する。**書き込み時は [DeckDao.save] が必ず添字を明示する**ので、
+  /// 既定値が実際に使われるのは移行の一瞬だけである
+  /// （直後に backfill が上書きする / `database.dart` の `from < 3` の枝）。
+  IntColumn get ord => integer().withDefault(const Constant(0))();
+
   @override
   Set<Column<Object>> get primaryKey => {deckId, printingId};
 }

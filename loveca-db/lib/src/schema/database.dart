@@ -11,6 +11,7 @@ import 'package:drift/drift.dart';
 //   生成コードから見えるように、ここで import しておく必要がある。
 import 'package:loveca_core/loveca_core.dart';
 
+import '../dao/deck_dao.dart';
 import '../search/card_search_dao.dart';
 import '../search/card_search_schema.dart';
 import 'enums.dart';
@@ -42,11 +43,12 @@ class LovecaDatabase extends _$LovecaDatabase {
   LovecaDatabase(super.executor);
 
   /// ★2: 検索索引に `card_number_raw` を足した（決定 D49）。
+  /// ★3: `deck_entries` に `ord` を足した（決定 D65 / **D99**）。
   ///
   /// 上げるときは必ず [migration] の `onUpgrade` に対応する手順を足すこと。
   /// 版だけ上げて手順を足さないと、既存の端末が古い形のまま動き続ける。
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -71,6 +73,17 @@ class LovecaDatabase extends _$LovecaDatabase {
             // v1 -> v2: 索引に `card_number_raw` を足した（決定 D49）。
             //           索引は派生物なので建て直すだけでよい。
             await CardSearchDao(this).rebuildAll();
+          }
+          if (from < 3) {
+            // ★★ v2 -> v3: `deck_entries` に `ord` を足す（決定 D65 / D99）★★
+            //
+            // ★ここから下は上の枝と格が違う。**ユーザデータに触る移行**である。
+            //   `card_search` は `cards` からの純粋な派生物なので落として建て直せるが、
+            //   `decks` は作り直せない（決定 D11 / D35）。
+            //
+            // ★順序が要る: 列を足してからでないと backfill が書き込めない。
+            await m.addColumn(deckEntries, deckEntries.ord);
+            await DeckDao(this).backfillOrd();
           }
         },
         beforeOpen: (details) async {
