@@ -469,6 +469,101 @@ void main() {
       expect(withDecision, branches, reason: '分岐と判定主体の対応がずれている');
     });
 
+    // =======================================================================
+    // ★★ R-S1 —— 自動進行が手前で止まるステップ (決定 D92 / M-B7) ★★
+    //
+    // ★★ 期待値を手で並べない (D-15) ★★
+    //   `requiresPlayerAction` から**導く**。件数は導出の副産物であって本体ではない。
+    //   本体は各宣言の直上に引いてある**該当句**である。
+    // =======================================================================
+
+    test('★前提: R-S1 の集合が空でない (比較の前提)', () {
+      // ★★ 0 件 / 空集合との比較は何も証明しない ★★
+      final stops = StepId.values.where((s) => s.requiresPlayerAction).toSet();
+      expect(stops, hasLength(7), reason: '★`docs/盤面設計メモ.md` §15-3 の 7 ステップ');
+      expect(
+        stops.map((s) => s.ruleRef).toSet(),
+        {'7.7.2', '8.2.2', '8.2.4', '8.3.15', '8.3.16', '8.4.6', '8.4.7'},
+      );
+    });
+
+    test('★★ stopsAutoAdvance は R-S1 と playerDeclared の和である ★★', () {
+      // ★UI は条番号を名指しできない (`board/step_authority_test.dart`) ので、
+      //   停止判定はこの派生 getter が唯一の入口になる。
+      final derived = StepId.values
+          .where((s) =>
+              s.requiresPlayerAction ||
+              s.decision == StepDecision.playerDeclared)
+          .toSet();
+      final actual = StepId.values.where((s) => s.stopsAutoAdvance).toSet();
+      expect(actual, derived);
+      // 8.4.12 が 1 つだけ増える。
+      expect(actual, hasLength(8));
+      expect(actual, contains(StepId.s8_4_12));
+    });
+
+    test('★★ 8.4.12 に requiresPlayerAction を持たせない (同じ事実を 2 箇所に書かない) ★★',
+        () {
+      // ★すでに [decision] が答えている。両方立てると、片方だけ外したときに
+      //   「止まらなくなった」ことに気づけない。
+      expect(StepId.s8_4_12.requiresPlayerAction, isFalse);
+      expect(StepId.s8_4_12.stopsAutoAdvance, isTrue);
+      // ★対: 8.3.6 は分岐だが自動判定なので止まらない。
+      expect(StepId.s8_3_6.decision, StepDecision.automatic);
+      expect(StepId.s8_3_6.stopsAutoAdvance, isFalse);
+    });
+
+    test('★★ 対: 止まらないものが 1 つも立っていない (§15-3 の対の表) ★★', () {
+      // ★★ これが無いと「プレイヤーが出てくる語を含む＝止まる」と読み違える ★★
+      //   §14-4 が「飛ばさないものを対で書く」でやったのと同じ形である。
+
+      // (1) 誘発ステップ …条文は「誘発条件が**発生します**」= 事象である。
+      for (final step in const [
+        StepId.s7_4_2, StepId.s7_5_1, StepId.s7_6_1, StepId.s7_7_1,
+        StepId.s8_2_1, StepId.s8_3_3, StepId.s8_3_8, StepId.s8_4_1,
+        StepId.s8_4_4, StepId.s8_4_10,
+      ]) {
+        expect(step.stopsAutoAdvance, isFalse, reason: '★誘発 ${step.ruleRef}');
+      }
+
+      // (2) 集計 …すでに画面の帯に出ている (D18)。8.3.12 のドローはアプリが実行する。
+      for (final step in const [
+        StepId.s8_3_10, StepId.s8_3_12, StepId.s8_3_14, StepId.s8_4_2,
+      ]) {
+        expect(step.stopsAutoAdvance, isFalse, reason: '★集計 ${step.ruleRef}');
+      }
+
+      // (3) 比較の規約定義 / アプリが実行するもの。
+      for (final step in const [
+        StepId.s8_4_3, StepId.s8_4_13, StepId.s8_4_14,
+      ]) {
+        expect(step.stopsAutoAdvance, isFalse, reason: '★${step.ruleRef}');
+      }
+
+      // (4) 条文がプレイヤーに何も求めていないもの。
+      for (final step in const [
+        StepId.s8_3_7, StepId.s8_3_9, StepId.s8_3_11, StepId.s8_3_13,
+        StepId.s8_3_17, StepId.s8_4_5, StepId.s8_4_8, StepId.s8_4_9,
+        StepId.s8_4_11,
+      ]) {
+        expect(step.stopsAutoAdvance, isFalse, reason: '★${step.ruleRef}');
+      }
+    });
+
+    test('★ R-S1 と requiresOpponent は独立に立つ (8.2.4 / 8.4.6 は両方)', () {
+      // ★ソロでは [requiresOpponent] により通らないので、そもそも停止点にならない。
+      //   ★2 つの属性を 1 つにまとめない —— 意味が違う。
+      expect(StepId.s8_2_4.requiresOpponent, isTrue);
+      expect(StepId.s8_2_4.requiresPlayerAction, isTrue);
+      expect(StepId.s8_4_6.requiresOpponent, isTrue);
+      expect(StepId.s8_4_6.requiresPlayerAction, isTrue);
+      // ★対: 8.4.3 / 8.4.13 は相手を要求するが止まらない。
+      expect(StepId.s8_4_3.requiresOpponent, isTrue);
+      expect(StepId.s8_4_3.requiresPlayerAction, isFalse);
+      expect(StepId.s8_4_13.requiresOpponent, isTrue);
+      expect(StepId.s8_4_13.requiresPlayerAction, isFalse);
+    });
+
     test('★8.3.6 の早期終了はフェイズ終了へ直接遷移する (8.3.17 へ跳ばない)', () {
       // 8.3.17 へジャンプさせると 8.3.17 のチェックタイミングが余分に走る。
       // 11.5.2.1 により「ライブ開始時」(8.3.8) の事象も発生しない。
