@@ -467,10 +467,22 @@ class DeckRepository {
   /// → `test/data/deck_repository_test.dart` が **`Deck.toJson()` の
   /// キー集合を凍結**しており、`Deck` にフィールドが増えると落ちる。
   ///
-  /// ★★ 並び順は保存されない（決定 D65）★★
-  /// `deck.entries` の順で書き込むが、`deck_entries` に順序列が無く
-  /// `DeckDao.byId` が `ORDER BY printing_id` で読み戻すため、開き直すと戻る。
-  /// **画面がそれを予告している**（`DeckOrderNotPersisted`）。
+  /// ★★ 並び順は `deck.entries` の順で保存される（決定 D65 / D99）★★
+  /// `DeckDao.save` が添字を `deck_entries.ord` に書き、`byId` も `all` も
+  /// `ORDER BY ord` で読み戻す。**開き直しても手動順のままである。**
+  ///
+  /// ★★ ここには 2026-08-28 まで逆のことが書いてあった ★★
+  /// 「並び順は保存されない」「`byId` は `ORDER BY printing_id` で読み戻す」
+  /// 「画面が `DeckOrderNotPersisted` で予告している」の 3 つで、
+  /// **書かれた時点では正しかった。** D65 が決めた `ord` 列の移行方式を
+  /// 決定 D99 が実装した（`schemaVersion` 3 / 2026-08-27）ことで前提が動き、
+  /// 予告の縮退は撤去された（`state/deck_edit_degradation.dart` が記録している）。
+  /// ★型は `ルール整合性チェック_v1.06.md` **D-15 (l)**。
+  /// ★**走査では出ない** —— 字面は正しい日本語で、grep に引っかかる語が無い。
+  ///
+  /// ★★ 書き戻さないこと ★★
+  /// `DeckDraft.isDirtyAgainst` は**並びを見る**（決定 D99）。ここを
+  /// 「保存されない」に戻すと、2 つの doc が正面から食い違う。
   Future<Deck> save(Deck base, DeckDraft draft) =>
       guardRepository('deck.save', () async {
         final next = Deck(
