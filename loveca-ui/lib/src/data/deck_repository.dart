@@ -108,7 +108,11 @@ class DeckDraft {
             clearCover ? null : (coverPrintingId ?? this.coverPrintingId),
       );
 
-  /// printingId -> 枚数。★保存されるのはこの形であって、並び順ではない（決定 D65）。
+  /// printingId -> 枚数。★**並び順を落とす**ので、保存にも差分判定にも使わない。
+  ///
+  /// ★2026-08-29 訂正: ここには「保存されるのはこの形であって、並び順ではない
+  /// （決定 D65）」と書いてあったが、**並び順も保存される**（決定 D99 / `ord`）。
+  /// ★経緯の正は下の `save` の doc。★型は **D-15 (l)**。
   Map<String, int> get countsByPrintingId =>
       {for (final e in entries) e.printingId: e.count};
 
@@ -188,7 +192,11 @@ class DeckDraft {
 
   /// [printingId] を [target] の前／後ろへ動かす。
   ///
-  /// ★保存されない（決定 D65）。画面の中だけの並び。
+  /// ★★ 保存される（決定 D99）★★
+  /// `deck_entries.ord` に入るので、開き直しても手動順のままである。
+  /// ★2026-08-29 訂正: ここには「★保存されない（決定 D65）。画面の中だけの並び。」と
+  /// 書いてあり、**呼び出し元の `DeckEditStore.moveEntry` が正反対を書いていた。**
+  /// ★経緯の正は下の `save` の doc。★型は **D-15 (l)**。
   DeckDraft moveEntry(String printingId, String target, {required bool after}) {
     if (printingId == target) return this;
     final next = [...entries];

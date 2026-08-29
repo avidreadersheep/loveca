@@ -450,7 +450,8 @@ class _EntryRow extends StatelessWidget {
               before: entry.printingId,
               edge: edge,
             );
-          // ★デッキから: 並べ替える（★保存されない / 決定 D65）。
+          // ★デッキから: 並べ替える（★保存される / 決定 D99。★2026-08-29 訂正 ——
+          //   ここには「★保存されない / 決定 D65」と書いてあった / **D-15 (l)**）。
           case DeckEntryDrag():
             store.moveEntry(data.printingId, entry.printingId, edge);
         }
