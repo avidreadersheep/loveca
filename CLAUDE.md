@@ -280,9 +280,9 @@ git ls-files --others --ignored --exclude-standard \
 | `loveca-data`（Python） | 33 | `python tests/run_all.py` |
 | `loveca-core`（Dart） | **411** | `dart test` |
 | `loveca-db`（Dart） | **142**（★skip 0） | `dart test` |
-| `loveca-ui`（Flutter） | **889**（★skip 0） | `flutter test` |
+| `loveca-ui`（Flutter） | **890**（★skip 0） | `flutter test` |
 
-（`loveca-ui` は **束 C の commit 0（A-0 の残務 ＋ U32）** 時点 / 2026-08-30。
+（`loveca-ui` は **束 C の「U32 の走査の穴を塞ぐ」** 時点 / 2026-08-30。
 `loveca-core` は **束 B の commit 2（決定 D99 の比較器）** 時点 / 2026-08-27。
 ほかの 2 つは **M-B7（決定 D92 / D98）の完了時** / 2026-08-27。★**4 件とも実測で確認済み**）
 
@@ -296,6 +296,11 @@ git ls-files --others --ignored --exclude-standard \
 **(B) 台帳に無い番号を実ファイルに 1 つ置くと「決定番号は 1 つ残らず台帳に在る」が落ちる**
 （★どのファイルが引いているかまで出る）。
 ★★**どちらも仕込んで走らせ、戻してから本番を測った**★★（**D-10** —— ★0 件は「無い」と「見えていない」の区別がつかない）。
+
+★★**その次の commit（U32 の走査の穴）で `loveca-ui` が 889 → 890**★★
+（+1 = 太字の飾りが付いた参照を拾うことの陽性対照）。
+★★**穴は実在した**★★ —— ★`決定 **DNN**` の形が corpus に在り、★**最初の版は黙って飛ばしていた**。
+★**型は D-31**（★狭めた走査はそのまま穴になる）。★**置いた当日に自分で踏んだ。**
 
 ★★**束 B の commit 2 で `loveca-core` が 385 → 411**★★
 （+26 = `deck_order_test.dart` の新設。区分順 3 / 区分ごとの軸 5 / null の末尾 4 /
