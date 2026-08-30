@@ -155,6 +155,51 @@ class DeckEditStore extends Store<DeckEditState> {
   final DeckRepository _repository;
 
   // ---------------------------------------------------------------------------
+  // 編集ログ（決定 **D110-1** / 記録点は **D110-2** / `docs/同期設計メモ.md` §17-9-2）
+  // ---------------------------------------------------------------------------
+
+  /// まだ保存されていない操作の列。
+  ///
+  /// ★★ なぜ [DeckEditState] に置かないか ★★
+  /// 画面はこれを 1 度も読まない。状態に置くと**消費者が 1 人もいない公開フィールド**が
+  /// できる（**D-20** の型）。★**読むのは [save] だけ**なので private に閉じる。
+  ///
+  /// ★★ いつ書くか —— **保存の時点**である（§17-9-2 の 3）★★
+  /// 9 操作は `_apply` でドラフトを差し替えるだけで **DB に 1 行も書かない**ので、
+  /// ★**ログも同じ時点に揃える。**→ `DeckDao.save` が本体と**同じトランザクション**で
+  /// 書く（**D110-3** が `softDelete` で採ったのと同じ形）。
+  /// ★**「操作のたびに書く」は採らなかった** —— ★保存前に閉じた編集が DB に残り、
+  /// ★**ドラフトの性質（保存しなければ元に戻せる）と食い違う**（`replaceEntries` の doc）。
+  ///
+  /// ★★ いつ捨てるか —— **保存が通ったときだけ**である ★★
+  /// 失敗したら **DAO のトランザクションごと巻き戻る**ので、ログも本体も残らない。
+  /// ★そこで捨てると、★**やり直した保存が本体だけを書いてログを落とす** ——
+  /// ★**穴 (c) と同じ形**（`decks` は動いたのに検出層が見ない）を自分で作ることになる。
+  /// → ★**捨てない。★次の保存が持っていく。**
+  ///
+  /// ★★ 保存を通らなかった操作は載らない ★★
+  /// [save] は `canSave`（変更が在り、名前が空でない）で門を張る。
+  /// ★**名前を変えて戻すと `isDirty` が false になり、記録は書かれないまま残る。**
+  /// ★**これは「いつ書くか」の帰結であって、新しい判断ではない** ——
+  /// 画面を閉じればドラフトごと消える（★R3 には巻き戻しの口が無い。★下の [save] の doc）。
+  final List<DeckEditOpRecord> _pendingOps = [];
+
+  /// 操作を 1 件貯める。
+  ///
+  /// ★★ `_apply` の中に置かない ★★
+  /// `_apply` は「何をしたか」を知らない（ドラフトを丸ごと受け取るだけ）。
+  /// ★**種類は呼び出し元だけが持っている**ので、9 箇所から名指しで呼ぶ。
+  /// → ★**1 つ書き忘れると、その 1 つだけが記録されなくなる**（★テストが 1 件ずつ見る）。
+  ///
+  /// ★★ 引数は持たせない（§17-9-2 の 2 / 4 は未決）★★
+  /// [DeckEditOpRecord] は `kind` と `at` だけを持つ。★とくに [sortByRule] は
+  /// ★**「規則順に戻した」という事実だけ**で、★**どの規則かは書かない**
+  /// （★書くと (f-3) の軸 B を倒す / §13-5）。
+  void _record(DeckEditOpKind kind) =>
+      // ★時刻は [Clock] から（§9-1）。★操作が起きた時刻であって保存時刻ではない。
+      _pendingOps.add((kind: kind, at: _repository.now()));
+
+  // ---------------------------------------------------------------------------
   // ドラフトの差し替え（★ここを通さない書き換えを作らない）
   // ---------------------------------------------------------------------------
 
@@ -169,9 +214,15 @@ class DeckEditStore extends Store<DeckEditState> {
     );
   }
 
-  void setName(String name) => _apply(value.draft.copyWith(name: name));
+  void setName(String name) {
+    _record(DeckEditOpKind.setName);
+    _apply(value.draft.copyWith(name: name));
+  }
 
-  void setMemo(String memo) => _apply(value.draft.copyWith(memo: memo));
+  void setMemo(String memo) {
+    _record(DeckEditOpKind.setMemo);
+    _apply(value.draft.copyWith(memo: memo));
+  }
 
   /// 共有形式から取り込んだ中身で置き換える（M6 / 決定 D67）。
   ///
@@ -180,20 +231,25 @@ class DeckEditStore extends Store<DeckEditState> {
   /// だからダイアログで「置き換えます」と言い切れる。
   ///
   /// ★合算しない。合算すると 4 枚超過が起きやすく、しかも戻せない。
-  void replaceEntries(List<DeckEntry> entries) =>
-      _apply(value.draft.copyWith(entries: entries));
+  void replaceEntries(List<DeckEntry> entries) {
+    _record(DeckEditOpKind.replaceEntries);
+    _apply(value.draft.copyWith(entries: entries));
+  }
 
   /// P3 のメタ編集（M6）。★`_apply` を通すので `revision` は動かない。
-  void applyMeta(DeckDraft meta) => _apply(
-        value.draft.copyWith(
-          name: meta.name,
-          memo: meta.memo,
-          tags: meta.tags,
-          coverPrintingId: meta.coverPrintingId,
-          // ★外すのも編集のうち。渡さないと片道になる。
-          clearCover: meta.coverPrintingId == null,
-        ),
-      );
+  void applyMeta(DeckDraft meta) {
+    _record(DeckEditOpKind.applyMeta);
+    _apply(
+      value.draft.copyWith(
+        name: meta.name,
+        memo: meta.memo,
+        tags: meta.tags,
+        coverPrintingId: meta.coverPrintingId,
+        // ★外すのも編集のうち。渡さないと片道になる。
+        clearCover: meta.coverPrintingId == null,
+      ),
+    );
+  }
 
   // ---------------------------------------------------------------------------
   // カードの増減（M4）
@@ -251,27 +307,38 @@ class DeckEditStore extends Store<DeckEditState> {
         }
       }
     }
+    // ★★ 断られたときは記録しない（★上の 2 つの early return より後ろに置く）★★
+    //   起きていない編集を履歴に残すと、検出層がそれを配る
+    //   （`DeckDao.softDelete` の「当たる行が無ければ記録しない」と同じ形）。
+    _record(DeckEditOpKind.addCard);
     _apply(next);
     return null;
   }
 
   /// 1 枚減らす。0 になったら行ごと消える。
-  void removeCopy(String printingId) =>
-      _apply(value.draft.removeCopy(printingId));
+  void removeCopy(String printingId) {
+    _record(DeckEditOpKind.removeCopy);
+    _apply(value.draft.removeCopy(printingId));
+  }
 
   /// 行ごと消す（ゴミ箱）。
-  void removeEntry(String printingId) =>
-      _apply(value.draft.removeEntry(printingId));
+  void removeEntry(String printingId) {
+    _record(DeckEditOpKind.removeEntry);
+    _apply(value.draft.removeEntry(printingId));
+  }
 
   /// デッキの中で並べ替える。
   ///
   /// ★★ 保存される（決定 D99）★★
   /// `deck_entries.ord` に入るので、`isDirtyAgainst` が並びを見て
   /// **保存ボタンが光る。** 予告（`DeckOrderNotPersisted`）は撤去した。
-  void moveEntry(String printingId, String target, DropEdge edge) => _apply(
-        value.draft
-            .moveEntry(printingId, target, after: edge == DropEdge.trailing),
-      );
+  void moveEntry(String printingId, String target, DropEdge edge) {
+    _record(DeckEditOpKind.moveEntry);
+    _apply(
+      value.draft
+          .moveEntry(printingId, target, after: edge == DropEdge.trailing),
+    );
+  }
 
   /// 並び順を規則順に戻す（決定 D99）.
   ///
@@ -281,9 +348,17 @@ class DeckEditStore extends Store<DeckEditState> {
   ///
   /// ★保存はしない。ほかの編集と同じくドラフトを差し替えるだけで、
   /// `revision` は保存 1 回につき +1 のままである（§9-1）。
-  void sortByRule() => _apply(
-        value.draft.copyWith(entries: _repository.sortedByRule(value.draft.entries)),
-      );
+  void sortByRule() {
+    // ★★ 「規則順に戻した」という事実だけを残す。★どの規則かは書かない ★★
+    //   規則の名前で残して再生すると `deckOrderKeyOf` がカードマスタを引くので、
+    //   ★受け取った端末の取り込み状態に結果が依存する（§13-5 / §17-9-2 の追記）。
+    //   ★**(f-3) の軸 B は未決である。★ここで倒さない。**
+    _record(DeckEditOpKind.sortByRule);
+    _apply(
+      value.draft
+          .copyWith(entries: _repository.sortedByRule(value.draft.entries)),
+    );
+  }
 
   // ---------------------------------------------------------------------------
   // 保存
@@ -296,17 +371,36 @@ class DeckEditStore extends Store<DeckEditState> {
   /// ここには「`Deck.copyWith` を踏む唯一の入口」と書いてあったが、
   /// 決定 D70 で `save` を明示コンストラクタにしたので**踏んでいない**。
   /// `revision` +1 と `updatedAt` を `Clock` から取ることは変わっていない。
+  ///
+  /// ★★ 貯めた操作をここで渡す（決定 **D110-1** / **D110-2**）★★
+  /// ★**保存 1 回 = ログ N 件**である（`revision` が +1 しか増えないのと同じ形で、
+  /// ★**操作の粒度は失わない** —— それが案 6 を採った理由そのものである / §13-2）。
+  ///
+  /// ★★ 捨てるのは成功したときだけ ★★
+  /// 失敗すると `DeckDao.save` のトランザクションごと巻き戻り、**本体もログも残らない。**
+  /// ★そこで捨てると、★やり直した保存が**本体だけを書いてログを落とす。**
+  /// → ★`_pendingOps` の doc に理由の全文が在る。
+  ///
+  /// ★★ R3 に巻き戻しの口は無い（★走査で確かめた）★★
+  /// `undo` / `redo` は**盤面の Store（`GameStore`）にしか無く**、
+  /// デッキ編集には 1 つも無い。★画面を閉じればドラフトごと消える。
+  /// ★★ 盤面側のクラス名をここに書かない（**D-30**）★★ ——
+  /// `test/board/reduce_call_site_test.dart` が `lib` をその字面で走査しており、
+  /// ★**説明のために書くと、許可リストに自分を載せることになる。**
+  /// → ★**「戻した操作がログに残るか」という問いは、いまの実装には立たない。**
+  ///   ★立つとしたら R3 に巻き戻しを足すときで、★そのとき決めること。
   Future<bool> save() async {
     if (!value.canSave) return false;
     state = value.copyWith(busy: true, clearActionError: true);
     try {
-      // ★★ 9 操作を貯めて渡すのは次の commit である（`docs/同期設計メモ.md` §17-9-7 の 5）★★
-      //   ★いまは器だけが通っている。★空の列を渡す。
       final saved = await _repository.save(
         value.saved,
         value.draft,
-        ops: const [],
+        // ★★ 写しを渡す —— 渡した先が保持しても、こちらの `clear` で空にならない ★★
+        ops: List<DeckEditOpRecord>.unmodifiable(_pendingOps),
       );
+      // ★★ ここまで来たら DB に入っている（★同じトランザクション）★★
+      _pendingOps.clear();
       // ★★ ドラフトの並びを保つ（正規化し直さない）★★
       //   保存直後に並べ替えを巻き戻すと、利用者には「保存したら並びが戻った」に見え、
       //   **開き直したときに戻るという予告と区別がつかない。**

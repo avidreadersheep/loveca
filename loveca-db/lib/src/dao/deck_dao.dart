@@ -96,11 +96,16 @@ class DeckDao {
   /// ★`DeckDraft` が `entries` に既定値を持たせないのと同じ理由である
   /// （★**痕跡を残さない欠落を、規約ではなく構造で防ぐ**）。
   ///
-  /// ★★ この版は [ops] を 1 度も読まない ★★
-  /// ★**器だけを通し、中身はあとから入れる**（`docs/同期設計メモ.md` §17-9-7 の commit 4 → 5）。
-  /// ★**この時点では挙動が 1 つも変わらない**ので、落ちるテストが在れば署名変更そのものの誤りである。
-  /// → ★★**「空の列でログが増えない」を検査しても、★[ops] を無視する実装と区別がつかない。**★★
-  ///   ★**判別力が付くのは commit 5 からである**（**D-27**）。
+  /// ★★ ログは追記である。★`decks` / `deck_entries` のように消して入れ直さない ★★
+  /// このメソッドは本体を**全削除 → 全挿入**で書き戻すが、★**それは `deck_entries` が
+  /// 「いまの姿」だからである。**★[ops] は**履歴**なので、
+  /// ★**過去の行を消すと、まだ同期していない端末に配る分が消える**（**D110-4** の系）。
+  /// → ★**足すだけ。★消す規則は **N-16** が決める（★未決）。**
+  ///
+  /// ★★ 2026-08-30（commit 5）: ここで初めて [ops] を読むようになった ★★
+  /// commit 4 の時点では**証明可能に未読**で、★**観測できる差が 1 つも無かった**
+  /// （★「空の列でログが増えない」の検査は、[ops] を捨てる実装とも区別がつかなかった / **D-27**）。
+  /// → ★**判別力はこの行が入って初めて付く。**
   Future<void> save(Deck deck, {required List<DeckEditOpRecord> ops}) =>
       db.transaction(() async {
         await db.into(db.decks).insertOnConflictUpdate(
@@ -143,6 +148,20 @@ class DeckDao {
                 printingId: entry.printingId,
                 count: entry.count,
                 ord: Value(i),
+              ),
+          ]);
+          // ★★ 編集ログ（決定 **D110-1** / 記録点は `DeckEditStore` = **D110-2**）★★
+          //   ★**同じトランザクションの中である** —— 本体だけ / ログだけが残る状態を作らない
+          //   （`softDelete` が **D110-3** で採ったのと同じ形）。
+          //   ★`kind` には **`DeckEditOpKind.key`** を入れる。`name`（Dart の識別子）ではない
+          //   （`tables.dart` の `kind` 列の doc に理由の全文が在る）。
+          //   ★順序は `id`（AUTOINCREMENT）が持つ。★挿入順がそのまま並びになる。
+          batch.insertAll(db.deckEditOps, [
+            for (final op in ops)
+              DeckEditOpsCompanion.insert(
+                deckId: deck.deckId,
+                kind: op.kind.key,
+                at: _utc(op.at),
               ),
           ]);
         });

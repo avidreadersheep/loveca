@@ -126,10 +126,15 @@ void main() {
     }
   });
 
-  test('★★ 対: 削除以外は 1 件も残らない（この版の記録点は削除だけ）★★', () async {
+  test('★★ 対: 削除を通らなければ `deleteDeck` は 1 件も残らない ★★', () async {
     // ★★ 出る側だけ見ると「何でも記録する実装」でも通る ★★
-    //   9 操作の記録点は §17-9-7 のコミット 5 であり、**この版にはまだ無い。**
-    //   ★このテストはそこで**書き換わるはず**である。落ちたら合図であって不具合ではない。
+    //
+    // ★★ 2026-08-30（コミット 5）に書き換えた ★★
+    //   ここは「削除**以外**は 1 件も残らない」だった。★9 操作の記録点が入って
+    //   **偽になった**（★元の doc が「そこで書き換わるはず」と予告していたとおりである）。
+    //   → ★★**対を緩めていない。★見る対象を「行が在るか」から
+    //     「`deleteDeck` の行が在るか」へ移しただけである。**★★
+    //   ★編集の記録そのものは `deck_edit_log_test.dart` が 9 件に割って見ている。
     final repository = repositoryFor('deck-keep');
     final deck = await repository.create(name: '消さないデッキ');
 
@@ -140,11 +145,15 @@ void main() {
       ..addCard('M-1-N');
     expect(await store.save(), isTrue);
 
-    // ★R2 側の書き込みも通す（メタ編集 / 複製）。
+    // ★R2 側の書き込みも通す（複製 —— ★9 操作を通らない / §15-2 の除外）。
     final list = DeckListStore(repository);
     addTearDown(list.dispose);
     await list.duplicate(store.value.saved, name: '複製');
 
-    expect(await logRows(), isEmpty);
+    final kinds = (await logRows()).map((r) => r.kind).toList();
+    // ★編集の 2 件は在る（★「そもそも書けていないから空」ではない / **D-10**）。
+    expect(kinds, hasLength(2));
+    // ★★ そのどれも削除ではない ★★
+    expect(kinds, isNot(contains(DeckEditOpKind.deleteDeck.key)));
   });
 }

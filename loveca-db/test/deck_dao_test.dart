@@ -271,18 +271,24 @@ void main() {
     });
   });
 
-  group('★★ save が操作列を受け取る（署名だけ / §17-9-7 の commit 4）★★', () {
-    // ★★ この群が何を固定していて、何を固定していないか ★★
-    //   固定している —— ★**空の列を渡してもログが 1 件も増えないこと。**
-    //   ★★固定していない —— **「渡した列が無視されていないこと」**★★。
-    //   このコミットは [DeckDao.save] の**中身を 1 行も書いていない**ので、
-    //   `ops` は**証明可能に未読**であり、★**観測できる差が 1 つも無い。**
-    //   → ★★**この群は commit 4 では判別力を持たない**★★ ——
-    //     `ops` を丸ごと捨てる実装でも、★1 件も落ちずに通る（★実測した）。
-    //     ★**判別力が付くのは commit 5（9 操作を貯めて渡す）からである**（**D-27**）。
-    //   ★**推測で埋めない。**「無視されていない」と読める文をここに書かない。
-    Future<int> logCount() async =>
-        (await db.select(db.deckEditOps).get()).length;
+  group('★★ save は渡された操作列をログに書く（§17-9-7 の commit 5）★★', () {
+    // ★★ 2026-08-30（commit 5）に書き換えた ★★
+    //   ここには「この群は **commit 4 では判別力を持たない**（`ops` は証明可能に未読で、
+    //   丸ごと捨てる実装でも 1 件も落ちない）」と書いてあった。
+    //   ★**commit 5 で `DeckDao.save` が `ops` を読むようになり、その注記は偽になった。**
+    //   → ★**判別力が付いた**（★`insertAll` を外すと落ちることを実測した / **D-27**）。
+    //   ★元の注記は**書かれた時点では正しかった**（★型は **D-15 (l)**）。
+    //
+    // ★★ 記録点はここではない ★★
+    //   9 操作の記録点は `DeckEditStore`（**D110-2**）で、★DAO は**渡されたものを書くだけ**である。
+    //   → ★「どの操作が記録されるか」は `loveca-ui/test/data/deck_edit_log_test.dart` が
+    //     **9 件に割って**見ている。★ここが見るのは **DAO の契約**だけ。
+    Future<List<DeckEditOpRow>> logRows() async {
+      final rows = await db.select(db.deckEditOps).get();
+      return rows..sort((a, b) => a.id.compareTo(b.id));
+    }
+
+    Future<int> logCount() async => (await logRows()).length;
 
     Deck one({String id = 'deck-1'}) => deckOf(
           const [DeckEntry(printingId: 'PL!HS-bp1-012-N', count: 4)],
@@ -305,6 +311,50 @@ void main() {
 
       await decks.softDelete('deck-1', _t0);
       expect(await logCount(), 1);
+    });
+
+    test('★★ 渡した列がそのままログになる（★kind は key の字面 / 順に並ぶ）★★', () async {
+      final at = _t0.add(const Duration(minutes: 5));
+      await decks.save(one(), ops: [
+        (kind: DeckEditOpKind.setName, at: at),
+        (kind: DeckEditOpKind.moveEntry, at: at),
+      ]);
+
+      final rows = await logRows();
+      expect(rows.map((r) => r.deckId), ['deck-1', 'deck-1']);
+      // ★★ 順序は `id`（AUTOINCREMENT）が持つ —— 渡した順がそのまま並びになる ★★
+      expect(rows.map((r) => r.kind),
+          [DeckEditOpKind.setName.key, DeckEditOpKind.moveEntry.key]);
+      // ★`name`（Dart の識別子）ではない（**D110-1** / `tables.dart` の `kind` 列の doc）。
+      expect(rows.map((r) => r.at.toUtc()), [at, at]);
+    });
+
+    test('★★ ログは追記である（★保存し直しても過去の行を消さない）★★', () async {
+      // ★★ 本体は「全削除 → 全挿入」だが、ログは履歴なので消さない ★★
+      //   消すと、まだ同期していない端末に配る分が消える（**D110-4** の系）。
+      //   ★消す規則は **N-16** が決める（★未決）。
+      await decks.save(one(), ops: [(kind: DeckEditOpKind.setName, at: _t0)]);
+      await decks.save(one(), ops: [(kind: DeckEditOpKind.setMemo, at: _t0)]);
+
+      expect((await logRows()).map((r) => r.kind),
+          [DeckEditOpKind.setName.key, DeckEditOpKind.setMemo.key]);
+    });
+
+    test('★★ 同時性: ログの INSERT が失敗したら本体も残らない ★★', () async {
+      // ★★ 本体とログが同じトランザクションに在ることの対 ★★
+      //   `softDelete` が **D110-3** で採ったのと同じ形（★あちらの (B) が要石だった）。
+      await db.customStatement(
+        'CREATE TRIGGER fail_ops BEFORE INSERT ON deck_edit_ops '
+        "BEGIN SELECT RAISE(ABORT, '★仕込んだ失敗'); END",
+      );
+
+      await expectLater(
+        decks.save(one(), ops: [(kind: DeckEditOpKind.setName, at: _t0)]),
+        throwsA(anything),
+      );
+
+      expect(await decks.byId('deck-1'), isNull, reason: '★本体が巻き戻っていない');
+      expect(await logCount(), 0);
     });
 
     test('★ 保存の中身は 1 つも変わっていない（★挙動の差が無いことの受け）', () async {

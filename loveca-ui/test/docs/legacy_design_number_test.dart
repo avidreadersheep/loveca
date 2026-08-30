@@ -54,6 +54,7 @@ const _allowed = <String, int>{
   // ★ペイン番号 ＋ 「この段落は別体系である」という注意書き（D-30）。★内訳は書かない
   'loveca-ui/lib/src/ui/deck/deck_edit_page.dart': 8,
   // ★以下はすべてペイン番号（§2-3）
+  'loveca-ui/test/data/deck_edit_log_test.dart': 1,
   'loveca-ui/lib/src/data/deck_repository.dart': 3,
   'loveca-ui/lib/src/data/deck_share.dart': 1,
   'loveca-ui/lib/src/data/master_repository.dart': 1,

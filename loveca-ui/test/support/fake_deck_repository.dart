@@ -201,6 +201,9 @@ class FakeDeckRepository implements DeckRepository {
     return deck;
   }
 
+  @override
+  DateTime now() => fakeNow();
+
   /// ★★ [ops] を数えも保持もしない（★意図的である）★★
   /// このフェイクは**ログの行を持たない**（`DeckDao` が持つ）。
   /// ★**ここで数えると「フェイクは覚えているが DB には無い」状態を作れてしまう**ので、
