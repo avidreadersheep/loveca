@@ -1,6 +1,6 @@
-/// `deckId` の生成（決定 D62 / `loveca-core/lib/src/entities/deck.dart` の P1）.
+/// `deckId` の生成（決定 D62 / 決定 D100。実体は `loveca-core/lib/src/entities/deck.dart`）.
 ///
-/// `Deck.deckId` は **UUID v4** と定められている（P1「連番にすると端末間で衝突する」）が、
+/// `Deck.deckId` は **UUID v4** と定められている（決定 D100「連番にすると端末間で衝突する」）が、
 /// 生成する実装はこれまでリポジトリのどこにも無かった。ここが唯一の実装になる。
 ///
 /// ★★ `uuid` パッケージを入れない ★★

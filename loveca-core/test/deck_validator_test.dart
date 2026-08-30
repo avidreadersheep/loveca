@@ -191,7 +191,7 @@ void main() {
     expect(shared, {'PL!N-bp1-001': 4});
   });
 
-  test('copyWith で revision が増える (同期の差分検出 P2)', () {
+  test('copyWith で revision が増える (同期の差分検出 決定 D101)', () {
     final deck = _legalDeck();
     final updated = deck.copyWith(name: 'renamed');
     expect(updated.revision, deck.revision + 1);

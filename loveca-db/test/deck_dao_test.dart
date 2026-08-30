@@ -105,7 +105,7 @@ void main() {
       expect(restored.entries.single.printingId, 'PL!HS-bp1-012-PR');
     });
 
-    // ★P3: 物理削除すると削除が同期で伝播しない。
+    // ★決定 D102: 物理削除すると削除が同期で伝播しない。
     test('論理削除は一覧から外れるが行は残る', () async {
       await decks.save(deckOf(const []));
       await decks.softDelete('deck-1', _t0.add(const Duration(days: 1)));

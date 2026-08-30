@@ -171,7 +171,7 @@ void main() {
       expect(restored.createdAt, _t0);
       expect(restored.updatedAt, _t0);
       expect(restored.revision, 1);
-      // ★P5: 作成時のカードマスタ版が残る（決定 D35 の未知カード検出に使う）。
+      // ★決定 D35: 作成時のカードマスタ版が残る（決定 D35 の未知カード検出に使う）。
       expect(restored.masterDataVersion, 7);
       expect(restored.isDeleted, isFalse);
     });
@@ -275,7 +275,7 @@ void main() {
 
     test('★revision は上がらない（D-9 として記録済み。挙動をここで固定する）', () async {
       // DeckDao.softDelete は deletedAt / updatedAt だけを書き revision に触れない。
-      // P2「更新のたびに +1」と食い違うが、直す先は loveca_db 側であり
+      // 決定 D101「更新のたびに +1」と食い違うが、直す先は loveca_db 側であり
       // Phase 4 で判断する（ルール整合性チェック_v1.06.md D-9）。
       // ★食い違いを黙って抱えないよう、現状の挙動をテストで見える形にしておく。
       final deck = await repositoryOn(db).create(name: 'X');

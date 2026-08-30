@@ -436,12 +436,12 @@ class DeckRepository {
       guardRepository('deck.create', () async {
         final now = _clock();
         final deck = Deck(
-          deckId: _newDeckId(), // ★UUID v4（P1 / 決定 D62）
+          deckId: _newDeckId(), // ★UUID v4（決定 D100 / 決定 D62）
           name: name,
           createdAt: now,
           updatedAt: now,
           revision: 0,
-          // ★P5: 作成時のカードマスタ版。未知カード検出に使う（決定 D35）。
+          // ★決定 D35: 作成時のカードマスタ版。未知カード検出に使う（決定 D35）。
           masterDataVersion: _dataVersion,
         );
         await DeckDao(_db).save(deck);
@@ -521,9 +521,9 @@ class DeckRepository {
   /// 複製は**刷りを保ったまま写せる唯一の手段**である。
   ///
   /// ★★ `masterDataVersion`（決定 D35）は元の値を引き継ぐ ★★
-  /// P5 は「作成時のカードマスタ版。未知カード検出に使う」。
+  /// 決定 D35 は「作成時のカードマスタ版。未知カード検出に使う」。
   /// 現在版を打つと、元デッキが持つ**未知の刷り**が
-  /// 「今の版で作ったのに未知」という説明不能な状態になり、P5 の用途を壊す。
+  /// 「今の版で作ったのに未知」という説明不能な状態になり、決定 D35 の用途を壊す。
   /// ★[create] が現在版を打つのは**中身が空だから**であって、矛盾しない。
   ///
   /// ★★ 未知の刷りもそのまま写す（決定 D35）★★
