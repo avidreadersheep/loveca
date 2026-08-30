@@ -1,7 +1,7 @@
 /// デッキの保存・区分・検証の検証.
 library;
 
-import 'package:drift/drift.dart' show Value;
+import 'package:drift/drift.dart' show OrderingTerm, Value;
 import 'package:loveca_core/loveca_core.dart';
 import 'package:loveca_db/loveca_db.dart';
 import 'package:loveca_db/native.dart';
@@ -115,6 +115,153 @@ void main() {
       expect(withDeleted, hasLength(1));
       expect(withDeleted.single.isDeleted, isTrue);
       expect(withDeleted.single.deletedAt, isNotNull);
+    });
+  });
+
+  // =========================================================================
+  // ★★ 削除の記録点（決定 D110-3 ＝ 穴 (c) の C-iv）★★
+  // =========================================================================
+
+  group('★★ 削除は編集ログに 1 件残る（決定 D110-3 / 穴 (c)）★★', () {
+    // ★読み出しの API は作らない（`docs/同期設計メモ.md` §17-9-7 のコミット 3 は
+    //   「書くだけ」）。**検査のためだけ**にここで表を直に引く。
+    Future<List<DeckEditOpRow>> logRows() => (db.select(db.deckEditOps)
+          ..orderBy([(t) => OrderingTerm(expression: t.id)]))
+        .get();
+
+    /// 中身のある 1 本。★空にしないのは、下の「対」で [DeckDao.backfillOrd]
+    /// （＝**移行の経路**）を実際に走らせるためである —— 空だと `rows.isEmpty` で
+    /// 即 return し、**通していないのに通したことになる**。
+    Deck one({String id = 'deck-1'}) => deckOf(
+          const [DeckEntry(printingId: 'PL!HS-bp1-012-N', count: 4)],
+          id: id,
+        );
+
+    test('★ 削除が 1 件残る（deck_id / kind / at の 3 つが揃う）', () async {
+      await decks.save(one());
+      final at = _t0.add(const Duration(days: 1));
+
+      await decks.softDelete('deck-1', at);
+
+      final rows = await logRows();
+      expect(rows, hasLength(1));
+      expect(rows.single.deckId, 'deck-1');
+      // ★キーは Dart の識別子ではない（決定 D110-1 がわざと違えた 1 件）。
+      expect(rows.single.kind, DeckEditOpKind.deleteDeck.key);
+      expect(rows.single.kind, 'softDelete');
+      // ★時刻は呼び出し側から渡った値がそのまま入る（`DateTime.now()` ではない）。
+      expect(rows.single.at.toUtc(), at);
+    });
+
+    test('★★ 対: 削除以外は 1 件も残さない ★★', () async {
+      // ★★ 「削除が残る」だけを見ると、**何でも記録する実装**でも通る ★★
+      //   このコミットが足した記録点は `softDelete` の 1 つだけである。
+      //   ★書き込みの経路を 1 つずつ通し、★読み出しも一緒に通す。
+      final deck = one();
+      await decks.save(deck); // 新規保存
+      await decks.save(one(id: 'deck-2')); // もう 1 本
+      await decks.save(deck); // 上書き保存
+      await decks.backfillOrd(); // ★移行の経路（決定 D65 / D99）
+      await decks.byId('deck-1');
+      await decks.all(includeDeleted: true);
+      await decks.sections(deck);
+      await decks.validate(deck);
+      await decks.canAdd(deck, 'PL!HS-bp1-012-PR');
+
+      expect(await logRows(), isEmpty);
+    });
+
+    test('★ 1 回の削除 = 1 件（2 本消せば deck_id ごとに 1 件ずつ）', () async {
+      await decks.save(one());
+      await decks.save(one(id: 'deck-2'));
+
+      await decks.softDelete('deck-1', _t0);
+      await decks.softDelete('deck-2', _t0.add(const Duration(minutes: 1)));
+
+      final rows = await logRows();
+      expect(rows.map((r) => r.deckId), ['deck-1', 'deck-2']);
+      expect(rows.map((r) => r.kind).toSet(), {DeckEditOpKind.deleteDeck.key});
+    });
+
+    test('★ 当たる行が無ければ記録しない（起きていない削除を残さない）', () async {
+      await decks.save(one());
+
+      // ★存在しない deckId。UPDATE は 0 行だが**例外は出ない**（既存の挙動を変えない）。
+      await decks.softDelete('deck-none', _t0);
+      expect(await logRows(), isEmpty);
+
+      // ★対: 在るデッキなら同じ呼び出しで 1 件残る
+      //   —— 「そもそも書けていないから空」ではないことを見る（**D-10**）。
+      await decks.softDelete('deck-1', _t0);
+      expect(await logRows(), hasLength(1));
+    });
+
+    // -----------------------------------------------------------------------
+    // ★★ 同時性（決定 D110-3 の後半 —— DAO の中で閉じる）★★
+    // -----------------------------------------------------------------------
+
+    /// 指定した表への書き込みを必ず失敗させる。
+    ///
+    /// ★後始末は要らない —— `setUp` が毎回インメモリの DB を開き直すので、
+    /// トリガは DB ごと消える。
+    Future<void> failWritesTo(String table, String event) => db.customStatement(
+          'CREATE TRIGGER fail_$table BEFORE $event ON $table '
+          "BEGIN SELECT RAISE(ABORT, '★仕込んだ失敗'); END",
+        );
+
+    test('★★ 同時性: UPDATE が失敗したらログも残らない ★★', () async {
+      await decks.save(one());
+      await failWritesTo('decks', 'UPDATE');
+
+      await expectLater(decks.softDelete('deck-1', _t0), throwsA(anything));
+
+      expect(await logRows(), isEmpty);
+      expect((await decks.byId('deck-1'))!.isDeleted, isFalse);
+    });
+
+    test('★★ 対: ログの INSERT が失敗したら削除も残らない ★★', () async {
+      // ★★ ここが「包んだ」ことの証拠である ★★
+      //   `db.transaction` で包まなければ UPDATE だけが commit され、
+      //   **「行は消えたのにログが無い」**——まさに穴 (c) と同じ状態が作れる。
+      //   ★上の 1 件だけでは足りない: 包まなくても「UPDATE が失敗すれば
+      //     INSERT まで進まない」ので、あちらは**素通しでも通る**。
+      await decks.save(one());
+      await failWritesTo('deck_edit_ops', 'INSERT');
+
+      await expectLater(decks.softDelete('deck-1', _t0), throwsA(anything));
+
+      expect(await logRows(), isEmpty);
+      expect((await decks.byId('deck-1'))!.isDeleted, isFalse);
+      expect(await decks.all(), hasLength(1), reason: '★一覧からも消えていないこと');
+    });
+
+    // -----------------------------------------------------------------------
+    // ★ D102 との関係（`docs/同期設計メモ.md` §15-7-7 (1)）
+    // -----------------------------------------------------------------------
+
+    test('★★ D102 の行と D110 のログが、同じ 1 回の削除で両方揃う ★★', () async {
+      // ★★ このテストが固定できる範囲を先に書く ★★
+      //   §15-7-7 (1) の衝突は「**D102** が物理削除を禁じてまで確保した削除の伝播が、
+      //   検出層（＝ログ / **D110-1**）の側で失われる」ことである。
+      //   ★★**「衝突が消えた」こと自体はここでは固定できない**★★ ——
+      //     検出層を**読む**コードがまだ 1 行も無い（同期の送受信は
+      //     §17-9-7 の 6 コミットのどれにも入っていない）。
+      //   → ★**固定できるのは「衝突が消えるための前提」までである** ——
+      //     すなわち **1 回の削除が 2 か所に同時に残ること**。
+      await decks.save(one());
+
+      await decks.softDelete('deck-1', _t0);
+
+      // (a) **D102**: 行は物理削除されない。
+      final still = await decks.byId('deck-1');
+      expect(still, isNotNull);
+      expect(still!.isDeleted, isTrue);
+
+      // (b) **D110-1**: 検出層が見る側にも、同じ削除が在る。
+      final rows = await logRows();
+      expect(rows, hasLength(1));
+      expect(rows.single.deckId, still.deckId);
+      expect(rows.single.kind, DeckEditOpKind.deleteDeck.key);
     });
   });
 

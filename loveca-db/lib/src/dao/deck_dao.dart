@@ -121,14 +121,64 @@ class DeckDao {
   /// ★論理削除（決定 D102）。物理削除すると削除が同期で伝播しない。
   ///
   /// [at] は呼び出し側から渡す。`DateTime.now()` を層の内側で呼ばない。
-  Future<void> softDelete(String deckId, DateTime at) async {
-    await (db.update(db.decks)..where((d) => d.deckId.equals(deckId))).write(
-      DecksCompanion(
-        deletedAt: Value(_utc(at)),
-        updatedAt: Value(_utc(at)),
-      ),
-    );
-  }
+  ///
+  /// ★★ 削除を編集ログに 1 件残す（決定 **D110-3** ＝ 穴 (c) の C-iv）★★
+  /// 検出層は「操作の履歴」である（**D110-1**）。★**ログに削除が無ければ、
+  /// 検出層は削除を見ない** —— `decks.deletedAt` は恒久の列だが、
+  /// それを見るのは決着層であって検出層ではない
+  /// （`docs/同期設計メモ.md` §15-7-7 の (1)）。
+  ///
+  /// ★★ 記録点がこの層である理由（C-i 〜 C-iii ではない）★★
+  /// 入口は R2 / R3 の 2 本あり、page → store → repository → dao の 1 本道で
+  /// ここへ合流する。★**合流点でも意図が落ちない** —— 削除の意図は
+  /// `deckId`（何を）と `at`（いつ）で尽きており、その 2 つは**既に引数に在る**
+  /// （§17-2）。→ ★**署名を 1 つも変えずに書ける。**
+  ///
+  /// ★★ 同時性はこの中で閉じる（**D110-3** の後半）★★
+  /// 単文 UPDATE だったものを `db.transaction` で包む。★**入れ子は生じない**
+  /// —— このメソッドは自前のトランザクションを持っておらず、呼び出し側の
+  /// `loveca-ui/lib` に `.transaction(` は **0 件**である（§17-5 / ★走査で再確認した）。
+  /// → ★**「行は消えたのにログが無い」も「ログは在るのに行が消えていない」も作れない。**
+  ///
+  /// ★★ D110-4: ここに残る 1 行が、削除の寿命そのものになる ★★
+  /// **ログを捨てると、捨てたあとに初めて同期する端末には削除が伝わらない。**
+  /// `decks.deletedAt` は物理削除しない限り消えない（**D102**）が、
+  /// ★**ログは捨てられる**（**N-16**「ログをいつ捨てるか」は**未決**）。
+  /// → ★★**N-16 を決める人はここを読むこと。**★★ 捨てる規則を決める**その時点で**
+  ///   この制約が効く（`docs/決定事項一覧.md` の **D110-4**）。
+  ///   ★**保持期間はここでは決めない。**書くと N-16 を先取りする。
+  ///
+  /// ★★ 何も消えなかったときは記録しない ★★
+  /// [deckId] がどの行にも当たらないと UPDATE は **0 行**で、★**例外は出ない**
+  /// （既存の挙動。★変えない）。そこでログだけ書くと、★**起きていない削除が
+  /// 履歴に残る** —— 検出層が見るのはこの表なので、次の同期で
+  /// 「存在しないデッキの削除」を配ることになる。
+  /// → ★**書くのは実際に 1 行以上動いたときだけ。**
+  ///   ★これは「ログに**何を**書くか」（列 / **D110-1**）とは別の問いで、
+  ///   ★**記録点が**いつ**発火するか**の話である（このコミットの論点そのもの）。
+  Future<void> softDelete(String deckId, DateTime at) =>
+      db.transaction(() async {
+        final updated =
+            await (db.update(db.decks)..where((d) => d.deckId.equals(deckId)))
+                .write(
+          DecksCompanion(
+            deletedAt: Value(_utc(at)),
+            updatedAt: Value(_utc(at)),
+          ),
+        );
+        if (updated == 0) return;
+
+        await db.into(db.deckEditOps).insert(
+              DeckEditOpsCompanion.insert(
+                deckId: deckId,
+                // ★`DeckEditOpKind.name`（Dart の識別子）を入れてはならない。
+                //   キーは記録点のメソッド名 `softDelete` である（**D110-1**）。
+                //   `tables.dart` の `kind` 列の doc に理由の全文が在る。
+                kind: DeckEditOpKind.deleteDeck.key,
+                at: _utc(at),
+              ),
+            );
+      });
 
   // -------------------------------------------------------------------------
   // 読み出し
