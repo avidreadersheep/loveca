@@ -59,7 +59,9 @@ const _allowed = <String, int>{
   'loveca-ui/lib/src/data/deck_share.dart': 1,
   'loveca-ui/lib/src/data/master_repository.dart': 1,
   'loveca-ui/lib/src/state/deck_edit_store.dart': 1,
-  'loveca-ui/lib/src/state/deck_list_store.dart': 1,
+  // ★`deck_list_store.dart` は 2026-08-30 に**行ごと消えた**（★件数を 0 に直したのではない）。
+  //   ★唯一のヒットは `saveMeta` の doc（ペイン番号）で、**A-i でメソッドごと撤去した**
+  //   （決定 **D110-2** / §17-9-7 の commit 6）。★同じ字面は `deck_list_page.dart` 側に残る。
   'loveca-ui/lib/src/ui/deck/deck_list_page.dart': 2,
   'loveca-ui/lib/src/ui/deck/deck_meta_dialog.dart': 1,
   'loveca-ui/lib/src/ui/deck/deck_pane.dart': 4,

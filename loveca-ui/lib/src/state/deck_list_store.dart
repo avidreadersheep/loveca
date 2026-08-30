@@ -5,6 +5,20 @@
 /// かといって黙って握ると、押しても何も起きない画面になる（A-3 と同じ型）。
 /// → 一覧は [Loadable] のまま、操作の失敗は [DeckListState.actionError] に別枠で持つ。
 /// これは §3-4(3) が `notice` を `Loadable` と分けたのと同じ理由である。
+///
+/// ★★ メタ編集の口はここに無い（2026-08-30 / 決定 **D110-2** の A-i）★★
+/// 2026-08-30 まで `saveMeta` が在り、`DeckRepository.save` へ**直行**していた。
+/// ★それが**穴 (a)** である（`docs/同期設計メモ.md` §15-7-1 の 2）——
+/// この経路は `DeckEditStore` の 9 つの名前つき操作を**1 つも通らない**ので、
+/// ★**渡せる操作が無く、編集ログに 1 件も残らなかった。**
+/// → ★**R2 のメタ編集そのものを `DeckEditStore` 経由にした**（`ui/deck/deck_list_page.dart`）。
+/// ★**意図を採る層が 1 つに揃う**（A-ii は記録点を 2 か所に増やす形で、
+/// ★次に入口が増えたとき同じ穴が開く / §15-7-3）。
+///
+/// ★★ ここに書き戻さないこと ★★
+/// メタを書く口をこの Store に足すと、それは **A-ii そのもの**である。
+/// ★`lib` に `DeckRepository.save` の呼び出し点が 1 つしか無いことは
+/// `test/data/deck_save_call_site_test.dart` が機械で見ている。
 library;
 
 import 'package:loveca_core/loveca_core.dart';
@@ -60,21 +74,6 @@ class DeckListStore extends Store<DeckListState> {
   /// ★論理削除（決定 D102）。物理削除しないので DB には残る。
   Future<void> softDelete(String deckId) =>
       _act(() => _repository.softDelete(deckId));
-
-  /// P3 のメタ編集を R2 から行う（M6）。
-  ///
-  /// ★★ R3 と違って「未保存」の器が無い ★★
-  /// R3 はドラフトを持ち、保存ボタンで畳む。R2 にはその器が無いので、
-  /// ダイアログの OK が保存 1 回に相当する。**どちらも畳むのは 1 回だけ**。
-  ///
-  /// ★★ ここが穴 (a) である（`docs/同期設計メモ.md` §15-7-1 の 2）★★
-  /// この経路は `DeckEditStore` の 9 つの名前つき操作を**1 つも通らない**ので、
-  /// ★**渡せる操作が無い。**塞ぐのは **A-i**（**D110-2** / §17-9-7 の commit 6）で、
-  /// ★そのとき R2 のメタ編集そのものが `DeckEditStore` 経由になり、
-  /// ★**このメソッドは不要になる**（§17-9-3 の 1）。
-  /// → ★**いまは空の列を渡す。★`required` なので、穴が字面として残る。**
-  Future<Deck?> saveMeta(Deck deck, DeckDraft draft) =>
-      _act(() => _repository.save(deck, draft, ops: const []));
 
   /// 複製（決定 D71 / M6）。★刷りを保ったまま写せる唯一の手段。
   Future<Deck?> duplicate(Deck deck, {required String name}) =>

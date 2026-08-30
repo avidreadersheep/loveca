@@ -40,7 +40,6 @@ import 'package:loveca_db/loveca_db.dart';
 import 'package:loveca_ui/src/data/app_database.dart';
 import 'package:loveca_ui/src/data/deck_repository.dart';
 import 'package:loveca_ui/src/state/deck_edit_store.dart';
-import 'package:loveca_ui/src/state/deck_list_store.dart';
 import 'package:loveca_ui/src/ui/common/card_drag.dart';
 import 'package:path/path.dart' as p;
 
@@ -360,25 +359,37 @@ void main() {
     expect(await logRows(), isEmpty);
   });
 
-  test('★★ 穴 (a): R2 のメタ編集はまだ記録されない（★コミット 6 で塞ぐ）★★',
+  test('★★ 穴 (a) は塞がった: R2 のメタ編集も記録が残る（**D110-2** の A-i）★★',
       () async {
-    // ★★ いまの穴をそのまま固定する ★★
-    //   `DeckListStore.saveMeta` は `DeckEditStore` を通らず
-    //   `DeckRepository.save` へ直行する（§15-7-1 の 2 / 穴 (a)）。
-    //   記録点は **A-i**（**D110-2**）＝ R2 を `DeckEditStore` 経由にすることで塞ぐ。
-    //   → ★**§17-9-7 のコミット 6 でこのテストは落ちる。★落ちたら合図であって不具合ではない。**
+    // ★★ ここは 2026-08-30 まで「まだ記録されない」を固定していた ★★
+    //   `DeckListStore.saveMeta` が `DeckEditStore` を通らず
+    //   `DeckRepository.save` へ直行していた（§15-7-1 の 2 / 穴 (a)）。
+    //   ★元の doc が「コミット 6 でこのテストは落ちる。落ちたら合図であって
+    //   不具合ではない」と**予告しており、そのとおりに落ちた。**
+    //   → ★★**対を緩めていない。★見る対象を「ログが空であること」から
+    //     「R2 が組む手順でログが 1 件残ること」へ移した。**★★
+    //     （★`deck_delete_log_test.dart` がコミット 5 で採ったのと同じ処置）
+    //
+    // ★★ この test が見ていないもの（**D-27**）★★
+    //   ★**画面がこの手順を組むこと**は 1 文字も見ていない。
+    //   `DeckListStore.saveMeta` は**メソッドごと消えた**ので、この層に
+    //   R2 固有の経路はもう存在しない。★見ているのは別の 2 つである ——
+    //   (1) `test/data/deck_save_call_site_test.dart`（★経路が 1 本しか無いこと）
+    //   (2) `test/ui/deck_meta_dialog_test.dart`（★`canSave` の門と失敗表示が R2 に出ること）
     final repository = repositoryFor('deck-1');
-    final deck = await repository.create(name: 'R2 から直す');
+    final created = await repository.create(name: 'R2 から直す');
+    // ★R2 は一覧から `Deck` を受け取る。★DB から読み戻したものを土台にする。
+    final deck = (await repository.byId('deck-1'))!;
+    expect(deck.revision, created.revision);
+    expect(await logRows(), isEmpty, reason: '★土台がログを汚している');
 
-    final list = DeckListStore(repository);
-    addTearDown(list.dispose);
-    await list.saveMeta(
-      deck,
-      repository.draftOf(deck).copyWith(name: 'R2 で変えた'),
-    );
+    // ★★ `ui/deck/deck_list_page.dart` の `_editMeta` と同じ 3 手 ★★
+    final store = storeOn(repository, deck);
+    store.applyMeta(repository.draftOf(deck).copyWith(name: 'R2 で変えた'));
+    expect(await store.save(), isTrue);
 
-    // ★本体は変わっている（★記録だけが落ちている ＝ それが穴である）。
+    // ★本体もログも動いている（★穴は「本体だけが動く」ことだった）。
     expect((await repository.byId('deck-1'))!.name, 'R2 で変えた');
-    expect(await logRows(), isEmpty);
+    expect(await logKinds(), [DeckEditOpKind.applyMeta.key]);
   });
 }

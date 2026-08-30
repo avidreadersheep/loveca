@@ -6,6 +6,12 @@
 /// ★★ 違うのは保存のタイミングだけである ★★
 /// R3 はドラフトへ適用する（保存 0 回）。R2 は「未保存」の器が無いので
 /// 決定がそのまま保存 1 回に相当する。**どちらも畳むのは 1 回だけ**（§9-1）。
+///
+/// ★★ 2026-08-30: R2 も `DeckEditStore` を通るようになった（決定 **D110-2** の A-i）★★
+/// 穴 (a) を塞いだ結果、**器が同じになった**（`docs/同期設計メモ.md` §15-7-3）。
+/// ★§15-7-3 が測った**挙動の差 3 つ**の受けを、この下の群が持つ ——
+/// **差 1** `canSave` の門 / **差 2** 失敗表示 / **差 3** 一覧の読み直し。
+/// ★**上の「保存のタイミングが器で違う」は 1 文字も動いていない**（R3 は今も保存 0 回）。
 library;
 
 import 'package:flutter/material.dart' hide Card;
@@ -287,6 +293,81 @@ void main() {
         find.widgetWithText(FilledButton, '決定'),
       );
       expect(button.onPressed, isNull);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // ★★ A-i の挙動の差 3 つ（決定 **D110-2** / `docs/同期設計メモ.md` §15-7-3）★★
+  // ---------------------------------------------------------------------------
+
+  group('★★ R2 も `DeckEditStore` を通る（穴 (a) を塞いだ差）★★', () {
+    testWidgets('★★ 差 1: 何も変えずに決定しても保存されない（`canSave` の門）★★',
+        (tester) async {
+      // ★★ A-i の前は保存されていた ★★
+      //   `DeckListStore.saveMeta` は無条件に `DeckRepository.save` を呼んでいたので、
+      //   **中身が 1 文字も変わっていなくても `revision` が +1 されていた**（決定 D101）。
+      //   ★R3 の保存ボタンは前から `canSave` で止めており、**R2 だけが素通しだった。**
+      //
+      // ★★ §15-7-3 の測定「R2 経路の 13 件のうち決定を押す 8 件は 8 件とも
+      //   先に何かを変えているので 1 件も反転しない」は、実装後に実測して当たっていた ★★
+      //   → ★**だからこの 1 件を新しく置く。★門そのものを見ているテストが 0 件だった。**
+      final decks = await _openFromList(tester);
+
+      await tester.tap(find.text('決定'));
+      await tester.pumpAndSettle();
+
+      expect(decks.saveCalls, 0, reason: '★無変更のまま `revision` を +1 しない');
+      // ★対は上の「★R2 では決定がそのまま保存 1 回になる」である
+      //   —— ★門だけを見ると「常に保存しない実装」でも通ってしまう。
+    });
+
+    testWidgets('★★ 差 2: 保存に失敗したら R2 に出る（★黙って落とさない）★★',
+        (tester) async {
+      // ★★ ここは A-i で**黙って落ちるはずだった** ★★
+      //   失敗は `DeckListStore._act` → `actionError` → 一覧画面のスナックバー、
+      //   という経路で出ていた。★`DeckEditStore.actionError` を R2 は描かないので、
+      //   経路を移した瞬間に**表示だけが消える。**
+      //   ★§15-7-3 は「見ているテストが 0 件」と測っており、**再走査でもそうだった**
+      //   （`failSave` の使用は R3 の `deck_edit_page_test.dart` の 1 件のみ。
+      //    `deck_list_page_test.dart` が持つのは `failSoftDelete` ＝ 削除側の受けである）。
+      //   → ★**塞いだうえで、この 1 件を受けに置く。**
+      final decks = await _openFromList(tester);
+      decks.failSave = StateError('書き込めません');
+
+      await tester.enterText(_nameField, '書けない名前');
+      await tester.tap(find.text('決定'));
+      await tester.pumpAndSettle();
+
+      expect(decks.saveCalls, 1, reason: '★保存は試みている（門で止まったのではない）');
+      expect(find.textContaining('書き込めません'), findsOneWidget);
+      // ★一覧は消えない（決定 D53 / §3-4(3)）。★失敗で `Loadable` を倒さない。
+      expect(find.text('テストデッキ'), findsOneWidget);
+    });
+
+    testWidgets('★対: 成功したときは失敗の表示を出さない', (tester) async {
+      // ★出る側だけを見ると、**常に出す実装**でも通ってしまう。
+      await _openFromList(tester);
+
+      await tester.enterText(_nameField, '書ける名前');
+      await tester.tap(find.text('決定'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('操作に失敗しました'), findsNothing);
+    });
+
+    testWidgets('★★ 差 3: 決定のあと一覧が読み直される ★★', (tester) async {
+      // ★★ `DeckListStore._act` の `load()` が経路から消えた ★★
+      //   明示に足さないと、**保存はできているのに一覧が古い名前のまま**になる。
+      //   ★`lastSaved` を見るだけでは検知できない（保存は成功しているため）。
+      final decks = await _openFromList(tester);
+
+      await tester.enterText(_nameField, '一覧にも出る名前');
+      await tester.tap(find.text('決定'));
+      await tester.pumpAndSettle();
+
+      expect(decks.lastSaved!.name, '一覧にも出る名前');
+      expect(find.text('一覧にも出る名前'), findsOneWidget);
+      expect(find.text('テストデッキ'), findsNothing);
     });
   });
 

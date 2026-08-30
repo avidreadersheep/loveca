@@ -21,9 +21,9 @@ library;
 import 'package:flutter/material.dart';
 import 'package:loveca_core/loveca_core.dart';
 
-import '../../data/deck_repository.dart';
 import '../../state/app_scope.dart';
 import '../../state/board_mode.dart';
+import '../../state/deck_edit_store.dart';
 import '../../state/deck_list_store.dart';
 import '../../state/store.dart';
 import '../board/start_board.dart';
@@ -69,8 +69,18 @@ class _DeckListPageState extends State<DeckListPage> {
     final failure = _store?.value.actionError;
     if (failure == null || !mounted) return;
     _store!.clearActionError();
+    _showFailure(failure.$1);
+  }
+
+  /// 失敗を画面に出す唯一の場所。
+  ///
+  /// ★★ 抜き出したのは A-i で出所が 2 つになったからである ★★
+  /// [DeckListStore.actionError]（作成 / 削除 / 複製）と、
+  /// [_editMeta] が組む `DeckEditStore` の失敗（メタ編集 / 決定 **D110-2**）。
+  /// ★**文言を 2 か所に書くと片方だけ直される**（`ルール整合性チェック_v1.06.md` **D-15**）。
+  void _showFailure(Object error) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('操作に失敗しました: ${failure.$1}')),
+      SnackBar(content: Text('操作に失敗しました: $error')),
     );
   }
 
@@ -97,16 +107,58 @@ class _DeckListPageState extends State<DeckListPage> {
   /// P3 メタ編集（M6）。★R3 と同じダイアログを器だけ替えて使う（§2-1）。
   ///
   /// ★R2 には「未保存」の器が無いので、決定がそのまま保存 1 回に相当する。
+  ///
+  /// ★★ 保存は [DeckEditStore] を通す（2026-08-30 / 決定 **D110-2** の A-i）★★
+  /// ここは 2026-08-30 まで `DeckListStore.saveMeta` →`DeckRepository.save` へ
+  /// **直行**していた。★それが**穴 (a)** である（`docs/同期設計メモ.md` §15-7-1 の 2）。
+  /// ★合流点の `DeckRepository.save(base, draft)` が採れるのは
+  /// **(before, after) の対だけ**で、★**意図（「メタを編集した」）は採れない**（§15-7-2）。
+  /// → ★**意図を持っている層まで登る。**R3 と同じ [DeckEditStore.applyMeta] を通すので、
+  /// ★**記録点が 1 つに揃う**（`state/deck_list_store.dart` の doc に経緯がある）。
   Future<void> _editMeta(Deck deck) async {
     final env = _scope.environment;
-    final edited = await showDeckMetaDialog(
-      context,
-      draft: DeckDraft.of(deck),
-      catalog: env.decks.catalogView,
-      imageSource: env.imageSource,
-    );
-    if (edited == null || !mounted) return;
-    await _store!.saveMeta(deck, edited);
+    // ★★ Store を組んでも DB へは行かない（決定 D55）★★
+    //   `DeckEditStore` の初期状態は `draftOf` / `validateDraft` / `sectionsOf` の
+    //   3 つだけで作られる。★`draftOf` は `DeckDraft.of` と**フィールド単位で同一**
+    //   なので、ダイアログに渡るドラフトの中身は A-i の前後で変わらない（§15-7-3）。
+    final store = DeckEditStore(env.decks, deck);
+    try {
+      final edited = await showDeckMetaDialog(
+        context,
+        draft: store.value.draft,
+        catalog: env.decks.catalogView,
+        imageSource: env.imageSource,
+      );
+      if (edited == null || !mounted) return;
+      store.applyMeta(edited);
+
+      // ★★ 挙動の差 1: `canSave` の門ができた（§15-7-3）★★
+      //   無変更のまま決定しても保存されない。★R3 の保存ボタンと同じ規則であり、
+      //   ★**無意味な `revision` +1 が消える**（決定 D101）。
+      final saved = await store.save();
+      if (!mounted) return;
+
+      // ★★ 挙動の差 2: 失敗表示を明示に足す（§17-9-3 の 3）★★
+      //   ★`DeckListStore._act` が `actionError` へ写して [_showActionErrorIfAny] が
+      //   出していた経路を、**この 1 本だけが通らなくなる。**
+      //   ★`DeckEditStore.actionError` は R2 が描かないので、**黙って落ちる。**
+      //   ★§15-7-3 は「見ているテストが 0 件」と測っており、**再走査でもそうだった**
+      //   （`deck_list_page_test.dart:143` は `failSoftDelete` ＝ 削除側の受けである）。
+      //   → ★**塞ぐ。**受けは `test/ui/deck_meta_dialog_test.dart`。
+      final failure = store.value.actionError;
+      if (failure != null) {
+        _showFailure(failure.$1);
+        return;
+      }
+
+      // ★★ 挙動の差 3: 一覧の読み直しを明示に足す（§17-9-3 の 2）★★
+      //   `_act` の `load()` が経路から消えるため。★[_openDeck] と同じ 1 行。
+      //   ★失敗したときは読み直さない（`_act` も catch 側では読み直していない）——
+      //   保存はトランザクションごと巻き戻っており、DB は 1 行も動いていない。
+      if (saved) await _store!.load();
+    } finally {
+      store.dispose();
+    }
   }
 
   /// 複製（決定 D71 / M6）。
