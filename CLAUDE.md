@@ -112,7 +112,8 @@ loveca-data/     Python: カードデータ取得・正規化パイプライン�
 loveca-core/     Dart: ドメイン層（Flutter 非依存）
   lib/src/entities/   card.dart / deck.dart / product.dart
   lib/src/master/     master_data.dart（配信 JSON パース・差分更新の計画）
-  lib/src/rules/      deck_validator.dart
+  lib/src/rules/      deck_validator.dart / deck_order.dart（★決定 D99 の比較器。UI と DB の両方が呼ぶ）
+  lib/src/sync/       ★deck_edit_op.dart（デッキ編集の操作の語彙 / 決定 D110-1）
   lib/src/game/       GameState / 集計 / フェイズ進行 / 巻き戻し / reduce / redact
   test/fixtures/      Python が実際に生成した JSON のコピー
   tools/verify_contract.py   Python↔Dart のキー整合検証（Dart SDK 不要）
@@ -278,13 +279,23 @@ git ls-files --others --ignored --exclude-standard \
 | パッケージ | 件数 | 確認コマンド |
 |---|---|---|
 | `loveca-data`（Python） | 33 | `python tests/run_all.py` |
-| `loveca-core`（Dart） | **411** | `dart test` |
+| `loveca-core`（Dart） | **421** | `dart test` |
 | `loveca-db`（Dart） | **142**（★skip 0） | `dart test` |
 | `loveca-ui`（Flutter） | **890**（★skip 0） | `flutter test` |
 
 （`loveca-ui` は **束 C の「U32 の走査の穴を塞ぐ」** 時点 / 2026-08-30。
-`loveca-core` は **束 B の commit 2（決定 D99 の比較器）** 時点 / 2026-08-27。
+`loveca-core` は **束 C の commit 1（決定 D110-1 の語彙）** 時点 / 2026-08-30。
 ほかの 2 つは **M-B7（決定 D92 / D98）の完了時** / 2026-08-27。★**4 件とも実測で確認済み**）
+
+★★**束 C の commit 1（語彙を `loveca_core` へ / 決定 D110-1）で `loveca-core` が 411 → 421**★★
+（+10 = `deck_edit_op_test.dart` の新設）。
+★★**この commit は「決めていないこと」を型で決めないためのテストを含む**★★ ——
+★引数の型を 1 つも持たないこと / ★`tryFromKey` が `null` を返すのは**寛容にするという決定ではない**こと。
+★★**実測した対**★★: **`deleteDeck` のキーを識別子と同じ字面に戻すと 2 件が落ちる**
+（「キーは Dart の識別子の写しではない」と「★対: 知らないキーは null」）。
+★**2 件目は予想していなかった** —— ★識別子で引けるようになるので、`tryFromKey` の対が同時に崩れる。
+★`deleteDeck` のキーだけ記録点のメソッド名 `softDelete` にしてある。
+★`loveca_db` / `loveca-ui` / `loveca-data` はこの commit で触っていない。
 
 ★★**束 C の commit 0（A-0 の残務 ＋ **U32**）で `loveca-ui` が 874 → 889**★★
 （+15 = `test/docs/legacy_design_number_test.dart` の新設 **7** ＋
