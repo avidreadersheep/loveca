@@ -5314,6 +5314,339 @@ class DeckEntriesCompanion extends UpdateCompanion<DeckEntryRow> {
   }
 }
 
+class $DeckEditOpsTable extends DeckEditOps
+    with TableInfo<$DeckEditOpsTable, DeckEditOpRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DeckEditOpsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _deckIdMeta = const VerificationMeta('deckId');
+  @override
+  late final GeneratedColumn<String> deckId = GeneratedColumn<String>(
+    'deck_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _kindMeta = const VerificationMeta('kind');
+  @override
+  late final GeneratedColumn<String> kind = GeneratedColumn<String>(
+    'kind',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _atMeta = const VerificationMeta('at');
+  @override
+  late final GeneratedColumn<DateTime> at = GeneratedColumn<DateTime>(
+    'at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, deckId, kind, at];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'deck_edit_ops';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<DeckEditOpRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('deck_id')) {
+      context.handle(
+        _deckIdMeta,
+        deckId.isAcceptableOrUnknown(data['deck_id']!, _deckIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_deckIdMeta);
+    }
+    if (data.containsKey('kind')) {
+      context.handle(
+        _kindMeta,
+        kind.isAcceptableOrUnknown(data['kind']!, _kindMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_kindMeta);
+    }
+    if (data.containsKey('at')) {
+      context.handle(_atMeta, at.isAcceptableOrUnknown(data['at']!, _atMeta));
+    } else if (isInserting) {
+      context.missing(_atMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  DeckEditOpRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DeckEditOpRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      deckId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}deck_id'],
+      )!,
+      kind: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}kind'],
+      )!,
+      at: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}at'],
+      )!,
+    );
+  }
+
+  @override
+  $DeckEditOpsTable createAlias(String alias) {
+    return $DeckEditOpsTable(attachedDatabase, alias);
+  }
+}
+
+class DeckEditOpRow extends DataClass implements Insertable<DeckEditOpRow> {
+  /// 順序（§17-9-1 の 1 の「順序」）と主キー（同 3 の 2）を **1 本の単調増加**が兼ねる。
+  ///
+  /// ★★ 既存の慣習（複合キー）を採らなかった ★★
+  /// §17-9-1 の 2 は「既存の慣習は複合キー（`{deckId, ord}` など）。
+  /// 単調増加の 1 本にするかは**未決**」と書いている。→ ★**単調増加を採る。**
+  ///
+  /// | | |
+  /// |---|---|
+  /// | `{deckId, ord}` | ★**デッキをまたぐ順序が消える。**挿入のたびに `MAX(ord)` を引く |
+  /// | ★**単調増加 1 本** | ★**両方引ける** —— 全体順は `ORDER BY id`、デッキ内は `WHERE deck_id = ? ORDER BY id` |
+  ///
+  /// ★**選ぶ余地を狭めないほうを採った。**§17-9-5 は「前回同期時点の目印を
+  /// **ログの位置**で持つか別のスカラで持つか」を**未決**にしており、
+  /// 複合キーにすると「ログの位置」という選択肢が先に消える。
+  ///
+  /// ★★ `AUTOINCREMENT` である（rowid の再利用が起きない）★★
+  /// drift の `autoIncrement()` は `INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT` を吐く
+  /// （`drift_dev/lib/src/writer/utils/column_constraints.dart:31`。★実読）。
+  /// 素の `INTEGER PRIMARY KEY` は削除後に **rowid を使い回す**ので、
+  /// **N-16** が古い行を捨てた瞬間に「目印より後ろ」の判定が壊れる。
+  final int id;
+
+  /// どのデッキへの操作か。★10 種すべてがデッキ 1 つに対する操作である。
+  final String deckId;
+
+  /// 操作の種類。★**`DeckEditOpKind.key` の字面**を入れる。
+  ///
+  /// ★★ `textEnum<DeckEditOpKind>()` を使ってはならない ★★
+  /// drift の `EnumNameConverter` は **`value.name`（Dart の識別子）**を保存する
+  /// （`drift/lib/src/runtime/types/converters.dart:283`。★実読）。
+  /// `DeckEditOpKind.deleteDeck` の識別子は `deleteDeck` だが、
+  /// ★**キーは `softDelete`（記録点のメソッド名）である** —— **D110-1** が
+  /// 「リネームで送信済みのログが意味を失わないように」わざと違えた 1 件である。
+  /// → ★`textEnum` にすると**その決定が黙って裏返る。**素の [text] にして
+  ///   `DeckEditOpKind.key` を明示で入れる（★下のテストが対で見張る）。
+  ///
+  /// ★★ 未知のキーの扱いはここで決めない ★★
+  /// `DeckEditOpKind.tryFromKey` は `null` を返すだけで、例外を投げるかは
+  /// **N-12**（版のずれ）と **A-4**（**D-1** の厳格性）の下流である
+  /// （`loveca-core/lib/src/sync/deck_edit_op.dart` の library doc の 3）。
+  /// → ★**列は字面をそのまま持つ。読み出す層が決める。**
+  final String kind;
+
+  /// ★呼び出し側から渡された時刻。`DateTime.now()` を層の内側で呼ばない。
+  /// （`master_files.imported_at` / `DeckDao.softDelete` の `at` と同じ扱い）
+  final DateTime at;
+  const DeckEditOpRow({
+    required this.id,
+    required this.deckId,
+    required this.kind,
+    required this.at,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['deck_id'] = Variable<String>(deckId);
+    map['kind'] = Variable<String>(kind);
+    map['at'] = Variable<DateTime>(at);
+    return map;
+  }
+
+  DeckEditOpsCompanion toCompanion(bool nullToAbsent) {
+    return DeckEditOpsCompanion(
+      id: Value(id),
+      deckId: Value(deckId),
+      kind: Value(kind),
+      at: Value(at),
+    );
+  }
+
+  factory DeckEditOpRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DeckEditOpRow(
+      id: serializer.fromJson<int>(json['id']),
+      deckId: serializer.fromJson<String>(json['deckId']),
+      kind: serializer.fromJson<String>(json['kind']),
+      at: serializer.fromJson<DateTime>(json['at']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'deckId': serializer.toJson<String>(deckId),
+      'kind': serializer.toJson<String>(kind),
+      'at': serializer.toJson<DateTime>(at),
+    };
+  }
+
+  DeckEditOpRow copyWith({
+    int? id,
+    String? deckId,
+    String? kind,
+    DateTime? at,
+  }) => DeckEditOpRow(
+    id: id ?? this.id,
+    deckId: deckId ?? this.deckId,
+    kind: kind ?? this.kind,
+    at: at ?? this.at,
+  );
+  DeckEditOpRow copyWithCompanion(DeckEditOpsCompanion data) {
+    return DeckEditOpRow(
+      id: data.id.present ? data.id.value : this.id,
+      deckId: data.deckId.present ? data.deckId.value : this.deckId,
+      kind: data.kind.present ? data.kind.value : this.kind,
+      at: data.at.present ? data.at.value : this.at,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DeckEditOpRow(')
+          ..write('id: $id, ')
+          ..write('deckId: $deckId, ')
+          ..write('kind: $kind, ')
+          ..write('at: $at')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, deckId, kind, at);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DeckEditOpRow &&
+          other.id == this.id &&
+          other.deckId == this.deckId &&
+          other.kind == this.kind &&
+          other.at == this.at);
+}
+
+class DeckEditOpsCompanion extends UpdateCompanion<DeckEditOpRow> {
+  final Value<int> id;
+  final Value<String> deckId;
+  final Value<String> kind;
+  final Value<DateTime> at;
+  const DeckEditOpsCompanion({
+    this.id = const Value.absent(),
+    this.deckId = const Value.absent(),
+    this.kind = const Value.absent(),
+    this.at = const Value.absent(),
+  });
+  DeckEditOpsCompanion.insert({
+    this.id = const Value.absent(),
+    required String deckId,
+    required String kind,
+    required DateTime at,
+  }) : deckId = Value(deckId),
+       kind = Value(kind),
+       at = Value(at);
+  static Insertable<DeckEditOpRow> custom({
+    Expression<int>? id,
+    Expression<String>? deckId,
+    Expression<String>? kind,
+    Expression<DateTime>? at,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (deckId != null) 'deck_id': deckId,
+      if (kind != null) 'kind': kind,
+      if (at != null) 'at': at,
+    });
+  }
+
+  DeckEditOpsCompanion copyWith({
+    Value<int>? id,
+    Value<String>? deckId,
+    Value<String>? kind,
+    Value<DateTime>? at,
+  }) {
+    return DeckEditOpsCompanion(
+      id: id ?? this.id,
+      deckId: deckId ?? this.deckId,
+      kind: kind ?? this.kind,
+      at: at ?? this.at,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (deckId.present) {
+      map['deck_id'] = Variable<String>(deckId.value);
+    }
+    if (kind.present) {
+      map['kind'] = Variable<String>(kind.value);
+    }
+    if (at.present) {
+      map['at'] = Variable<DateTime>(at.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DeckEditOpsCompanion(')
+          ..write('id: $id, ')
+          ..write('deckId: $deckId, ')
+          ..write('kind: $kind, ')
+          ..write('at: $at')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $MasterStatesTable extends MasterStates
     with TableInfo<$MasterStatesTable, MasterStateRow> {
   @override
@@ -6489,6 +6822,7 @@ abstract class _$LovecaDatabase extends GeneratedDatabase {
   late final $DecksTable decks = $DecksTable(this);
   late final $DeckTagsTable deckTags = $DeckTagsTable(this);
   late final $DeckEntriesTable deckEntries = $DeckEntriesTable(this);
+  late final $DeckEditOpsTable deckEditOps = $DeckEditOpsTable(this);
   late final $MasterStatesTable masterStates = $MasterStatesTable(this);
   late final $MasterFilesTable masterFiles = $MasterFilesTable(this);
   late final $ImportIssuesTable importIssues = $ImportIssuesTable(this);
@@ -6542,6 +6876,7 @@ abstract class _$LovecaDatabase extends GeneratedDatabase {
     decks,
     deckTags,
     deckEntries,
+    deckEditOps,
     masterStates,
     masterFiles,
     importIssues,
@@ -11189,6 +11524,181 @@ typedef $$DeckEntriesTableProcessedTableManager =
       DeckEntryRow,
       PrefetchHooks Function({bool deckId})
     >;
+typedef $$DeckEditOpsTableCreateCompanionBuilder =
+    DeckEditOpsCompanion Function({
+      Value<int> id,
+      required String deckId,
+      required String kind,
+      required DateTime at,
+    });
+typedef $$DeckEditOpsTableUpdateCompanionBuilder =
+    DeckEditOpsCompanion Function({
+      Value<int> id,
+      Value<String> deckId,
+      Value<String> kind,
+      Value<DateTime> at,
+    });
+
+class $$DeckEditOpsTableFilterComposer
+    extends Composer<_$LovecaDatabase, $DeckEditOpsTable> {
+  $$DeckEditOpsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get deckId => $composableBuilder(
+    column: $table.deckId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get at => $composableBuilder(
+    column: $table.at,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$DeckEditOpsTableOrderingComposer
+    extends Composer<_$LovecaDatabase, $DeckEditOpsTable> {
+  $$DeckEditOpsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get deckId => $composableBuilder(
+    column: $table.deckId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get at => $composableBuilder(
+    column: $table.at,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$DeckEditOpsTableAnnotationComposer
+    extends Composer<_$LovecaDatabase, $DeckEditOpsTable> {
+  $$DeckEditOpsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get deckId =>
+      $composableBuilder(column: $table.deckId, builder: (column) => column);
+
+  GeneratedColumn<String> get kind =>
+      $composableBuilder(column: $table.kind, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get at =>
+      $composableBuilder(column: $table.at, builder: (column) => column);
+}
+
+class $$DeckEditOpsTableTableManager
+    extends
+        RootTableManager<
+          _$LovecaDatabase,
+          $DeckEditOpsTable,
+          DeckEditOpRow,
+          $$DeckEditOpsTableFilterComposer,
+          $$DeckEditOpsTableOrderingComposer,
+          $$DeckEditOpsTableAnnotationComposer,
+          $$DeckEditOpsTableCreateCompanionBuilder,
+          $$DeckEditOpsTableUpdateCompanionBuilder,
+          (
+            DeckEditOpRow,
+            BaseReferences<_$LovecaDatabase, $DeckEditOpsTable, DeckEditOpRow>,
+          ),
+          DeckEditOpRow,
+          PrefetchHooks Function()
+        > {
+  $$DeckEditOpsTableTableManager(_$LovecaDatabase db, $DeckEditOpsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DeckEditOpsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DeckEditOpsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$DeckEditOpsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> deckId = const Value.absent(),
+                Value<String> kind = const Value.absent(),
+                Value<DateTime> at = const Value.absent(),
+              }) => DeckEditOpsCompanion(
+                id: id,
+                deckId: deckId,
+                kind: kind,
+                at: at,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String deckId,
+                required String kind,
+                required DateTime at,
+              }) => DeckEditOpsCompanion.insert(
+                id: id,
+                deckId: deckId,
+                kind: kind,
+                at: at,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$DeckEditOpsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$LovecaDatabase,
+      $DeckEditOpsTable,
+      DeckEditOpRow,
+      $$DeckEditOpsTableFilterComposer,
+      $$DeckEditOpsTableOrderingComposer,
+      $$DeckEditOpsTableAnnotationComposer,
+      $$DeckEditOpsTableCreateCompanionBuilder,
+      $$DeckEditOpsTableUpdateCompanionBuilder,
+      (
+        DeckEditOpRow,
+        BaseReferences<_$LovecaDatabase, $DeckEditOpsTable, DeckEditOpRow>,
+      ),
+      DeckEditOpRow,
+      PrefetchHooks Function()
+    >;
 typedef $$MasterStatesTableCreateCompanionBuilder =
     MasterStatesCompanion Function({
       Value<int> id,
@@ -11854,6 +12364,8 @@ class $LovecaDatabaseManager {
       $$DeckTagsTableTableManager(_db, _db.deckTags);
   $$DeckEntriesTableTableManager get deckEntries =>
       $$DeckEntriesTableTableManager(_db, _db.deckEntries);
+  $$DeckEditOpsTableTableManager get deckEditOps =>
+      $$DeckEditOpsTableTableManager(_db, _db.deckEditOps);
   $$MasterStatesTableTableManager get masterStates =>
       $$MasterStatesTableTableManager(_db, _db.masterStates);
   $$MasterFilesTableTableManager get masterFiles =>

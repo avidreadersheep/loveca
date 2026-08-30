@@ -34,6 +34,7 @@ part 'database.g.dart';
     Decks,
     DeckTags,
     DeckEntries,
+    DeckEditOps,
     MasterStates,
     MasterFiles,
     ImportIssues,
@@ -44,11 +45,12 @@ class LovecaDatabase extends _$LovecaDatabase {
 
   /// ★2: 検索索引に `card_number_raw` を足した（決定 D49）。
   /// ★3: `deck_entries` に `ord` を足した（決定 D65 / **D99**）。
+  /// ★4: 編集ログの表 `deck_edit_ops` を足した（決定 **D110-1**）。
   ///
   /// 上げるときは必ず [migration] の `onUpgrade` に対応する手順を足すこと。
   /// 版だけ上げて手順を足さないと、既存の端末が古い形のまま動き続ける。
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -84,6 +86,25 @@ class LovecaDatabase extends _$LovecaDatabase {
             // ★順序が要る: 列を足してからでないと backfill が書き込めない。
             await m.addColumn(deckEntries, deckEntries.ord);
             await DeckDao(this).backfillOrd();
+          }
+          if (from < 4) {
+            // ★★ v3 -> v4: 編集ログの表を作る（決定 **D110-1**）★★
+            //
+            // ★上の 2 つの枝と格が違う。**既存の行を 1 行も読まず 1 行も書かない。**
+            //   `from < 2` は `card_search` を作り直し、`from < 3` は
+            //   `deck_entries` の全行に `ord` を書いた。ここは**表を足すだけ**である。
+            //
+            // ★★ ただし「触らない」は「安全」の意味ではない ★★
+            //   `schemaVersion` は上がるので、**既存インストールの DB は必ずここを通る。**
+            //   通る以上、`decks` / `deck_entries` が無傷であることは
+            //   **測って確かめる**（`test/migration_test.dart` の v3 -> v4 の群）。
+            //
+            // ★決定 **D109**: 移行は「システムが動かした」側なので
+            //   `decks.updatedAt` を動かさない。★動かさないことも上のテストが見る。
+            //
+            // ★`m.createAll()` ではない —— それは**既存の表も作り直そうとする**。
+            //   足した 1 つだけを名指しする。
+            await m.createTable(deckEditOps);
           }
         },
         beforeOpen: (details) async {

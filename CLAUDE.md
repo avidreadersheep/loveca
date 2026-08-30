@@ -280,12 +280,34 @@ git ls-files --others --ignored --exclude-standard \
 |---|---|---|
 | `loveca-data`（Python） | 33 | `python tests/run_all.py` |
 | `loveca-core`（Dart） | **421** | `dart test` |
-| `loveca-db`（Dart） | **142**（★skip 0） | `dart test` |
+| `loveca-db`（Dart） | **155**（★skip 0） | `dart test` |
 | `loveca-ui`（Flutter） | **890**（★skip 0） | `flutter test` |
 
-（`loveca-ui` は **束 C の「U32 の走査の穴を塞ぐ」** 時点 / 2026-08-30。
+（`loveca-db` は **束 C の commit 2（ログの表 / `schemaVersion` 4 / 決定 D110-1）** 時点 / 2026-08-30。
+`loveca-ui` は **束 C の「U32 の走査の穴を塞ぐ」** 時点 / 2026-08-30。
 `loveca-core` は **束 C の commit 1（決定 D110-1 の語彙）** 時点 / 2026-08-30。
-ほかの 2 つは **M-B7（決定 D92 / D98）の完了時** / 2026-08-27。★**4 件とも実測で確認済み**）
+`loveca-data` は **M-B7（決定 D92 / D98）の完了時** / 2026-08-27。★**4 件とも実測で確認済み**）
+
+★★**束 C の commit 2（ログの表 / `schemaVersion` 3 → 4 / 決定 D110-1）で `loveca-db` が 142 → 155**★★
+（+13 = `migration_test.dart` の **v3 → v4 の群 12** ＋ **v1 の群 +1**。★**内訳はファイルを見ること**）。
+★★**この commit は「書き込みが 1 件も無い器」である**★★ —— ★`lib` から `deck_edit_ops` へ INSERT する経路は 0 本で、
+★**入れているのはテストだけ**（★「新表が空である」と★「空でない状態は作れる」を対で置いてある / **D-10**）。
+★★**§17-9 の予告「既存テストが 2 件落ちる」は外れていた —— 実測は 3 件**★★。
+★**走査が `_userVersion(db)` と★変数名まで含んでおり、`_userVersion(first)` / `(second)` を飛ばしていた**（★型は **D-31**）。
+★**外れたのは件数だけで、予告の中身は当たっている** —— ★**3 件とも `Expected: <3> Actual: <4>` で、「落ちるはず」の落ち方**である。
+★**経緯の正は `docs/同期設計メモ.md` §17-9-1。★件数をここに書き足さない。**
+★★**実測した対は 5 つ**★★（2026-08-30 / ★**5 つとも仕込んで走らせ、戻してから本番を測った**）——
+**(A) `m.createTable(deckEditOps)` を外すと 8 件が落ちる**（★v3 → v4 の群 7 ＋ v1 の群 1）/
+**(B) 枝が `backfillOrd()` を呼ぶと「並び（ord）が 1 つも動かない」の 1 件だけが落ちる** /
+**(C) 枝が `decks` を書き換えると 3 件が落ちる**（★新設分は「決定 D109: updatedAt / revision が動かない」）/
+**(D) 枝が `deck_entries` を 1 行消すと 9 件が落ちる**（★新設分は 2 件）/
+★★**(E) 巻き戻しから `DROP TABLE deck_edit_ops` を外すと「★前提: 巻き戻した DB は v3 の形」の 1 件だけが落ち、★残り 11 件は全部通る**★★（★群は 12 件）。
+★★**(E) がこの群の要石である。**★★ ★drift の `Migrator.createTable` は **`CREATE TABLE IF NOT EXISTS`** を吐く（★実読）ので、
+★**巻き戻しが表を落とし損ねると移行は例外も出さずに空振りし、★群ごと無言で無意味になる。**
+★`migration_test.dart` の `_rewindToV1` が予告していた「★より悪い場合は黙って通って**移行を一度も検証しないテストになる**」の実物である。
+★★**(B)(C)(D) は「ユーザデータに触らない」側の対である**★★ —— ★**(A) を仕込んでも 3 件とも通る**ので、
+★**移行を無効化するだけでは、それらが対象を見ているか分からない**（**D-27**）。★だから壊し方を 3 通り分けて測った。
+★`loveca-core` / `loveca-ui` / `loveca-data` はこの commit で触っていない（★**421 / 890 / 33 を実測で確認した**）。
 
 ★★**束 C の commit 1（語彙を `loveca_core` へ / 決定 D110-1）で `loveca-core` が 411 → 421**★★
 （+10 = `deck_edit_op_test.dart` の新設）。
