@@ -279,13 +279,41 @@ git ls-files --others --ignored --exclude-standard \
 | パッケージ | 件数 | 確認コマンド |
 |---|---|---|
 | `loveca-data`（Python） | 33 | `python tests/run_all.py` |
-| `loveca-core`（Dart） | **421** | `dart test` |
-| `loveca-db`（Dart） | **162**（★skip 0） | `dart test` |
+| `loveca-core`（Dart） | **425** | `dart test` |
+| `loveca-db`（Dart） | **165**（★skip 0） | `dart test` |
 | `loveca-ui`（Flutter） | **895**（★skip 0） | `flutter test` |
 
-（`loveca-db` と `loveca-ui` は **束 C の commit 3（穴 (c) を塞ぐ / 決定 D110-3）** 時点 / 2026-08-30。
-`loveca-core` は **束 C の commit 1（決定 D110-1 の語彙）** 時点 / 2026-08-30。
+（`loveca-core` と `loveca-db` は **束 C の commit 4（`save` が操作列を受け取る）** 時点 / 2026-08-30。
+`loveca-ui` は **束 C の commit 3（穴 (c) を塞ぐ / 決定 D110-3）** 時点 / 2026-08-30
+（★**commit 4 では 1 件も増えていない**）。
 `loveca-data` は **M-B7（決定 D92 / D98）の完了時** / 2026-08-27。★**4 件とも実測で確認済み**）
+
+★★**束 C の commit 4（`save` が操作列を受け取る / ★署名だけ）で `loveca-core` が 421 → 425 / `loveca-db` が 162 → 165**★★
+（core: +4 = `deck_edit_op_test.dart` の `DeckEditOpRecord` の群。
+db: +3 = `deck_dao_test.dart` の「★save が操作列を受け取る」の群。★`loveca-ui` は **895 のまま** ——
+★**呼び出し元を 26 箇所直したが、テストを 1 件も足していない**）。★**内訳はファイルを見ること。**
+★★**§17-9-7 の予告「4 の時点では挙動が 1 つも変わらない」は当たっていた**★★ ——
+★**既存の 895 / 165 / 425 が 1 件も落ちていない**（★落ちるとすれば署名変更そのものの誤りである、と予告が書いている）。
+★★**§15-7-4 の見積り（20 箇所）は 3 種の理由で外れていた**★★ —— ★**正は新所見 D-37 と D-31 の 2 例目**。
+★**実測は 57 箇所**（lib 5 / test 51 / `FakeDeckRepository` の override 1）。
+★★**うち安全を買っているのは lib の 5 箇所だけである**★★（★残り 52 は `required` の性質上ついてくる費用）。
+★★**引数の型は `loveca_core` の `DeckEditOpRecord` ＝ record の typedef である**★★
+（★`({DeckEditOpKind kind, DateTime at})`。★**名前つきクラスにしない** —— ★クラスは
+フィールドを 1 行足すだけで増やせるが、★**record は形が型なので足した瞬間に全構築点が落ちる**）。
+★**持つのは kind と at の 2 つだけ**（★`id` は DB が採り、★`deck_id` は既に引数で決まっている）。
+★★**実測した対は 4 つ**★★（2026-08-30 / ★**4 つとも仕込んで走らせ、戻してから本番を測った**）——
+★★**(A) 型に引数を 1 つ足すと `deck_edit_op_test.dart` が丸ごと走らなくなる**★★
+（★**コンパイルで落ちる。★実行時ではない** —— ★`invalid_assignment` が **2 件**。★`loveca_db` / `loveca-ui` は **0 件**で、
+★**構築点が在る場所でだけ落ちる**。★いまの構築点はテストの中だけである）/
+★★**(B) `DeckDao.save` の `ops` を既定値つきにしても 0 件落ちる**★★ /
+★★**(C) `DeckRepository.save` が `ops` を DAO へ渡さず `const []` を渡しても 0 件落ちる**★★ /
+★★**(D) `DeckRepository.save` の `ops` を既定値つきにしても 0 件落ちる**★★。
+★★**(B)(C)(D) が 0 件であることがこの commit の要点である。**★★
+★**「渡した列が無視されていないこと」は★このコミットでは確かめようが無い** —— ★中身を 1 行も書いていないので
+`ops` は**証明可能に未読**であり、★**観測できる差が 1 つも無い**。★**推測で埋めない。**
+→ ★**「空の列でログが増えない」の群は、★commit 4 では判別力を持たない**（**D-27**）。★**その旨をテストの doc に書いた。**
+→ ★★**`required` の利得も同じくテストで固定できない**★★（(B)(D)）—— ★**型でしか見えないものは、型でしか守れない。**
+★`loveca-data` はこの commit で触っていない（★**33 を実測で確認した**）。
 
 ★★**束 C の commit 3（穴 (c) を塞ぐ / C-iv / 決定 D110-3）で `loveca-db` が 155 → 162 / `loveca-ui` が 890 → 895**★★
 （db: +7 = `deck_dao_test.dart` の「削除は編集ログに 1 件残る」の群。

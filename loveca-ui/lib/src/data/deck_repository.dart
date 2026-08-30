@@ -444,7 +444,12 @@ class DeckRepository {
           // ★決定 D35: 作成時のカードマスタ版。未知カード検出に使う（決定 D35）。
           masterDataVersion: _dataVersion,
         );
-        await DeckDao(_db).save(deck);
+        // ★★ 新規作成をログに残すかは**決めていない**（★空の列を渡すだけ）★★
+        //   `DeckEditOpKind` の 10 種に「作った」は無い（**D110-1**）。
+        //   §15-2 は `create` / `duplicate` を穴に数えていない ——
+        //   ★**どちらも `revision` 0 で、比べる相手（基準点 / 相手側の版）が存在しない**。
+        //   ★`required` にしたので、この問いは呼び出しの字面として残る（消えない）。
+        await DeckDao(_db).save(deck, ops: const []);
         return deck;
       });
 
@@ -491,7 +496,30 @@ class DeckRepository {
   /// ★★ 書き戻さないこと ★★
   /// `DeckDraft.isDirtyAgainst` は**並びを見る**（決定 D99）。ここを
   /// 「保存されない」に戻すと、2 つの doc が正面から食い違う。
-  Future<Deck> save(Deck base, DeckDraft draft) =>
+  ///
+  /// ★★ [ops] —— この保存が「どの操作の結果か」の列（決定 **D110-1**）★★
+  /// 意図を持っているのは `DeckEditStore` の 9 つの名前つき操作である。
+  /// ★**この層は (before, after) の対しか採れない**（`docs/同期設計メモ.md` §15-7-2）ので、
+  /// ★**意図は引数で降ろす**。★そのまま `DeckDao.save` へ渡し、
+  /// **DAO が自分のトランザクションの中で本体と一緒に書く**（§17-9-3 / **D110-3** と同じ形）。
+  /// → ★**新しいトランザクションを 1 つも開かない**（`loveca-ui/lib` の `.transaction(` は **0 件** /
+  ///   **D55** の線に触れない）。
+  ///
+  /// ★★ 既定値を持たせない（`required` である）★★
+  /// ★既定値を置くと、★**新しい store 層の経路が [ops] を省いて呼べる。**
+  /// ★本体は既定値をそのまま DAO へ渡すので**DAO 側の `required` は満たされ**、
+  /// ★コンパイルは通り、★**ログは黙って空のままになる。**
+  /// → ★★**それは穴 (a) の形そのものである**★★ —— `DeckListStore.saveMeta` が
+  /// `DeckEditStore` を通らずここへ直行していた（§15-7-1 の 2）のを、
+  /// ★**既定値で作り直すことになる。**★**DAO 側だけを `required` にしても閉じない。**
+  ///
+  /// ★★ この版は [ops] を 1 度も読まない ★★
+  /// ★**器だけを通す**（§17-9-7 の commit 4 → 5）。★挙動は 1 つも変わらない。
+  Future<Deck> save(
+    Deck base,
+    DeckDraft draft, {
+    required List<DeckEditOpRecord> ops,
+  }) =>
       guardRepository('deck.save', () async {
         final next = Deck(
           deckId: base.deckId,
@@ -509,7 +537,7 @@ class DeckRepository {
           lastDeviceId: base.lastDeviceId,
           masterDataVersion: base.masterDataVersion,
         );
-        await DeckDao(_db).save(next);
+        await DeckDao(_db).save(next, ops: ops);
         return next;
       });
 
@@ -545,7 +573,8 @@ class DeckRepository {
           lastDeviceId: source.lastDeviceId,
           masterDataVersion: source.masterDataVersion,
         );
-        await DeckDao(_db).save(copy);
+        // ★複製をログに残すかも**決めていない**（★[create] と同じ。★上の注記）。
+        await DeckDao(_db).save(copy, ops: const []);
         return copy;
       });
 

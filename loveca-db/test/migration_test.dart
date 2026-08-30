@@ -327,7 +327,7 @@ void main() {
     for (final expansion in fixtureExpansions) {
       await CardDao(db).replaceExpansion(loadCardSet(expansion));
     }
-    await DeckDao(db).save(deck);
+    await DeckDao(db).save(deck, ops: const []);
     await _rewindToV1(db);
     await db.close();
   }
@@ -504,8 +504,8 @@ void main() {
     for (final expansion in fixtureExpansions) {
       await CardDao(db).replaceExpansion(loadCardSet(expansion));
     }
-    await DeckDao(db).save(deck);
-    await DeckDao(db).save(scrambledDeck);
+    await DeckDao(db).save(deck, ops: const []);
+    await DeckDao(db).save(scrambledDeck, ops: const []);
     await _rewindToV2(db);
     await db.close();
   }
@@ -661,6 +661,7 @@ void main() {
             lastDeviceId: restored.lastDeviceId,
             masterDataVersion: restored.masterDataVersion,
           ),
+          ops: const [],
         );
 
         final again = await DeckDao(db).byId(scrambledDeck.deckId);
@@ -688,6 +689,7 @@ void main() {
           createdAt: restored.createdAt,
           updatedAt: restored.updatedAt,
         ),
+        ops: const [],
       );
       await first.close();
 
@@ -707,7 +709,7 @@ void main() {
       //   （決定 D35）、段 3 だけが効く。**移行前の並びと同じ**なので
       //   その端末では見た目が変わらない。
       final build = LovecaDatabase(openFileExecutor(dbPath));
-      await DeckDao(build).save(scrambledDeck); // ★カードを 1 枚も入れない
+      await DeckDao(build).save(scrambledDeck, ops: const []); // ★カードを 1 枚も入れない
       await _rewindToV2(build);
       await build.close();
 
@@ -739,8 +741,8 @@ void main() {
     for (final expansion in fixtureExpansions) {
       await CardDao(db).replaceExpansion(loadCardSet(expansion));
     }
-    await DeckDao(db).save(deck);
-    await DeckDao(db).save(scrambledDeck);
+    await DeckDao(db).save(deck, ops: const []);
+    await DeckDao(db).save(scrambledDeck, ops: const []);
     await _rewindToV3(db);
     await db.close();
   }

@@ -84,4 +84,52 @@ void main() {
       expect(DeckEditOpKind.values.first.toString(), startsWith('DeckEditOpKind.'));
     });
   });
+
+  group('★ 記録 1 件（DeckEditOpRecord / §17-9-7 の commit 4）', () {
+    final at = DateTime.utc(2026, 8, 30, 12, 34, 56);
+
+    test('★ kind と at がそのまま読める', () {
+      const kind = DeckEditOpKind.moveEntry;
+      final DeckEditOpRecord record = (kind: kind, at: at);
+      expect(record.kind, kind);
+      expect(record.at, at);
+    });
+
+    test('★★ 形が型である —— フィールドを足すと別の型になる ★★', () {
+      // ★★ これが「引数を足させない」構造の実物である ★★
+      //   名前つきクラスならフィールドを 1 行足すだけで増やせる（署名は動かない）。
+      //   record は形そのものが型なので、足した瞬間に代入が通らなくなる。
+      //   → ★**§17-9-2 の 2 / 4（引数 / `sortByRule` の入れ方）を型で倒さない。**
+      final Object exact = (kind: DeckEditOpKind.setName, at: at);
+      expect(exact, isA<DeckEditOpRecord>());
+
+      // ★対: 引数を 1 つ足した形は **DeckEditOpRecord ではない**。
+      final Object withArgument =
+          (kind: DeckEditOpKind.addCard, at: at, printingId: 'PL!HS-bp1-012-N');
+      expect(withArgument, isNot(isA<DeckEditOpRecord>()));
+
+      // ★対: 片方だけでも成り立たない（★2 つとも必須である）。
+      expect(<Object>[
+        (kind: DeckEditOpKind.setName,),
+        (at: at,),
+      ], everyElement(isNot(isA<DeckEditOpRecord>())));
+    });
+
+    test('★ 削除も同じ形で持てる（★記録点は違うが型は 1 つ / D110-3）', () {
+      // ★`softDelete` は `DeckDao` が記録し、9 操作は `DeckEditStore` が記録する
+      //   （**D110-2** / **D110-3**）が、★**ログの 1 行としては同じ形**である。
+      final DeckEditOpRecord record = (kind: DeckEditOpKind.deleteDeck, at: at);
+      expect(record.kind.key, 'softDelete');
+    });
+
+    test('★★ deckId を持たない（★保存の相手は引数で決まっている）★★', () {
+      // ★★ 同じものを 2 か所に持たない（`CLAUDE.md` §3 の規約）★★
+      //   `DeckDao.save(deck, ops: ...)` の `deck` と
+      //   `DeckDao.softDelete(deckId, at)` の `deckId` が既に相手を決めている。
+      //   → ★ここに持たせると食い違いうる。
+      final Object withDeckId =
+          (kind: DeckEditOpKind.setName, at: at, deckId: 'deck-1');
+      expect(withDeckId, isNot(isA<DeckEditOpRecord>()));
+    });
+  });
 }

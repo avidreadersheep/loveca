@@ -284,13 +284,16 @@ void main() {
     // decks は配信物から作り直せない（決定 D11 / D35）。
     test('rebuildAll はデッキに触らない', () async {
       final decks = DeckDao(db);
-      await decks.save(Deck(
-        deckId: 'a3f1c2d4-0000-4000-8000-0000000000ff',
-        name: '移行しても残ること',
-        entries: const [],
-        createdAt: DateTime.utc(2026, 8, 23),
-        updatedAt: DateTime.utc(2026, 8, 23),
-      ));
+      await decks.save(
+        Deck(
+          deckId: 'a3f1c2d4-0000-4000-8000-0000000000ff',
+          name: '移行しても残ること',
+          entries: const [],
+          createdAt: DateTime.utc(2026, 8, 23),
+          updatedAt: DateTime.utc(2026, 8, 23),
+        ),
+        ops: const [],
+      );
 
       await search.rebuildAll();
 

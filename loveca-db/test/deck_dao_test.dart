@@ -74,7 +74,7 @@ void main() {
         lastDeviceId: 'pc-1',
         masterDataVersion: 2,
       );
-      await decks.save(deck);
+      await decks.save(deck, ops: const []);
 
       final restored = (await decks.byId(deck.deckId))!;
       expect(restored.name, deck.name);
@@ -94,12 +94,18 @@ void main() {
     });
 
     test('保存し直すと中身が入れ替わる', () async {
-      await decks.save(deckOf(const [
-        DeckEntry(printingId: 'PL!HS-bp1-012-N', count: 4),
-      ]));
-      await decks.save(deckOf(const [
-        DeckEntry(printingId: 'PL!HS-bp1-012-PR', count: 1),
-      ]));
+      await decks.save(
+        deckOf(const [
+          DeckEntry(printingId: 'PL!HS-bp1-012-N', count: 4),
+        ]),
+        ops: const [],
+      );
+      await decks.save(
+        deckOf(const [
+          DeckEntry(printingId: 'PL!HS-bp1-012-PR', count: 1),
+        ]),
+        ops: const [],
+      );
       final restored = (await decks.byId('deck-1'))!;
       expect(restored.entries, hasLength(1));
       expect(restored.entries.single.printingId, 'PL!HS-bp1-012-PR');
@@ -107,7 +113,7 @@ void main() {
 
     // ★決定 D102: 物理削除すると削除が同期で伝播しない。
     test('論理削除は一覧から外れるが行は残る', () async {
-      await decks.save(deckOf(const []));
+      await decks.save(deckOf(const []), ops: const []);
       await decks.softDelete('deck-1', _t0.add(const Duration(days: 1)));
 
       expect(await decks.all(), isEmpty);
@@ -138,7 +144,7 @@ void main() {
         );
 
     test('★ 削除が 1 件残る（deck_id / kind / at の 3 つが揃う）', () async {
-      await decks.save(one());
+      await decks.save(one(), ops: const []);
       final at = _t0.add(const Duration(days: 1));
 
       await decks.softDelete('deck-1', at);
@@ -158,9 +164,9 @@ void main() {
       //   このコミットが足した記録点は `softDelete` の 1 つだけである。
       //   ★書き込みの経路を 1 つずつ通し、★読み出しも一緒に通す。
       final deck = one();
-      await decks.save(deck); // 新規保存
-      await decks.save(one(id: 'deck-2')); // もう 1 本
-      await decks.save(deck); // 上書き保存
+      await decks.save(deck, ops: const []); // 新規保存
+      await decks.save(one(id: 'deck-2'), ops: const []); // もう 1 本
+      await decks.save(deck, ops: const []); // 上書き保存
       await decks.backfillOrd(); // ★移行の経路（決定 D65 / D99）
       await decks.byId('deck-1');
       await decks.all(includeDeleted: true);
@@ -172,8 +178,8 @@ void main() {
     });
 
     test('★ 1 回の削除 = 1 件（2 本消せば deck_id ごとに 1 件ずつ）', () async {
-      await decks.save(one());
-      await decks.save(one(id: 'deck-2'));
+      await decks.save(one(), ops: const []);
+      await decks.save(one(id: 'deck-2'), ops: const []);
 
       await decks.softDelete('deck-1', _t0);
       await decks.softDelete('deck-2', _t0.add(const Duration(minutes: 1)));
@@ -184,7 +190,7 @@ void main() {
     });
 
     test('★ 当たる行が無ければ記録しない（起きていない削除を残さない）', () async {
-      await decks.save(one());
+      await decks.save(one(), ops: const []);
 
       // ★存在しない deckId。UPDATE は 0 行だが**例外は出ない**（既存の挙動を変えない）。
       await decks.softDelete('deck-none', _t0);
@@ -210,7 +216,7 @@ void main() {
         );
 
     test('★★ 同時性: UPDATE が失敗したらログも残らない ★★', () async {
-      await decks.save(one());
+      await decks.save(one(), ops: const []);
       await failWritesTo('decks', 'UPDATE');
 
       await expectLater(decks.softDelete('deck-1', _t0), throwsA(anything));
@@ -225,7 +231,7 @@ void main() {
       //   **「行は消えたのにログが無い」**——まさに穴 (c) と同じ状態が作れる。
       //   ★上の 1 件だけでは足りない: 包まなくても「UPDATE が失敗すれば
       //     INSERT まで進まない」ので、あちらは**素通しでも通る**。
-      await decks.save(one());
+      await decks.save(one(), ops: const []);
       await failWritesTo('deck_edit_ops', 'INSERT');
 
       await expectLater(decks.softDelete('deck-1', _t0), throwsA(anything));
@@ -248,7 +254,7 @@ void main() {
       //     §17-9-7 の 6 コミットのどれにも入っていない）。
       //   → ★**固定できるのは「衝突が消えるための前提」までである** ——
       //     すなわち **1 回の削除が 2 か所に同時に残ること**。
-      await decks.save(one());
+      await decks.save(one(), ops: const []);
 
       await decks.softDelete('deck-1', _t0);
 
@@ -262,6 +268,62 @@ void main() {
       expect(rows, hasLength(1));
       expect(rows.single.deckId, still.deckId);
       expect(rows.single.kind, DeckEditOpKind.deleteDeck.key);
+    });
+  });
+
+  group('★★ save が操作列を受け取る（署名だけ / §17-9-7 の commit 4）★★', () {
+    // ★★ この群が何を固定していて、何を固定していないか ★★
+    //   固定している —— ★**空の列を渡してもログが 1 件も増えないこと。**
+    //   ★★固定していない —— **「渡した列が無視されていないこと」**★★。
+    //   このコミットは [DeckDao.save] の**中身を 1 行も書いていない**ので、
+    //   `ops` は**証明可能に未読**であり、★**観測できる差が 1 つも無い。**
+    //   → ★★**この群は commit 4 では判別力を持たない**★★ ——
+    //     `ops` を丸ごと捨てる実装でも、★1 件も落ちずに通る（★実測した）。
+    //     ★**判別力が付くのは commit 5（9 操作を貯めて渡す）からである**（**D-27**）。
+    //   ★**推測で埋めない。**「無視されていない」と読める文をここに書かない。
+    Future<int> logCount() async =>
+        (await db.select(db.deckEditOps).get()).length;
+
+    Deck one({String id = 'deck-1'}) => deckOf(
+          const [DeckEntry(printingId: 'PL!HS-bp1-012-N', count: 4)],
+          id: id,
+        );
+
+    test('★ 空の列を渡してもログは 1 件も増えない', () async {
+      await decks.save(one(), ops: const []);
+      await decks.save(one(), ops: const []); // ★上書き保存も同じ
+      await decks.save(one(id: 'deck-2'), ops: const []);
+
+      expect(await logCount(), 0);
+    });
+
+    test('★★ 対: 0 件が「見えていない」のではないこと（**D-10**）★★', () async {
+      // ★★ 上の 0 件だけでは、**表を読めていない**場合と区別がつかない ★★
+      //   ★同じ `logCount()` で 1 件を数えられることを見る。
+      await decks.save(one(), ops: const []);
+      expect(await logCount(), 0);
+
+      await decks.softDelete('deck-1', _t0);
+      expect(await logCount(), 1);
+    });
+
+    test('★ 保存の中身は 1 つも変わっていない（★挙動の差が無いことの受け）', () async {
+      // ★★ commit 4 の契約そのもの ★★
+      //   §17-9-7 は「4 の時点では挙動が 1 つも変わらないので、
+      //   落ちるテストが在れば署名変更そのものの誤りである」と書いている。
+      final deck = deckOf(const [
+        DeckEntry(printingId: 'PL!HS-bp1-012-N', count: 4),
+        DeckEntry(printingId: 'PL!HS-bp1-012-PR', count: 1),
+      ]);
+      await decks.save(deck, ops: const []);
+
+      final restored = (await decks.byId('deck-1'))!;
+      // ★並びも枚数も `revision` も、署名を変える前と同じである（決定 D65 / D99）。
+      expect(restored.entries.map((e) => e.printingId),
+          ['PL!HS-bp1-012-N', 'PL!HS-bp1-012-PR']);
+      expect(restored.entries.map((e) => e.count), [4, 1]);
+      expect(restored.revision, deck.revision);
+      expect(restored.updatedAt, deck.updatedAt);
     });
   });
 
@@ -288,7 +350,7 @@ void main() {
       final deck = deckOf(const [
         DeckEntry(printingId: 'NOT-A-REAL-PRINTING', count: 3),
       ]);
-      await decks.save(deck);
+      await decks.save(deck, ops: const []);
 
       final sections = await decks.sections((await decks.byId('deck-1'))!);
       expect(sections.hasUnknownCards, isTrue);
@@ -302,7 +364,10 @@ void main() {
     test('カードマスタを消してもデッキの行は残る', () async {
       final t = await byType();
       final printingId = t[CardType.member]!.first.printingId;
-      await decks.save(deckOf([DeckEntry(printingId: printingId, count: 4)]));
+      await decks.save(
+        deckOf([DeckEntry(printingId: printingId, count: 4)]),
+        ops: const [],
+      );
 
       for (final expansion in fixtureExpansions) {
         await cards.deleteExpansion(expansion);

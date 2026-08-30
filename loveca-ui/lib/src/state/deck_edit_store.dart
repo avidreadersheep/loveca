@@ -300,7 +300,13 @@ class DeckEditStore extends Store<DeckEditState> {
     if (!value.canSave) return false;
     state = value.copyWith(busy: true, clearActionError: true);
     try {
-      final saved = await _repository.save(value.saved, value.draft);
+      // ★★ 9 操作を貯めて渡すのは次の commit である（`docs/同期設計メモ.md` §17-9-7 の 5）★★
+      //   ★いまは器だけが通っている。★空の列を渡す。
+      final saved = await _repository.save(
+        value.saved,
+        value.draft,
+        ops: const [],
+      );
       // ★★ ドラフトの並びを保つ（正規化し直さない）★★
       //   保存直後に並べ替えを巻き戻すと、利用者には「保存したら並びが戻った」に見え、
       //   **開き直したときに戻るという予告と区別がつかない。**

@@ -150,6 +150,7 @@ void main() {
           tags: withEntries.tags,
           coverPrintingId: withEntries.coverPrintingId,
         ),
+        ops: const [],
       );
 
       // ★★ ここで本当に閉じる。プロセス内のキャッシュではなく DB を見る ★★
@@ -201,7 +202,7 @@ void main() {
       draft = draft.copyWith(name: 'あいう');
       draft = draft.copyWith(memo: 'めも');
 
-      final saved = await repositoryOn(db).save(deck, draft);
+      final saved = await repositoryOn(db).save(deck, draft, ops: const []);
 
       // ★4 回編集して 1 回保存 → +1。
       //   跳ねると Phase 4 の同期で「大量に更新された」ように見える。
@@ -209,7 +210,8 @@ void main() {
       expect(saved.name, 'あいう');
 
       final again =
-          await repositoryOn(db).save(saved, draft.copyWith(name: 'ん'));
+          await repositoryOn(db)
+              .save(saved, draft.copyWith(name: 'ん'), ops: const []);
       expect(again.revision, 2);
 
       // DB 側も同じ。
@@ -231,7 +233,7 @@ void main() {
       final later = _t0.add(const Duration(days: 3));
 
       final saved = await repositoryOn(db, now: later)
-          .save(deck, DeckDraft.of(deck).copyWith(name: 'Y'));
+          .save(deck, DeckDraft.of(deck).copyWith(name: 'Y'), ops: const []);
 
       // ★★ Deck.copyWith の既定値（DateTime.now()）を踏んでいたら一致しない ★★
       expect(saved.updatedAt, later);
@@ -419,7 +421,7 @@ void main() {
           .addCopy('M-1-N')
           .addCopy('M-1-N')
           .addCopy('L-1-N');
-      await repository.save(created, draft);
+      await repository.save(created, draft, ops: const []);
 
       await db.close();
       final reopened = await open();
@@ -444,7 +446,7 @@ void main() {
       expect(draft.entries, hasLength(1));
       expect(draft.entries.single.count, 2);
 
-      await repository.save(created, draft);
+      await repository.save(created, draft, ops: const []);
       expect((await repository.byId(created.deckId))!.entries, hasLength(1));
     });
   });
@@ -477,7 +479,7 @@ void main() {
       // ★★ 保存する並びが規則順とも printingId 昇順とも違うこと ★★
       expect(draft.entries.map((e) => e.printingId), ['M-2-N', 'M-1-N']);
 
-      await repository.save(created, draft);
+      await repository.save(created, draft, ops: const []);
       await db.close();
       final reopened = await open();
       final restored = await repositoryOn(reopened).byId(created.deckId);
@@ -498,7 +500,7 @@ void main() {
       //   `all` に ORDER BY が無かった時代は、ここが取得経路で違っていた。
       expect(draft.entries.map((e) => e.printingId),
           ['E-1-N', 'M-1-N', 'L-1-N']);
-      await repository.save(created, draft);
+      await repository.save(created, draft, ops: const []);
       await db.close();
 
       final reopened = await open();
@@ -525,6 +527,7 @@ void main() {
             .draftOf(created)
             .addCopy('E-1-N')
             .addCopy('M-1-N'), // ★区分順でもない
+        ops: const [],
       );
 
       expect(repository.draftOf(saved).entries.map((e) => e.printingId),
@@ -541,6 +544,7 @@ void main() {
       final saved = await repository.save(
         created,
         repository.draftOf(created).addCopy('M-1-N').addCopy('M-2-N'),
+        ops: const [],
       );
 
       final reordered = repository
@@ -559,6 +563,7 @@ void main() {
       final saved = await repository.save(
         created,
         repository.draftOf(created).addCopy('M-1-N').addCopy('M-2-N'),
+        ops: const [],
       );
 
       expect(repository.draftOf(saved).isDirtyAgainst(saved), isFalse);
@@ -570,6 +575,7 @@ void main() {
       final saved = await repository.save(
         created,
         repository.draftOf(created).addCopy('M-1-N'),
+        ops: const [],
       );
 
       final more = repository.draftOf(saved).addCopy('M-1-N');
@@ -664,7 +670,8 @@ void main() {
         masterDataVersion: created.masterDataVersion,
       );
 
-      final saved = await repositoryOn(db).save(base, DeckDraft.of(base));
+      final saved =
+          await repositoryOn(db).save(base, DeckDraft.of(base), ops: const []);
 
       await db.close();
       final reopened = await open();
@@ -680,12 +687,14 @@ void main() {
       final withCover = await repositoryOn(db).save(
         created,
         DeckDraft.of(created).copyWith(coverPrintingId: 'M-1-N'),
+        ops: const [],
       );
       expect(withCover.coverPrintingId, 'M-1-N', reason: '前提');
 
       final cleared = await repositoryOn(db).save(
         withCover,
         DeckDraft.of(withCover).copyWith(clearCover: true),
+        ops: const [],
       );
 
       await db.close();
@@ -701,11 +710,13 @@ void main() {
       final withCover = await repositoryOn(db).save(
         created,
         DeckDraft.of(created).copyWith(coverPrintingId: 'M-1-N'),
+        ops: const [],
       );
 
       final renamed = await repositoryOn(db).save(
         withCover,
         DeckDraft.of(withCover).copyWith(name: '別の名前'),
+        ops: const [],
       );
 
       expect(renamed.coverPrintingId, 'M-1-N',
@@ -717,12 +728,14 @@ void main() {
       final tagged = await repositoryOn(db).save(
         created,
         DeckDraft.of(created).copyWith(tags: const ['青', '青赤']),
+        ops: const [],
       );
       expect(tagged.tags, ['青', '青赤']);
 
       final cleared = await repositoryOn(db).save(
         tagged,
         DeckDraft.of(tagged).copyWith(tags: const []),
+        ops: const [],
       );
 
       await db.close();
@@ -739,12 +752,14 @@ void main() {
       final a = await repositoryOn(db).save(
         created,
         DeckDraft.of(created).copyWith(memo: 'm', tags: const ['t']),
+        ops: const [],
       );
       expect(a.revision, 1);
 
       final b = await repositoryOn(db).save(
         a,
         DeckDraft.of(a).copyWith(coverPrintingId: 'M-1-N'),
+        ops: const [],
       );
       expect(b.revision, 2);
       expect(b.createdAt, created.createdAt, reason: 'createdAt は動かない');
@@ -774,6 +789,7 @@ void main() {
             DeckEntry(printingId: 'M-1-P', count: 1),
           ],
         ),
+        ops: const [],
       );
 
       final copy = await repositoryOn(db, deckId: 'dup')
@@ -789,7 +805,8 @@ void main() {
 
     test('★deckId は新しく、revision は 0、時刻は Clock から', () async {
       final created = await repositoryOn(db, deckId: 'src').create(name: '元');
-      final source = await repositoryOn(db).save(created, DeckDraft.of(created));
+      final source = await repositoryOn(db)
+          .save(created, DeckDraft.of(created), ops: const []);
       expect(source.revision, 1, reason: '前提: 元は 1 回保存してある');
 
       final copy = await repositoryOn(db, deckId: 'dup')
@@ -826,6 +843,7 @@ void main() {
             DeckEntry(printingId: 'UNKNOWN-1', count: 3),
           ],
         ),
+        ops: const [],
       );
 
       final copy = await repositoryOn(db, deckId: 'dup')
@@ -843,6 +861,7 @@ void main() {
         created,
         DeckDraft.of(created)
             .copyWith(memo: 'めも', tags: const ['青'], coverPrintingId: 'M-1-N'),
+        ops: const [],
       );
 
       final copy = await repositoryOn(db, deckId: 'dup')

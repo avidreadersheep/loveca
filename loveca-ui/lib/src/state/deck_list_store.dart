@@ -66,8 +66,15 @@ class DeckListStore extends Store<DeckListState> {
   /// ★★ R3 と違って「未保存」の器が無い ★★
   /// R3 はドラフトを持ち、保存ボタンで畳む。R2 にはその器が無いので、
   /// ダイアログの OK が保存 1 回に相当する。**どちらも畳むのは 1 回だけ**。
+  ///
+  /// ★★ ここが穴 (a) である（`docs/同期設計メモ.md` §15-7-1 の 2）★★
+  /// この経路は `DeckEditStore` の 9 つの名前つき操作を**1 つも通らない**ので、
+  /// ★**渡せる操作が無い。**塞ぐのは **A-i**（**D110-2** / §17-9-7 の commit 6）で、
+  /// ★そのとき R2 のメタ編集そのものが `DeckEditStore` 経由になり、
+  /// ★**このメソッドは不要になる**（§17-9-3 の 1）。
+  /// → ★**いまは空の列を渡す。★`required` なので、穴が字面として残る。**
   Future<Deck?> saveMeta(Deck deck, DeckDraft draft) =>
-      _act(() => _repository.save(deck, draft));
+      _act(() => _repository.save(deck, draft, ops: const []));
 
   /// 複製（決定 D71 / M6）。★刷りを保ったまま写せる唯一の手段。
   Future<Deck?> duplicate(Deck deck, {required String name}) =>

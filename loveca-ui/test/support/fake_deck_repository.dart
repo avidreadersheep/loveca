@@ -201,8 +201,17 @@ class FakeDeckRepository implements DeckRepository {
     return deck;
   }
 
+  /// ★★ [ops] を数えも保持もしない（★意図的である）★★
+  /// このフェイクは**ログの行を持たない**（`DeckDao` が持つ）。
+  /// ★**ここで数えると「フェイクは覚えているが DB には無い」状態を作れてしまう**ので、
+  /// ★実際にログが残ることを見るテストは**実 DB** を使う
+  /// （`test/data/deck_delete_log_test.dart` が **D110-3** で採ったのと同じ形）。
   @override
-  Future<Deck> save(Deck base, DeckDraft draft) async {
+  Future<Deck> save(
+    Deck base,
+    DeckDraft draft, {
+    required List<DeckEditOpRecord> ops,
+  }) async {
     saveCalls++;
     if (failSave case final error?) throw error;
     // ★本実装と同じく明示コンストラクタで畳む（決定 D70）。
