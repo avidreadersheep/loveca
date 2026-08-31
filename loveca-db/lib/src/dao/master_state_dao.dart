@@ -25,7 +25,10 @@ class MasterStateDao {
 
   /// ★全ファイルが成功したときにだけ呼ぶこと★
   /// `planUpdate` は `remoteVersion.dataVersion <= localDataVersion` で
-  /// `upToDate` を返す（`master_data.dart:234`）。1 ファイル失敗したのに
+  /// `upToDate` を返す（`loveca_core` の `planUpdate` の**版ゲート**。
+  /// ★行番号で指さない —— 行を 1 つ足した瞬間に古くなる。★以前ここは
+  /// 行番号で指しており、★その行は**アプリ版のゲート**（`isAppSupported`）
+  /// であって版ゲートではなかった / 決定 **D118-15**）。1 ファイル失敗したのに
   /// ここを上げると、次回は `upToDate` になり**失敗したファイルが
   /// 二度と再取得されない。**
   Future<void> setVersion(VersionInfo version) async {

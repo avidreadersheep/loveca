@@ -409,7 +409,10 @@ class DeckEditOps extends Table {
 ///
 /// ★`dataVersion` はマニフェスト内の全ファイルが成功したときにだけ更新する★
 /// `planUpdate` は `remoteVersion.dataVersion <= localDataVersion` で `upToDate` を返す
-/// （`master_data.dart:234`）。1 ファイル失敗したのにここを上げると、
+/// （`loveca_core` の `planUpdate` の**版ゲート**。★行番号で指さない ——
+/// 行を 1 つ足した瞬間に古くなる。★以前ここは行番号で指しており、
+/// ★その行は**アプリ版のゲート**（`isAppSupported`）であって版ゲート
+/// ではなかった / 決定 **D118-15**）。1 ファイル失敗したのにここを上げると、
 /// 次回は `upToDate` になって**失敗したファイルが二度と再取得されない**。
 @DataClassName('MasterStateRow')
 class MasterStates extends Table {
