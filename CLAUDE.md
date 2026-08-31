@@ -293,11 +293,12 @@ git ls-files --others --ignored --exclude-standard \
 | パッケージ | 件数 | 確認コマンド |
 |---|---|---|
 | `loveca-data`（Python） | **53** | `python tests/run_all.py` |
-| `loveca-core`（Dart） | **431** | `dart test` |
+| `loveca-core`（Dart） | **440** | `dart test` |
 | `loveca-db`（Dart） | **170**（★skip 0） | `dart test` |
 | `loveca-ui`（Flutter） | **921**（★skip 0） | `flutter test` |
 
-（`loveca-core` / `loveca-db` は **Phase 4 のレーン 1 の commit 2（版ゲートを「より小さい」に）** 時点 / 2026-08-31。
+（`loveca-core` は **Phase 4 のレーン 2 の commit 5（画像マニフェストの列を読む）** 時点 / 2026-08-31。
+`loveca-db` は **Phase 4 のレーン 1 の commit 2（版ゲートを「より小さい」に）** 時点 / 2026-08-31。
 `loveca-data` は **Phase 4 のレーン 2 の commit 4（画像だけのマニフェストを生成）** 時点 / 2026-08-31。
 `loveca-ui` は **束 C の commit 6（穴 (a) を塞ぐ）** 時点 / 2026-08-30。★**4 件とも実測で確認済み**）
 
@@ -342,6 +343,22 @@ git ls-files --others --ignored --exclude-standard \
 ★★**測っている途中で、★自分の対が 2 つとも対象を見ていないことが分かった**★★（**D-27** の実物）——
 ★**(e) と (g) は最初★0 件だった**。★**組み立てた値を見ていて、★`build` が★書いた物を見ていなかった**。
 ★**書かれたファイルを読む形に直してから測り直した。**
+
+★★**Phase 4 のレーン 2 の commit 5（画像マニフェストの列を読む / 決定 D121-1 の受け取り側 1／4）で
+`loveca-core` が 431 → 440**★★
+（**+9** = `master_data_test.dart` の 2 群。★**内訳はファイルを見ること**）。
+★`loveca-db` / `loveca-ui` / `loveca-data` はこの commit で触っていない（★**170 / 921 / 53 を実測で確認した**）。
+★**入れたもの**: `VersionInfo` の `imageManifestPath` / `imageManifestHash`（★どちらも null 可）＋
+`hasImageManifest` ＋ `Manifest.parseImages`。★★**取りに行かず、取り込みもしない。★読むだけである**★★。
+★★**「まだ無い」と「0 枚である」を型で書き分けた**★★ —— ★**null は「まだ無い」**。
+★**片方だけ / 空文字も「無い」扱いにする**（★場所だけあってハッシュが無ければ取り直す判断ができない。★推測で埋めない）。
+★★**カード側の `parse` は緩めていない**★★ —— ★`dataVersion` は必須のまま。
+★**緩めると壊れたカードのマニフェストが 0 として通る**。★**対で固定した**（★`parseImages` が「ただ緩めただけ」なら落ちる）。
+★★**実測した対は 4 通り**★★（2026-08-31 / ★**4 通りとも仕込んで走らせ、戻してから本番を測った**）——
+★**(a) 列を読まない** = 2 件 ／ ★**(b) `hasImageManifest` を片方だけで真にする** = 2 件 ／
+★**(c) `parseImages` をカード側と同じ厳しさにする** = 2 件 ／ ★**(d) カード側の `parse` を緩める** = 1 件。
+★★**(d) がこの群の要石である**★★ —— ★**(c) だけでは「`parseImages` が緩いこと」しか見ておらず、
+★★カード側が厳しいままかは分からない★★**（**D-27**）。
 
 ★★**Phase 4 のレーン 1 の commit 2（版ゲートを「より小さい」に / 決定 D118-3 ＝ 版-3 / D-32）で
 `loveca-core` が 429 → 431 / `loveca-db` が 168 → 170**★★

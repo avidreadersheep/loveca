@@ -290,6 +290,106 @@ void main() {
     });
   });
 
+  // =========================================================================
+  // ★★ 画像だけのマニフェスト（決定 D121-1 ＝ 画-5 / N-2 の画像側）★★
+  // =========================================================================
+  //
+  // ★ここは受け取り側の 1／4 である（`docs/同期設計メモ.md` §32-6 の 5）。
+  //   ★読むだけで、取りにも行かず取り込みもしない。
+  //
+  // ★★ 「まだ無い」と「0 枚である」を書き分けてある ★★
+  //   生成側は `--skip-images` のとき書かず、列も出さない。
+  //   空のマニフェストを書くと「画像が 0 枚である」という宣言になり、
+  //   削除の計画を足したときに **全部消せ** と読める。
+  group('★★ 版の情報の画像マニフェストの列（決定 D121-1）★★', () {
+    const withColumns = '''
+{"dataVersion":7,"minAppVersion":"0.3.0",
+ "manifestPath":"/data/manifest.json","manifestHash":"sha256:aa",
+ "imageManifestPath":"/data/image_manifest.json",
+ "imageManifestHash":"sha256:bb"}''';
+
+    test('★列が在れば読む', () {
+      final v = VersionInfo.parse(withColumns);
+      expect(v.imageManifestPath, '/data/image_manifest.json');
+      expect(v.imageManifestHash, 'sha256:bb');
+      expect(v.hasImageManifest, isTrue);
+      // ★対: カード側の列は 1 つも動いていない。
+      expect(v.manifestHash, 'sha256:aa');
+    });
+
+    test('★対: 列が無ければ null（★今日の現物がこの形である）', () {
+      const old = '{"dataVersion":2,"minAppVersion":"1.0.0",'
+          '"manifestPath":"/data/manifest.json","manifestHash":"sha256:aa"}';
+      final v = VersionInfo.parse(old);
+      expect(v.imageManifestPath, isNull);
+      expect(v.imageManifestHash, isNull);
+      expect(v.hasImageManifest, isFalse);
+      // ★対: ほかは今までどおり読める（読み方を壊していない）。
+      expect(v.dataVersion, 2);
+      expect(v.manifestPath, '/data/manifest.json');
+    });
+
+    test('★対: 片方だけなら「無い」として扱う', () {
+      // ★場所だけあってハッシュが無いと、取り直す判断ができない。
+      //   ★推測で埋めない。
+      const half = '{"dataVersion":2,"minAppVersion":"1.0.0",'
+          '"manifestPath":"/data/manifest.json","manifestHash":"sha256:aa",'
+          '"imageManifestPath":"/data/image_manifest.json"}';
+      final v = VersionInfo.parse(half);
+      expect(v.imageManifestPath, isNotNull, reason: '読めてはいる');
+      expect(v.hasImageManifest, isFalse, reason: 'それでも「無い」扱いである');
+    });
+
+    test('★対: 空文字も「無い」として扱う', () {
+      const empty = '{"dataVersion":2,"minAppVersion":"1.0.0",'
+          '"manifestPath":"/data/manifest.json","manifestHash":"sha256:aa",'
+          '"imageManifestPath":"","imageManifestHash":""}';
+      expect(VersionInfo.parse(empty).hasImageManifest, isFalse);
+    });
+
+    test('★知らない名前は黙って捨てる（★古いアプリが新しい dist を読める）', () {
+      // ★これが無いと、列を 1 つ足すたびに古いアプリが落ちる。
+      const future = '{"dataVersion":2,"minAppVersion":"1.0.0",'
+          '"manifestPath":"/data/manifest.json","manifestHash":"sha256:aa",'
+          '"somethingWeHaveNotInventedYet":{"a":1}}';
+      expect(VersionInfo.parse(future).dataVersion, 2);
+    });
+  });
+
+  group('★★ 画像だけのマニフェストを読む（決定 D121-1）★★', () {
+    const imageManifest = '''
+{"files":[
+  {"path":"images/thumb/aaaa.webp","hash":"sha256:11","bytes":10},
+  {"path":"images/normal/aaaa.webp","hash":"sha256:22","bytes":20}
+]}''';
+
+    test('★dataVersion が無くても読める', () {
+      final m = Manifest.parseImages(imageManifest);
+      expect(m.files, hasLength(2));
+      expect(m.byPath['images/thumb/aaaa.webp']!.hash, 'sha256:11');
+      expect(m.totalBytes, 30);
+    });
+
+    test('★★ 対: カード側の parse は dataVersion が無いと落ちる ★★', () {
+      // ★これが無いと、`parseImages` が「ただ緩めただけ」でも通ってしまう。
+      //   ★カード側を緩めると **壊れたマニフェストが 0 として通る**。
+      expect(() => Manifest.parse(imageManifest), throwsA(anything));
+    });
+
+    test('★対: カード側の parse は今までどおり読める', () {
+      const cardManifest = '{"dataVersion":7,"files":['
+          '{"path":"cards/BP01.json","hash":"sha256:33","bytes":5,'
+          '"cardCount":2}]}';
+      final m = Manifest.parse(cardManifest);
+      expect(m.dataVersion, 7);
+      expect(m.files.single.cardCount, 2);
+    });
+
+    test('★files が無くても落ちない（★空として読む）', () {
+      expect(Manifest.parseImages('{}').files, isEmpty);
+    });
+  });
+
   group('画像 URL', () {
     test('サイズごとに組み立てられる', () {
       expect(

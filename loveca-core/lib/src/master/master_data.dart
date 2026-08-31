@@ -37,6 +37,8 @@ class VersionInfo {
     required this.minAppVersion,
     required this.manifestPath,
     required this.manifestHash,
+    this.imageManifestPath,
+    this.imageManifestHash,
   });
 
   final int dataVersion;
@@ -46,11 +48,38 @@ class VersionInfo {
   final String manifestPath;
   final String manifestHash;
 
+  /// 画像だけのマニフェストの場所 (決定 D121-1 = 画-5)。
+  ///
+  /// ★★ null は「まだ無い」であって「画像が 0 枚」ではない ★★
+  ///   生成側は `--skip-images` のとき **書かない** (列も出さない)。
+  ///   空のマニフェストを書くと「画像が 0 枚である」という宣言になり、
+  ///   削除の計画を足したときに **全部消せ** と読める。
+  ///   → ★2 つの状態を書き分けてある。ここで混ぜないこと。
+  ///
+  /// ★★ 古い配信物も読める ★★
+  ///   この 2 つが無い version.json は今日の現物そのものである。
+  ///   ★逆向き (古いアプリが新しい version.json を読む) も落ちない ——
+  ///   [fromJson] は知っている名前だけを読み、知らない名前は黙って捨てる。
+  final String? imageManifestPath;
+
+  /// 画像だけのマニフェストの内容ハッシュ ("sha256:..." 形式)。
+  final String? imageManifestHash;
+
+  /// 画像だけのマニフェストを持っているか。
+  ///
+  /// ★片方しか無い配信物は「無い」として扱う。★推測で埋めない ——
+  ///   場所だけあってハッシュが無ければ、取り直す判断ができない。
+  bool get hasImageManifest =>
+      (imageManifestPath?.isNotEmpty ?? false) &&
+      (imageManifestHash?.isNotEmpty ?? false);
+
   factory VersionInfo.fromJson(Map<String, dynamic> json) => VersionInfo(
         dataVersion: json['dataVersion'] as int,
         minAppVersion: json['minAppVersion'] as String? ?? '0.0.0',
         manifestPath: json['manifestPath'] as String? ?? '/data/manifest.json',
         manifestHash: json['manifestHash'] as String? ?? '',
+        imageManifestPath: json['imageManifestPath'] as String?,
+        imageManifestHash: json['imageManifestHash'] as String?,
       );
 
   static VersionInfo parse(String source) =>
@@ -113,6 +142,27 @@ class Manifest {
 
   static Manifest parse(String source) =>
       Manifest.fromJson(jsonDecode(source) as Map<String, dynamic>);
+
+  /// 画像だけのマニフェストを読む (決定 D121-1 = 画-5)。
+  ///
+  /// ★★ こちらは `dataVersion` を持たない ★★
+  ///   持たせると、カードを 1 文字直して版を上げるたびにこの物のバイト列が
+  ///   変わる。★画-5 の利得は「カードの変更と画像の変更が独立に運べる」
+  ///   ことなので、それを自分で潰すことになる。
+  ///   ★整合は version.json の `imageManifestHash` が持つ。
+  ///
+  /// ★★ カード側の [parse] は緩めない ★★
+  ///   あちらの `dataVersion` は必須のままにする。緩めると
+  ///   **壊れたカードのマニフェストが 0 として通る**。
+  ///   ★行の形は同じなので [ManifestFile] をそのまま使う。
+  static Manifest parseImages(String source) => Manifest(
+        dataVersion: 0,
+        files: ((jsonDecode(source) as Map<String, dynamic>)['files']
+                    as List? ??
+                [])
+            .map((e) => ManifestFile.fromJson(e as Map<String, dynamic>))
+            .toList(),
+      );
 
   Map<String, ManifestFile> get byPath => {for (final f in files) f.path: f};
 
