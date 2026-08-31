@@ -294,11 +294,11 @@ git ls-files --others --ignored --exclude-standard \
 |---|---|---|
 | `loveca-data`（Python） | **53** | `python tests/run_all.py` |
 | `loveca-core`（Dart） | **440** | `dart test` |
-| `loveca-db`（Dart） | **170**（★skip 0） | `dart test` |
+| `loveca-db`（Dart） | **181**（★skip 0） | `dart test` |
 | `loveca-ui`（Flutter） | **921**（★skip 0） | `flutter test` |
 
 （`loveca-core` は **Phase 4 のレーン 2 の commit 5（画像マニフェストの列を読む）** 時点 / 2026-08-31。
-`loveca-db` は **Phase 4 のレーン 1 の commit 2（版ゲートを「より小さい」に）** 時点 / 2026-08-31。
+`loveca-db` は **Phase 4 のレーン 2 の commit 6（取得手段がバイナリを運ぶ）** 時点 / 2026-08-31。
 `loveca-data` は **Phase 4 のレーン 2 の commit 4（画像だけのマニフェストを生成）** 時点 / 2026-08-31。
 `loveca-ui` は **束 C の commit 6（穴 (a) を塞ぐ）** 時点 / 2026-08-30。★**4 件とも実測で確認済み**）
 
@@ -359,6 +359,22 @@ git ls-files --others --ignored --exclude-standard \
 ★**(c) `parseImages` をカード側と同じ厳しさにする** = 2 件 ／ ★**(d) カード側の `parse` を緩める** = 1 件。
 ★★**(d) がこの群の要石である**★★ —— ★**(c) だけでは「`parseImages` が緩いこと」しか見ておらず、
 ★★カード側が厳しいままかは分からない★★**（**D-27**）。
+
+★★**Phase 4 のレーン 2 の commit 6（取得手段がバイナリを運ぶ / 決定 D121-1 の受け取り側 2／4）で
+`loveca-db` が 170 → 181**★★
+（**+11** = `test/master_file_source_test.dart` の新設。★**内訳はファイルを見ること**）。
+★`loveca-core` / `loveca-ui` / `loveca-data` はこの commit で触っていない（★**440 / 921 / 53 を実測で確認した**）。
+★**入れたもの**: `MasterFileSource.readBytes`（★**インタフェースに足したので実装は全部が書かねばならない**）＋
+`MapMasterFileSource` の `binaries` ＋ `LocalDirectoryMasterFileSource.readBytes`。
+★★**取り込み層は 1 行も変えていない。★運べるようにしただけである**★★（★振り分けは commit 7）。
+★★**壊れ方の断定を 1 つ実測で直した**★★ —— ★doc とテストに「テキスト経路では**置換文字に化ける**」と書いたが、
+★**`dart:io` の `readAsString` は★★投げる★★**（`FileSystemException` / 既定は `allowMalformed: false`）。
+★**「黙って壊れる」ではなく「読めない」である**。★**書いたテストが落ちて分かった**。★**両方の壊れ方を doc に併記した。**
+★★**対を「UTF-8 にできないバイト列」で置いた**★★ —— ★**テキストで往復させると文字列に畳んでも差が出ないので、
+★★文字列経由の実装でも通ってしまう★★**（**D-27**）。
+★★**実測した対は 4 通り**★★（2026-08-31 / ★**4 通りとも仕込んで走らせ、戻してから本番を測った**）——
+★**(a) `readBytes` を `readAsString` 経由にする** = 2 件 ／ ★**(b) `binaries` を無視する** = 3 件 ／
+★**(c) `readBytes` が `readPaths` を記録しない** = 1 件 ／ ★**(d) 無い path で投げずに空を返す** = 1 件。
 
 ★★**Phase 4 のレーン 1 の commit 2（版ゲートを「より小さい」に / 決定 D118-3 ＝ 版-3 / D-32）で
 `loveca-core` が 429 → 431 / `loveca-db` が 168 → 170**★★
