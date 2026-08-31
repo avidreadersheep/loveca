@@ -80,6 +80,55 @@ def build_images(cfg: Config, result: NormalizeResult) -> dict[str, str]:
     return hashes
 
 
+def build_image_manifest(cfg: Config, image_hashes: dict[str, str]) -> list[dict]:
+    """配る画像だけのマニフェストの行を組み立てる.
+
+    ★★ 画像は「別のマニフェスト」に載せる (決定 D121-1 = 画-5 / N-2) ★★
+      カードとメタのマニフェスト (`manifest.json`) には 1 行も足さない。
+      決め手は **カードとメタのマニフェストの意味を 1 ミリも動かさないこと**
+      であり、そこには 決定 D118-1 (商品単位) と 決定 D118-3 (版ゲート) が
+      乗っている。★カードの変更と画像の変更が独立に運べる。
+
+    ★★ 柵: 行のハッシュは「配るバイト列」から作る (決定 D121-2) ★★
+      `imageHash` は **原本 PNG** のハッシュであって、配る WebP の中身を
+      名指していない (所見 **D-4**)。★ここで名前ではなく **ディスク上の
+      バイト列** を読んでハッシュを取るので、段の生成設定を変えれば
+      行のハッシュが必ず変わる。★名前が中身を指す必要が無くなる。
+
+    ★★ これは D-4 を半分しか閉じない (決定 D121-2) ★★
+      閉じるのは **受け取り側** だけである。★生成側は出力先が既に在れば
+      作り直さない (`build_images` の `if dest.exists()`) ので、
+      設定を変えても **新しいバイト列がそもそも作られない**。
+      → その場合ここが読むのは古いバイト列で、行のハッシュも変わらない。
+      ★★手当ては別に要る。ここでは閉じていない。★★
+
+    ★同じ `imageHash` を複数の刷りが共有しうるので重複を落とす
+      (実データでは今日 0 件だが、原本がバイト単位で同じなら起きる / D-10)。
+    """
+    seen: set[str] = set()
+    files: list[dict] = []
+    for image_hash in image_hashes.values():
+        if image_hash in seen:
+            continue
+        seen.add(image_hash)
+        # ★リサイズ済みの 3 段。★Pillow が無い環境では原本がそのまま置かれる
+        #   ので、そちらも拾う (置いてあるものが配られるものである)。
+        candidates = [f"images/{name}/{image_hash}.webp" for name in cfg.image_sizes]
+        candidates.append(f"images/original/{image_hash}.png")
+        for rel_path in candidates:
+            path = cfg.dist_dir / rel_path
+            if not path.exists():
+                continue
+            body = path.read_bytes()
+            files.append({
+                "path": rel_path,
+                "hash": f"sha256:{_sha256(body)}",
+                "bytes": len(body),
+            })
+    files.sort(key=lambda f: f["path"])
+    return files
+
+
 def build(cfg: Config, result: NormalizeResult, *, data_version: int,
           min_app_version: str, with_images: bool = True) -> dict:
     """配信物を生成する.
@@ -207,12 +256,32 @@ def build(cfg: Config, result: NormalizeResult, *, data_version: int,
     manifest = {"dataVersion": data_version, "files": files}
     manifest_hash = _write(cfg.dist_dir / "manifest.json", manifest)
 
+    # ---- 画像だけのマニフェスト (決定 D121-1 = 画-5) ---------------------
+    # ★★ dataVersion を載せない ★★
+    #   載せると、カードを 1 文字直して版を上げるたびにこの物のバイト列が
+    #   変わる。★画-5 の利得は「カードの変更と画像の変更が独立に運べる」
+    #   ことなので、それを自分で潰すことになる。
+    #   ★整合は version.json の imageManifestHash が持つ。
+    #
+    # ★★ --skip-images のときは書かない。列も出さない ★★
+    #   ★空の物を書くと「画像が 0 枚である」という宣言になる。
+    #   受け取り側に削除の計画を足したとき (順序の 7)、それは
+    #   **全部消せ** と読める。★--skip-images は imageHash も空にする
+    #   開発用の近道であって、配信物ではない (CLAUDE.md §7-3)。
+    #   → ★「まだ無い」と「0 枚である」を書き分ける。
     version = {
         "dataVersion": data_version,
         "minAppVersion": min_app_version,
         "manifestPath": "/data/manifest.json",
         "manifestHash": f"sha256:{manifest_hash}",
     }
+    image_files: list[dict] = []
+    if with_images:
+        image_files = build_image_manifest(cfg, image_hashes)
+        image_manifest_hash = _write(
+            cfg.dist_dir / "image_manifest.json", {"files": image_files})
+        version["imageManifestPath"] = "/data/image_manifest.json"
+        version["imageManifestHash"] = f"sha256:{image_manifest_hash}"
     _write(cfg.dist_dir / "version.json", version)
 
     # ---- 容量レポート ----------------------------------------------------
@@ -225,6 +294,13 @@ def build(cfg: Config, result: NormalizeResult, *, data_version: int,
     log.info("配信物を生成: %s ファイル / カード %s 種 / 刷り %s 件",
              len(files), len(result.cards), len(result.printings))
     log.info("  JSON  %.1f MB", json_bytes / 1024 / 1024)
+    if with_images:
+        log.info("  画像マニフェスト %s 行 / %.1f MB",
+                 len(image_files),
+                 sum(f["bytes"] for f in image_files) / 1024 / 1024)
+    else:
+        log.warning("  ★ --skip-images: 画像マニフェストを書いていません。"
+                    "配信物として使わないこと")
 
     images_root = cfg.dist_dir / "images"
     if images_root.exists():

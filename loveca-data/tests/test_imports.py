@@ -38,7 +38,7 @@ REQUIRED = {
         "heart_icons_to_map", "normalize_card", "normalize_faqs", "normalize_all",
     ],
     "loveca_data.validate": ["validate", "load_previous_card_numbers"],
-    "loveca_data.build_dist": ["build", "build_images"],
+    "loveca_data.build_dist": ["build", "build_images", "build_image_manifest"],
     "loveca_data.stats": ["summarize"],
     "loveca_data.cli": ["main", "build_parser"],
 }
