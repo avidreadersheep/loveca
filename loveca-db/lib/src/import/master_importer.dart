@@ -114,8 +114,9 @@ class MasterImporter {
     }
 
     // ★マニフェスト内の全ファイルが揃ったときにだけ data_version を上げる★
-    // 1 件でも欠けたまま上げると、次回 planUpdate が upToDate を返して
-    // 失敗したファイルが二度と再取得されない。
+    // ★理由の正は `MasterStateDao.setVersion` の doc に置いてある。
+    //   ★2026-08-31 に理由が 1 つ消えた（決定 D118-3 = 版-3 / 所見 D-32）が、
+    //     規約そのものは変えていない。
     final complete = await _allFilesPresent(remoteManifest, state);
     if (complete) await state.setVersion(remoteVersion);
 

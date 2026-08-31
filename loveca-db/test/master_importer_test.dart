@@ -135,15 +135,72 @@ void main() {
   });
 
   group('★差分更新', () {
-    test('同じ dataVersion なら 1 件も読まない', () async {
+    // =====================================================================
+    // ★★ 版ゲートは「より小さい」で切る（決定 D118-3 = 版-3 / 所見 D-32）★★
+    // =====================================================================
+    //
+    // ★ここは 2026-08-31 に向きが変わった。
+    //   以前は「同じ dataVersion なら 1 件も読まない」を固定していた。
+    //   ★★その仕様が D-32 そのものだった★★ —— 同じ版のまま配信物を
+    //   作り直しても、manifest のファイルを 1 件も見ずに落ちる。
+    //
+    // ★★ 読む側（ここ）でも見る理由 ★★
+    //   `planUpdate` の単体は `loveca-core` が見ている。ここで見るのは
+    //   **本当に読みに行かないか / 行くか**（`MapMasterFileSource.readPaths`）で、
+    //   計画が正しくても取り込み層が握り潰していれば D-32 は残る。
+
+    test('★同じ dataVersion でも中身が違えば読む（所見 D-32 の根治）', () async {
+      await run(_Dist());
+
+      // ★版は据え置いたまま BP01 だけ中身とハッシュを変える。
+      final again = _Dist();
+      again.replace(
+        'cards/BP01.json',
+        readFixture('cards/BP01.json'),
+        'sha256:bp01-same-version',
+      );
+      final source = again.source;
+      final result = await run(again, source: source);
+
+      expect(result.decision, UpdateDecision.update);
+      expect(source.readPaths, ['cards/BP01.json'],
+          reason: '版が同じでも、変わった 1 件だけは読みに行く');
+      expect(result.importedPaths, ['cards/BP01.json']);
+      // ★版は動いていない（2 のまま）。
+      expect(await state.localDataVersion(), 2);
+      // ★★ 名前と食い違うが、これがいまの挙動である ★★
+      //   `dataVersionAdvanced` は「全ファイルが揃った」を意味しており、
+      //   版が上がったかは見ていない。★消費者は
+      //   `boot_controller` の「失敗があり、かつ揃わなかったとき」だけなので
+      //   害は無い。★名前を直すのは別の論点である（1 コミット = 1 論点）。
+      expect(result.dataVersionAdvanced, isTrue);
+    });
+
+    test('★対: 同じ dataVersion で中身も同じなら 1 件も読まない', () async {
       await run(_Dist());
 
       final again = _Dist();
       final source = again.source;
       final result = await run(again, source: source);
 
+      expect(source.readPaths, isEmpty);
+      // ★決定は `update` になった（版ゲートを通したため）。
+      //   ★`upToDate` は**降格のときだけ**返る（下の対）。
+      expect(result.decision, UpdateDecision.update);
+      expect(result.importedPaths, isEmpty);
+      expect(result.deletedPaths, isEmpty);
+    });
+
+    test('★対: 降格（配信物のほうが古い）は止まり、1 件も読まない', () async {
+      await run(_Dist());
+
+      final older = _Dist().bump(1);
+      final source = older.source;
+      final result = await run(older, source: source);
+
       expect(result.decision, UpdateDecision.upToDate);
       expect(source.readPaths, isEmpty);
+      expect(await state.localDataVersion(), 2, reason: '版は下がらない');
     });
 
     test('ハッシュが一致するファイルは再投入されない', () async {
@@ -368,8 +425,15 @@ void main() {
 
       // ★★ dataVersion を上げること ★★
       //   1 回目が成功したので `data_version` が進んでいる（決定 D39）。
-      //   据え置くと `upToDate` になり **1 件も読まれない**ので、
-      //   「失敗しなかった」ではなく「試してすらいない」状態を測ることになる。
+      //
+      // ★★ 2026-08-31: この段の理由が変わった（決定 D118-3 = 版-3）★★
+      //   ここには「据え置くと `upToDate` になり **1 件も読まれない**ので、
+      //   『失敗しなかった』ではなく『試してすらいない』状態を測ることになる」
+      //   と書いてあった。★版ゲートが「より小さい」になったので、
+      //   **据え置いてもハッシュが違えば読まれる**（この場合ハッシュは違う）。
+      //   ★★それでも上げたままにする★★ —— 「v1 で成功 → v2 で失敗」という
+      //   **この test が測りたい筋書きそのもの**に版の前進が含まれている。
+      //   ★型は `ルール整合性チェック_v1.06.md` **D-15 (l)**。
       final broken = _Dist().bump(3);
       broken.replace(
         'cards/BP01.json',

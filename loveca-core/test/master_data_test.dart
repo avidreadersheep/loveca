@@ -162,15 +162,69 @@ void main() {
       manifest = Manifest.parse(_fixture('manifest.json'));
     });
 
-    test('同じ dataVersion なら更新不要', () {
+    // =====================================================================
+    // ★★ 版ゲートは「より小さい」で切る（決定 D118-3 = 版-3 / 所見 D-32）★★
+    // =====================================================================
+    //
+    // ★ここは 2026-08-31 に向きが変わった。
+    //   以前は「同じ dataVersion なら更新不要」を**仕様として**固定していた。
+    //   ★★その仕様が D-32 そのものだった★★ —— 同じ版のまま cards/*.json を
+    //   作り直しても、manifest のファイルを 1 件も見ずに落ちる。
+    //
+    // ★★ 3 つとも要る。1 つでも欠くと「常に通す実装」か
+    //    「常に止める実装」が通ってしまう ★★
+
+    test('★同じ dataVersion でも中身が違えば取り込む（所見 D-32 の根治）', () {
+      // ★1 件だけローカルのハッシュを食い違わせる。
+      final local = <String, String>{
+        for (final f in manifest.files) f.path: f.hash,
+      };
+      final changed = manifest.files.first.path;
+      local[changed] = 'sha256:0000';
+
       final plan = planUpdate(
         remoteVersion: remote,
         remoteManifest: manifest,
         appVersion: '1.0.0',
         localDataVersion: remote.dataVersion,
+        localFileHashes: local,
+      );
+      expect(plan.decision, UpdateDecision.update);
+      expect(plan.filesToDownload.map((f) => f.path), [changed]);
+    });
+
+    test('★対: 同じ dataVersion で中身も同じなら取るものが無い', () {
+      // ★「常に通す実装」と区別するための対ではない（それは上で見ている）。
+      //   ★★版ゲートを通したあと、**取るものが無いこと**を見る対である。★★
+      final plan = planUpdate(
+        remoteVersion: remote,
+        remoteManifest: manifest,
+        appVersion: '1.0.0',
+        localDataVersion: remote.dataVersion,
+        localFileHashes: {for (final f in manifest.files) f.path: f.hash},
+      );
+      expect(plan.needsDownload, isFalse);
+      expect(plan.filesToDelete, isEmpty);
+      // ★決定は `update` である。★`upToDate` には戻さない
+      //   —— 「版で切った」と「中身が同じだった」は別の事実だからである。
+      expect(plan.decision, UpdateDecision.update);
+    });
+
+    test('★対: 降格（配信物のほうが古い）は止まる。★これは意図である', () {
+      // ★根拠は `docs/同期設計メモ.md` §23-3 の事実 (2) ——
+      //   通すと古い dist が取り込まれ、削除計画が
+      //   **新しい商品ファイルを消す**。
+      final plan = planUpdate(
+        remoteVersion: remote,
+        remoteManifest: manifest,
+        appVersion: '1.0.0',
+        localDataVersion: remote.dataVersion + 1,
+        localFileHashes: const {'cards/NEW01.json': 'sha256:beef'},
       );
       expect(plan.decision, UpdateDecision.upToDate);
       expect(plan.needsDownload, isFalse);
+      expect(plan.filesToDelete, isEmpty,
+          reason: '止めた以上、削除計画も立ててはならない');
     });
 
     test('アプリが古すぎれば強制アップデート', () {

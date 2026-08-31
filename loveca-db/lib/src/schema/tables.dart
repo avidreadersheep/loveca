@@ -408,12 +408,17 @@ class DeckEditOps extends Table {
 /// 取り込み済みのマスタの版。単一行（`id = 0`）。
 ///
 /// ★`dataVersion` はマニフェスト内の全ファイルが成功したときにだけ更新する★
-/// `planUpdate` は `remoteVersion.dataVersion <= localDataVersion` で `upToDate` を返す
-/// （`loveca_core` の `planUpdate` の**版ゲート**。★行番号で指さない ——
-/// 行を 1 つ足した瞬間に古くなる。★以前ここは行番号で指しており、
-/// ★その行は**アプリ版のゲート**（`isAppSupported`）であって版ゲート
-/// ではなかった / 決定 **D118-15**）。1 ファイル失敗したのにここを上げると、
-/// 次回は `upToDate` になって**失敗したファイルが二度と再取得されない**。
+/// この列は「取り込めている実態」を表す。実態より先に進めない。
+/// ★行番号で指さない —— 行を 1 つ足した瞬間に古くなる。★以前ここは
+/// 行番号で指しており、★その行は**アプリ版のゲート**（`isAppSupported`）
+/// であって版ゲートではなかった（決定 **D118-15**）。
+///
+/// ★★ 2026-08-31: 理由が 1 つ消えた（決定 D118-3 = 版-3 / 所見 D-32）★★
+/// ここには「1 ファイル失敗したのにここを上げると、次回は `upToDate` に
+/// なって**失敗したファイルが二度と再取得されない**」と書いてあった。
+/// ★版ゲートが「より小さい」になったので、**同値では止まらない**。
+/// ★★規約は変えない★★ —— 実態と食い違う版は画面の表示を狂わせる。
+/// ★正は `MasterStateDao.setVersion` の doc（★同じ内容を 2 か所に置かない）。
 @DataClassName('MasterStateRow')
 class MasterStates extends Table {
   IntColumn get id => integer().withDefault(const Constant(0))();

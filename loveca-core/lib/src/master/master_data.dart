@@ -182,6 +182,12 @@ class MasterMeta {
 /// 更新の判定結果。
 enum UpdateDecision {
   /// 更新不要。
+  ///
+  /// ★★ 決定 D118-3（版-3）以降、この値が返るのは**降格のときだけ**である ★★
+  ///   配信物の dataVersion が取り込み済みより**小さい**場合。
+  ///   ★同値では返らない —— 同じ版でも中身が違えば取り込む（所見 D-32）。
+  ///   ★名前は変えていない。変えると `loveca_db` / `loveca-ui` の分岐まで
+  ///     動き、**1 コミット = 1 論点**（CLAUDE.md §7-4）から外れる。
   upToDate,
 
   /// 差分更新を行う。
@@ -239,7 +245,21 @@ UpdatePlan planUpdate({
     );
   }
 
-  if (remoteVersion.dataVersion <= localDataVersion) {
+  // ★★ 版ゲートは「より小さい」で切る (決定 D118-3 = 版-3 / 所見 D-32) ★★
+  //   ★同値は通す —— 同じ dataVersion のまま cards/*.json を作り直しても
+  //     取り込まれる。ここが `<=` だった間は、直したカードデータが
+  //     **1 ファイルも見られずに** 落ちていた (D-32)。
+  //   ★降格は止める —— remote のほうが古いときは今までどおり `upToDate`。
+  //     ★★これは副作用ではなく意図である★★ (決定 D118-3 の読み B)。
+  //     根拠: 通すと古い dist が取り込まれ、下の削除計画
+  //     (remote の manifest に無いローカルの path) が
+  //     **新しい商品ファイルを消す**。
+  //
+  // ★同値で通したあとに何が起きるかは下のハッシュ比較が決める。
+  //   中身が同じなら `filesToDownload` も `filesToDelete` も空になり、
+  //   決定は `update` だが取るものは無い。★`upToDate` には戻さない
+  //   —— 「版で切った」と「中身が同じだった」は別の事実である。
+  if (remoteVersion.dataVersion < localDataVersion) {
     return UpdatePlan(
       decision: UpdateDecision.upToDate,
       fromVersion: localDataVersion,

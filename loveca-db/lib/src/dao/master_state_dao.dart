@@ -24,13 +24,20 @@ class MasterStateDao {
   Future<int> localDataVersion() async => (await current())?.dataVersion ?? 0;
 
   /// ★全ファイルが成功したときにだけ呼ぶこと★
-  /// `planUpdate` は `remoteVersion.dataVersion <= localDataVersion` で
-  /// `upToDate` を返す（`loveca_core` の `planUpdate` の**版ゲート**。
+  /// `data_version` は「取り込めている実態」を表す。実態より先に進めない。
   /// ★行番号で指さない —— 行を 1 つ足した瞬間に古くなる。★以前ここは
   /// 行番号で指しており、★その行は**アプリ版のゲート**（`isAppSupported`）
-  /// であって版ゲートではなかった / 決定 **D118-15**）。1 ファイル失敗したのに
-  /// ここを上げると、次回は `upToDate` になり**失敗したファイルが
-  /// 二度と再取得されない。**
+  /// であって版ゲートではなかった（決定 **D118-15**）。
+  ///
+  /// ★★ 2026-08-31: 理由が 1 つ消えた（決定 D118-3 = 版-3 / 所見 D-32）★★
+  ///   ここには「1 ファイル失敗したのにここを上げると、次回は `upToDate` に
+  ///   なり**失敗したファイルが二度と再取得されない**」と書いてあった。
+  ///   ★版ゲートが「より小さい」になったので、**同値では止まらない** ——
+  ///   誤って上げても、次回はハッシュ比較まで進んで再取得される。
+  ///   ★★それでも規約は変えない★★ —— 版が実態と食い違うこと自体が
+  ///   画面の表示（取り込み済みのデータ版）と配信側の判断を狂わせる。
+  ///   ★型は `ルール整合性チェック_v1.06.md` **D-15 (l)**
+  ///   （前提があとから別の決定に動かされた）。
   Future<void> setVersion(VersionInfo version) async {
     await db.into(db.masterStates).insertOnConflictUpdate(
           MasterStatesCompanion.insert(
