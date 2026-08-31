@@ -5433,7 +5433,7 @@ class $DeckEditOpsTable extends DeckEditOps
 }
 
 class DeckEditOpRow extends DataClass implements Insertable<DeckEditOpRow> {
-  /// 順序（§17-9-1 の 1 の「順序」）と主キー（同 3 の 2）を **1 本の単調増加**が兼ねる。
+  /// §17-9-1 の 1 が言う「順序」と、同 2 が言う「主キー」を **1 本の単調増加**が兼ねる。
   ///
   /// ★★ 既存の慣習（複合キー）を採らなかった ★★
   /// §17-9-1 の 2 は「既存の慣習は複合キー（`{deckId, ord}` など）。
@@ -5467,7 +5467,8 @@ class DeckEditOpRow extends DataClass implements Insertable<DeckEditOpRow> {
   /// ★**キーは `softDelete`（記録点のメソッド名）である** —— **D110-1** が
   /// 「リネームで送信済みのログが意味を失わないように」わざと違えた 1 件である。
   /// → ★`textEnum` にすると**その決定が黙って裏返る。**素の [text] にして
-  ///   `DeckEditOpKind.key` を明示で入れる（★下のテストが対で見張る）。
+  ///   `DeckEditOpKind.key` を明示で入れる
+  ///   （★`test/migration_test.dart` の「kind は key の字面を持つ」が対で見張る）。
   ///
   /// ★★ 未知のキーの扱いはここで決めない ★★
   /// `DeckEditOpKind.tryFromKey` は `null` を返すだけで、例外を投げるかは
@@ -5642,6 +5643,305 @@ class DeckEditOpsCompanion extends UpdateCompanion<DeckEditOpRow> {
           ..write('deckId: $deckId, ')
           ..write('kind: $kind, ')
           ..write('at: $at')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $DeckSyncMarksTable extends DeckSyncMarks
+    with TableInfo<$DeckSyncMarksTable, DeckSyncMarkRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DeckSyncMarksTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _deckIdMeta = const VerificationMeta('deckId');
+  @override
+  late final GeneratedColumn<String> deckId = GeneratedColumn<String>(
+    'deck_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _logMarkMeta = const VerificationMeta(
+    'logMark',
+  );
+  @override
+  late final GeneratedColumn<int> logMark = GeneratedColumn<int>(
+    'log_mark',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _baselineHashMeta = const VerificationMeta(
+    'baselineHash',
+  );
+  @override
+  late final GeneratedColumn<String> baselineHash = GeneratedColumn<String>(
+    'baseline_hash',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [deckId, logMark, baselineHash];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'deck_sync_marks';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<DeckSyncMarkRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('deck_id')) {
+      context.handle(
+        _deckIdMeta,
+        deckId.isAcceptableOrUnknown(data['deck_id']!, _deckIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_deckIdMeta);
+    }
+    if (data.containsKey('log_mark')) {
+      context.handle(
+        _logMarkMeta,
+        logMark.isAcceptableOrUnknown(data['log_mark']!, _logMarkMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_logMarkMeta);
+    }
+    if (data.containsKey('baseline_hash')) {
+      context.handle(
+        _baselineHashMeta,
+        baselineHash.isAcceptableOrUnknown(
+          data['baseline_hash']!,
+          _baselineHashMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_baselineHashMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {deckId};
+  @override
+  DeckSyncMarkRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DeckSyncMarkRow(
+      deckId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}deck_id'],
+      )!,
+      logMark: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}log_mark'],
+      )!,
+      baselineHash: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}baseline_hash'],
+      )!,
+    );
+  }
+
+  @override
+  $DeckSyncMarksTable createAlias(String alias) {
+    return $DeckSyncMarksTable(attachedDatabase, alias);
+  }
+}
+
+class DeckSyncMarkRow extends DataClass implements Insertable<DeckSyncMarkRow> {
+  /// どのデッキの目印か。★**行が無いこと**が「まだ一度も同期していない」を表す（**D114-3**）。
+  ///
+  /// ★★ 行の不在は「消えた」とも読める ★★
+  /// ★だから意味づけを別に決めてある（**D114-3**）。★**先例は `master_files` の行の不在**
+  /// （★無ければ再取得対象に残る）。★**同じ層の同じ形をなぞる。**
+  final String deckId;
+
+  /// 前回同期時点の**目印** ＝ `deck_edit_ops.id` の値（決定 **D114-2**）。
+  ///
+  /// ★★ 意味（「最後に送った」か「次に送る」か）はここで決めない ★★
+  /// **§24-8** が未決にしている。★**列名でも言わない。**
+  /// ★判定に要るのは「この位置より後ろに操作が在るか」の**答え**だけで、
+  /// ★そこは `loveca_core` の `DeckSyncBaseline` が有無に畳んで受ける。
+  ///
+  /// ★★ `deck_edit_ops` への外部キーにしない ★★
+  /// ★**N-16**（ログをいつ捨てるか）が古い行を捨てたとき、★目印だけは残らねばならない。
+  /// ★外部キーにすると**捨てた瞬間に目印が消えるか、捨てられなくなる**。
+  /// ★`AUTOINCREMENT` なので**番号は使い回されず**、★行が消えても比較は成り立つ
+  /// （`DeckEditOps.id` の doc / **D114-2**）。→ ★**目印は N-16 に従属しない。**
+  final int logMark;
+
+  /// 前回同期時点の**内容ハッシュ**（決定 **D115-1** —— ★列は 1 本）。
+  ///
+  /// ★`loveca_core` の `deckContentHash` が作る字面をそのまま入れる（`"sha256:..."`）。
+  /// ★★ 5 個に分けることは **(f-1)** を開き直すことである ★★（**D112** の **N-18** 追記）。
+  ///
+  /// ★★ ここに `NULL` を許さない ★★
+  /// **D114-4** の 1 —— ★**目印と基準ハッシュが片方だけ在る状態を作れない**ことが
+  /// この表を選んだ根拠の 1 つである。★空文字も入れないこと（★書く経路がまだ無い）。
+  final String baselineHash;
+  const DeckSyncMarkRow({
+    required this.deckId,
+    required this.logMark,
+    required this.baselineHash,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['deck_id'] = Variable<String>(deckId);
+    map['log_mark'] = Variable<int>(logMark);
+    map['baseline_hash'] = Variable<String>(baselineHash);
+    return map;
+  }
+
+  DeckSyncMarksCompanion toCompanion(bool nullToAbsent) {
+    return DeckSyncMarksCompanion(
+      deckId: Value(deckId),
+      logMark: Value(logMark),
+      baselineHash: Value(baselineHash),
+    );
+  }
+
+  factory DeckSyncMarkRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DeckSyncMarkRow(
+      deckId: serializer.fromJson<String>(json['deckId']),
+      logMark: serializer.fromJson<int>(json['logMark']),
+      baselineHash: serializer.fromJson<String>(json['baselineHash']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'deckId': serializer.toJson<String>(deckId),
+      'logMark': serializer.toJson<int>(logMark),
+      'baselineHash': serializer.toJson<String>(baselineHash),
+    };
+  }
+
+  DeckSyncMarkRow copyWith({
+    String? deckId,
+    int? logMark,
+    String? baselineHash,
+  }) => DeckSyncMarkRow(
+    deckId: deckId ?? this.deckId,
+    logMark: logMark ?? this.logMark,
+    baselineHash: baselineHash ?? this.baselineHash,
+  );
+  DeckSyncMarkRow copyWithCompanion(DeckSyncMarksCompanion data) {
+    return DeckSyncMarkRow(
+      deckId: data.deckId.present ? data.deckId.value : this.deckId,
+      logMark: data.logMark.present ? data.logMark.value : this.logMark,
+      baselineHash: data.baselineHash.present
+          ? data.baselineHash.value
+          : this.baselineHash,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DeckSyncMarkRow(')
+          ..write('deckId: $deckId, ')
+          ..write('logMark: $logMark, ')
+          ..write('baselineHash: $baselineHash')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(deckId, logMark, baselineHash);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DeckSyncMarkRow &&
+          other.deckId == this.deckId &&
+          other.logMark == this.logMark &&
+          other.baselineHash == this.baselineHash);
+}
+
+class DeckSyncMarksCompanion extends UpdateCompanion<DeckSyncMarkRow> {
+  final Value<String> deckId;
+  final Value<int> logMark;
+  final Value<String> baselineHash;
+  final Value<int> rowid;
+  const DeckSyncMarksCompanion({
+    this.deckId = const Value.absent(),
+    this.logMark = const Value.absent(),
+    this.baselineHash = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  DeckSyncMarksCompanion.insert({
+    required String deckId,
+    required int logMark,
+    required String baselineHash,
+    this.rowid = const Value.absent(),
+  }) : deckId = Value(deckId),
+       logMark = Value(logMark),
+       baselineHash = Value(baselineHash);
+  static Insertable<DeckSyncMarkRow> custom({
+    Expression<String>? deckId,
+    Expression<int>? logMark,
+    Expression<String>? baselineHash,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (deckId != null) 'deck_id': deckId,
+      if (logMark != null) 'log_mark': logMark,
+      if (baselineHash != null) 'baseline_hash': baselineHash,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  DeckSyncMarksCompanion copyWith({
+    Value<String>? deckId,
+    Value<int>? logMark,
+    Value<String>? baselineHash,
+    Value<int>? rowid,
+  }) {
+    return DeckSyncMarksCompanion(
+      deckId: deckId ?? this.deckId,
+      logMark: logMark ?? this.logMark,
+      baselineHash: baselineHash ?? this.baselineHash,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (deckId.present) {
+      map['deck_id'] = Variable<String>(deckId.value);
+    }
+    if (logMark.present) {
+      map['log_mark'] = Variable<int>(logMark.value);
+    }
+    if (baselineHash.present) {
+      map['baseline_hash'] = Variable<String>(baselineHash.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DeckSyncMarksCompanion(')
+          ..write('deckId: $deckId, ')
+          ..write('logMark: $logMark, ')
+          ..write('baselineHash: $baselineHash, ')
+          ..write('rowid: $rowid')
           ..write(')'))
         .toString();
   }
@@ -6823,6 +7123,7 @@ abstract class _$LovecaDatabase extends GeneratedDatabase {
   late final $DeckTagsTable deckTags = $DeckTagsTable(this);
   late final $DeckEntriesTable deckEntries = $DeckEntriesTable(this);
   late final $DeckEditOpsTable deckEditOps = $DeckEditOpsTable(this);
+  late final $DeckSyncMarksTable deckSyncMarks = $DeckSyncMarksTable(this);
   late final $MasterStatesTable masterStates = $MasterStatesTable(this);
   late final $MasterFilesTable masterFiles = $MasterFilesTable(this);
   late final $ImportIssuesTable importIssues = $ImportIssuesTable(this);
@@ -6877,6 +7178,7 @@ abstract class _$LovecaDatabase extends GeneratedDatabase {
     deckTags,
     deckEntries,
     deckEditOps,
+    deckSyncMarks,
     masterStates,
     masterFiles,
     importIssues,
@@ -11699,6 +12001,176 @@ typedef $$DeckEditOpsTableProcessedTableManager =
       DeckEditOpRow,
       PrefetchHooks Function()
     >;
+typedef $$DeckSyncMarksTableCreateCompanionBuilder =
+    DeckSyncMarksCompanion Function({
+      required String deckId,
+      required int logMark,
+      required String baselineHash,
+      Value<int> rowid,
+    });
+typedef $$DeckSyncMarksTableUpdateCompanionBuilder =
+    DeckSyncMarksCompanion Function({
+      Value<String> deckId,
+      Value<int> logMark,
+      Value<String> baselineHash,
+      Value<int> rowid,
+    });
+
+class $$DeckSyncMarksTableFilterComposer
+    extends Composer<_$LovecaDatabase, $DeckSyncMarksTable> {
+  $$DeckSyncMarksTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get deckId => $composableBuilder(
+    column: $table.deckId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get logMark => $composableBuilder(
+    column: $table.logMark,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get baselineHash => $composableBuilder(
+    column: $table.baselineHash,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$DeckSyncMarksTableOrderingComposer
+    extends Composer<_$LovecaDatabase, $DeckSyncMarksTable> {
+  $$DeckSyncMarksTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get deckId => $composableBuilder(
+    column: $table.deckId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get logMark => $composableBuilder(
+    column: $table.logMark,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get baselineHash => $composableBuilder(
+    column: $table.baselineHash,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$DeckSyncMarksTableAnnotationComposer
+    extends Composer<_$LovecaDatabase, $DeckSyncMarksTable> {
+  $$DeckSyncMarksTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get deckId =>
+      $composableBuilder(column: $table.deckId, builder: (column) => column);
+
+  GeneratedColumn<int> get logMark =>
+      $composableBuilder(column: $table.logMark, builder: (column) => column);
+
+  GeneratedColumn<String> get baselineHash => $composableBuilder(
+    column: $table.baselineHash,
+    builder: (column) => column,
+  );
+}
+
+class $$DeckSyncMarksTableTableManager
+    extends
+        RootTableManager<
+          _$LovecaDatabase,
+          $DeckSyncMarksTable,
+          DeckSyncMarkRow,
+          $$DeckSyncMarksTableFilterComposer,
+          $$DeckSyncMarksTableOrderingComposer,
+          $$DeckSyncMarksTableAnnotationComposer,
+          $$DeckSyncMarksTableCreateCompanionBuilder,
+          $$DeckSyncMarksTableUpdateCompanionBuilder,
+          (
+            DeckSyncMarkRow,
+            BaseReferences<
+              _$LovecaDatabase,
+              $DeckSyncMarksTable,
+              DeckSyncMarkRow
+            >,
+          ),
+          DeckSyncMarkRow,
+          PrefetchHooks Function()
+        > {
+  $$DeckSyncMarksTableTableManager(
+    _$LovecaDatabase db,
+    $DeckSyncMarksTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DeckSyncMarksTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DeckSyncMarksTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$DeckSyncMarksTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> deckId = const Value.absent(),
+                Value<int> logMark = const Value.absent(),
+                Value<String> baselineHash = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => DeckSyncMarksCompanion(
+                deckId: deckId,
+                logMark: logMark,
+                baselineHash: baselineHash,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String deckId,
+                required int logMark,
+                required String baselineHash,
+                Value<int> rowid = const Value.absent(),
+              }) => DeckSyncMarksCompanion.insert(
+                deckId: deckId,
+                logMark: logMark,
+                baselineHash: baselineHash,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$DeckSyncMarksTableProcessedTableManager =
+    ProcessedTableManager<
+      _$LovecaDatabase,
+      $DeckSyncMarksTable,
+      DeckSyncMarkRow,
+      $$DeckSyncMarksTableFilterComposer,
+      $$DeckSyncMarksTableOrderingComposer,
+      $$DeckSyncMarksTableAnnotationComposer,
+      $$DeckSyncMarksTableCreateCompanionBuilder,
+      $$DeckSyncMarksTableUpdateCompanionBuilder,
+      (
+        DeckSyncMarkRow,
+        BaseReferences<_$LovecaDatabase, $DeckSyncMarksTable, DeckSyncMarkRow>,
+      ),
+      DeckSyncMarkRow,
+      PrefetchHooks Function()
+    >;
 typedef $$MasterStatesTableCreateCompanionBuilder =
     MasterStatesCompanion Function({
       Value<int> id,
@@ -12366,6 +12838,8 @@ class $LovecaDatabaseManager {
       $$DeckEntriesTableTableManager(_db, _db.deckEntries);
   $$DeckEditOpsTableTableManager get deckEditOps =>
       $$DeckEditOpsTableTableManager(_db, _db.deckEditOps);
+  $$DeckSyncMarksTableTableManager get deckSyncMarks =>
+      $$DeckSyncMarksTableTableManager(_db, _db.deckSyncMarks);
   $$MasterStatesTableTableManager get masterStates =>
       $$MasterStatesTableTableManager(_db, _db.masterStates);
   $$MasterFilesTableTableManager get masterFiles =>
