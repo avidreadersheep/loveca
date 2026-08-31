@@ -10,7 +10,7 @@
     # 2. 検証が通ってから全商品に拡大する
     python -m loveca_data fetch --all
     python -m loveca_data normalize && python -m loveca_data validate
-    python -m loveca_data build --data-version 1
+    python -m loveca_data build --data-version 1 --min-app-version 0.3.0
 
 3,000 件取ってから色マッピングの誤りに気づくのは、
 時間と相手サーバへの負荷の両方の無駄になる。必ず 1 で止めて確認すること。
@@ -178,7 +178,16 @@ def cmd_build(args, cfg: Config) -> int:
         log.error("検証エラーのため中止しました。--force で強制実行できます。")
         return 2
 
-    build(cfg, result, data_version=args.data_version, with_images=not args.skip_images)
+    build(
+        cfg,
+        result,
+        data_version=args.data_version,
+        # ★既定値を置かない (決定 D118-5 = 既-3 / 所見 D-7)。
+        #   ★ここで `getattr(..., "1.0.0")` のような受けを書かないこと ——
+        #     既定値を消した意味が無くなる。
+        min_app_version=args.min_app_version,
+        with_images=not args.skip_images,
+    )
     return 0
 
 
@@ -229,7 +238,13 @@ def cmd_expansions(args, cfg: Config) -> int:
     return 0
 
 
-def main(argv: list[str] | None = None) -> int:
+def build_parser() -> argparse.ArgumentParser:
+    """引数パーサを組み立てる.
+
+    ★`main` から切り出してあるのは**テストから引けるようにする**ためである。
+      `main` の中に閉じていると、必須引数を確かめるだけで
+      `args.func` まで走って実データに触れてしまう。
+    """
     parser = argparse.ArgumentParser(prog="loveca_data")
     parser.add_argument("--data-dir", type=Path, default=None)
     parser.add_argument("-v", "--verbose", action="store_true")
@@ -254,6 +269,16 @@ def main(argv: list[str] | None = None) -> int:
 
     p_build = sub.add_parser("build", help="段階6: 配信物生成")
     p_build.add_argument("--data-version", type=int, required=True)
+    # ★★ 既定値を置かず必須にする (決定 D118-5 = 既-3 / 所見 D-7) ★★
+    #   ★書式を書いておく —— compareVersions は数にできない部分を 0 として
+    #     扱うので、綴りを間違えると例外も出さずに「最小版なし」に化ける。
+    p_build.add_argument(
+        "--min-app-version",
+        required=True,
+        metavar="X.Y.Z",
+        help="このデータを読める最小のアプリ版 (例: 0.3.0)。"
+             "★既定値は無い。アプリが実際に読める最小版を毎回考えて渡す",
+    )
     p_build.add_argument("--skip-images", action="store_true")
     p_build.add_argument("--force", action="store_true")
     p_build.set_defaults(func=cmd_build)
@@ -266,7 +291,11 @@ def main(argv: list[str] | None = None) -> int:
                        help="取得済みファイルのみを使う (自動取得しない)")
     p_exp.set_defaults(func=cmd_expansions)
 
-    args = parser.parse_args(argv)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
     _setup_logging(args.verbose)
 
     cfg = Config(root=args.data_dir) if args.data_dir else Config()

@@ -33,8 +33,12 @@ python -m loveca_data validate
 # 検証が通ってから全商品に拡大
 python -m loveca_data fetch --all
 python -m loveca_data normalize && python -m loveca_data validate
-python -m loveca_data build --data-version 1
+python -m loveca_data build --data-version 1 --min-app-version 0.3.0
 ```
+
+★★`--min-app-version` は必須です（決定 D118-5 / 所見 D-7）。既定値はありません。★★
+アプリが実際に読める最小版を毎回考えて渡してください。綴りを間違えても例外は
+出ません（数にできない部分は 0 として比較されるため、「最小版なし」に化けます）。
 
 ### 画像リサイズについて
 
@@ -44,7 +48,7 @@ python -m loveca_data build --data-version 1
 ```powershell
 python -m pip install Pillow
 Remove-Item -Recurse -Force data\dist\images
-python -m loveca_data build --data-version 1
+python -m loveca_data build --data-version 1 --min-app-version 0.3.0
 ```
 
 リサイズ後の目安 (2,527 枚): thumb 37MB / normal 148MB / large 494MB

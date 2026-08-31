@@ -81,7 +81,23 @@ def build_images(cfg: Config, result: NormalizeResult) -> dict[str, str]:
 
 
 def build(cfg: Config, result: NormalizeResult, *, data_version: int,
-          min_app_version: str = "1.0.0", with_images: bool = True) -> dict:
+          min_app_version: str, with_images: bool = True) -> dict:
+    """配信物を生成する.
+
+    ★★ min_app_version に既定値を置かない (決定 D118-5 = 既-3 / 所見 D-7) ★★
+      以前はここが ``"1.0.0"`` の既定値で、**CLI に露出していなかった**。
+      その結果、これまでに作った dist はすべて「アプリ 1.0.0 以上」を要求し、
+      ★M1 では**アプリの版を上げて**回避した —— データに合わせてアプリを
+      変える、という本来と逆の向きである (所見 D-7)。
+      → ★既定値そのものを消す。**作る人が毎回考える**。
+
+    ★★ 同じ形の実績が data_version に在る ★★
+      data_version は最初から必須引数で、一度も破られていない。
+
+    ★値の妥当性はここでは見ない。``compareVersions`` (loveca_core) は
+      数にできない部分を 0 として扱うので、**綴りを間違えると
+      「最小版なし」に化ける**。★例外は出ない。CLI のヘルプに書式を書いてある。
+    """
     cfg.dist_dir.mkdir(parents=True, exist_ok=True)
     image_hashes = build_images(cfg, result) if with_images else {}
 

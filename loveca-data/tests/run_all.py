@@ -8,7 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-TESTS = ["test_imports.py", "test_normalize.py"]
+TESTS = ["test_imports.py", "test_normalize.py", "test_build_dist.py"]
 here = Path(__file__).parent
 
 failed = []
