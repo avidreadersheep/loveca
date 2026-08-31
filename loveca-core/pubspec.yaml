@@ -6,6 +6,18 @@ publish_to: none
 environment:
   sdk: ^3.4.0
 
+# ★★ このパッケージ最初の依存である（決定 D115-2 / 2026-09-01）★★
+# ★内容ハッシュ（N-18）に暗号学的ハッシュを採ったため（`src/sync/deck_content_hash.dart`）。
+# ★採った理由は「要求が仕様の側に在る」こと —— 版と端末をまたいで安定であることを
+#   規格が持っており、こちらが保証するものが無い（`docs/同期設計メモ.md` §25-4）。
+# ★★ CLAUDE.md §1 の禁止 5 つに当たらないことを実物で確かめた（2026-09-01）★★
+#   `crypto` の `lib` 配下に flutter / dart:ui / dart:io / 現在時刻 / seed なし乱数は 0 件。
+#   ★陽性対照つき（同じ走査が `loveca-core/lib` では当たる / D-30 の説明行）。
+#   ★推移的な依存は `typed_data` の 1 つだけである。
+# ★★ 「当たらない」と「増やしてよい」は別である。増やしたこと自体を代償として記録する。
+dependencies:
+  crypto: ^3.0.7
+
 dev_dependencies:
   test: ^1.25.0
   lints: ^6.1.0
