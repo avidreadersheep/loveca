@@ -269,6 +269,10 @@ class FakeDeckRepository implements DeckRepository {
     final i = _decks.indexWhere((d) => d.deckId == deckId);
     if (i < 0) return;
     final d = _decks[i];
+    // ★★ revision は動かない（決定 D116-2 で `copyWith` の既定値が据え置きになった）★★
+    //   本物の `DeckDao.softDelete` も `revision` に触れない（D-9 / 決定 D116-3 =
+    //   削除は「墓標」として別扱いする）ので、これで両者が一致する。
+    //   ★2026-08-31 より前は既定値が +1 だったため、**フェイクだけが上げていた**。
     _decks[i] = d.copyWith(deletedAt: fakeNow(), updatedAt: fakeNow());
   }
 

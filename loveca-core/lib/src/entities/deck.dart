@@ -69,6 +69,8 @@ class Deck {
   final DateTime? deletedAt;
 
   /// ★更新のたびに +1 (決定 D101)。同期の差分検出に使う。
+  ///
+  /// ★+1 するのは呼び出し側である (決定 D116-1)。[copyWith] は据え置く。
   final int revision;
   final String lastDeviceId;
 
@@ -79,6 +81,23 @@ class Deck {
 
   int get totalCount => entries.fold(0, (sum, e) => sum + e.count);
 
+  /// 指定した分だけを差し替える。
+  ///
+  /// ★★ 既定値は「据え置き」である。指定しなかった値を勝手に動かさない ★★
+  ///   決定 D116-1 3 つ組 (決定 D101) を決めるのは呼び出し側である
+  ///   決定 D116-2 2 つの既定値を「据え置き」に変えた (A-3 / D-14 の根治)
+  ///
+  /// ★以前は [updatedAt] の既定値が現在時刻、[revision] の既定値が +1 だった。
+  ///   前者は CLAUDE.md §1 が禁じる非決定な呼び出しそのもので、
+  ///   後者は「決めるのは呼び出し側」(決定 D116-1) と食い違っていた。
+  ///   `copyWith` の意味は「指定した分だけ変える」であり、
+  ///   指定しなかった分を動かすほうが語と食い違っていた。
+  ///
+  /// ★★ 3 つ組を動かすのは呼び出し側の責務である ★★
+  ///   更新のたびに +1 する (決定 D101) のは `DeckRepository.save` の側で、
+  ///   ここでは行わない。時刻も呼び出し側から渡す。
+  ///
+  /// ★[deckId] / [createdAt] / [masterDataVersion] は引数を持たない (不変)。
   Deck copyWith({
     String? name,
     List<DeckEntry>? entries,
@@ -98,9 +117,9 @@ class Deck {
         tags: tags ?? this.tags,
         coverPrintingId: coverPrintingId ?? this.coverPrintingId,
         createdAt: createdAt,
-        updatedAt: updatedAt ?? DateTime.now().toUtc(),
+        updatedAt: updatedAt ?? this.updatedAt,
         deletedAt: deletedAt ?? this.deletedAt,
-        revision: revision ?? this.revision + 1,
+        revision: revision ?? this.revision,
         lastDeviceId: lastDeviceId ?? this.lastDeviceId,
         masterDataVersion: masterDataVersion,
       );

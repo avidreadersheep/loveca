@@ -191,10 +191,64 @@ void main() {
     expect(shared, {'PL!N-bp1-001': 4});
   });
 
-  test('copyWith で revision が増える (同期の差分検出 決定 D101)', () {
-    final deck = _legalDeck();
-    final updated = deck.copyWith(name: 'renamed');
-    expect(updated.revision, deck.revision + 1);
-    expect(updated.deckId, deck.deckId, reason: 'deckId は不変');
+  // =========================================================================
+  // ★★ copyWith の既定値は「据え置き」(決定 D116-1 / D116-2 / A-3 / D-14) ★★
+  // =========================================================================
+  //
+  // ★ここは 2026-08-31 に向きが変わった。
+  //   以前は「copyWith で revision が増える」を固定していた。
+  //   `updatedAt` の既定値が `DateTime.now().toUtc()`、
+  //   `revision` の既定値が `this.revision + 1` だったためである。
+  //   前者は CLAUDE.md §1 が既知の違反として挙げていたもの (D-14)、
+  //   後者は「3 つ組を決めるのは呼び出し側」(決定 D116-1) と食い違っていた。
+  //
+  // ★★ 決定 D101 の訂正ではない ★★
+  //   「更新のたびに +1」は生きている。**+1 する主体**が
+  //   `DeckRepository.save`(呼び出し側) だと決まっただけである。
+  //
+  // ★★ 出る側だけを見ない ★★
+  //   「据え置く」だけを見ると、**引数を丸ごと無視する実装**でも通る。
+  //   2 つとも「明示で渡せばその値になる」を対で置く。
+  group('★★ copyWith の既定値は据え置き (決定 D116-2 / A-3 / D-14) ★★', () {
+    // ★revision は 0 ではなく、createdAt と updatedAt も別の値にしてある。
+    //   0 や同値だと「定数を返す実装」「createdAt を返す実装」でも通る。
+    Deck base() => Deck(
+          deckId: '00000000-0000-4000-8000-000000000000',
+          name: 'base',
+          createdAt: DateTime.utc(2026, 1, 1),
+          updatedAt: DateTime.utc(2026, 2, 2),
+          revision: 7,
+          lastDeviceId: 'dev-1',
+          masterDataVersion: 3,
+        );
+
+    test('★revision は据え置かれる (+1 しない)', () {
+      final updated = base().copyWith(name: 'renamed');
+      expect(updated.revision, 7);
+      expect(updated.name, 'renamed', reason: '指定した分は変わる');
+    });
+
+    test('★対: revision を明示で渡せばその値になる', () {
+      expect(base().copyWith(revision: 9).revision, 9);
+    });
+
+    test('★updatedAt は据え置かれる (現在時刻を取らない / CLAUDE.md §1)', () {
+      final updated = base().copyWith(name: 'renamed');
+      expect(updated.updatedAt, DateTime.utc(2026, 2, 2));
+      // ★2 回呼んでも同じ値であること。時計を読んでいたら割れる。
+      expect(updated.updatedAt, base().copyWith(memo: 'm').updatedAt);
+    });
+
+    test('★対: updatedAt を明示で渡せばその値になる', () {
+      final at = DateTime.utc(2026, 3, 3);
+      expect(base().copyWith(updatedAt: at).updatedAt, at);
+    });
+
+    test('★引数を持たない 3 つは不変 (deckId / createdAt / masterDataVersion)', () {
+      final updated = base().copyWith(name: 'renamed', revision: 9);
+      expect(updated.deckId, base().deckId);
+      expect(updated.createdAt, DateTime.utc(2026, 1, 1));
+      expect(updated.masterDataVersion, 3);
+    });
   });
 }
