@@ -10,6 +10,7 @@ export 'src/entities/deck.dart';
 export 'src/entities/product.dart';
 export 'src/master/master_data.dart';
 export 'src/rules/deck_order.dart';
+export 'src/sync/deck_content.dart';
 export 'src/sync/deck_edit_op.dart';
 export 'src/rules/deck_validator.dart';
 export 'src/game/aggregation.dart';
