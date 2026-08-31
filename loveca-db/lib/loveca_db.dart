@@ -10,6 +10,7 @@ export 'src/dao/card_dao.dart';
 export 'src/dao/deck_dao.dart';
 export 'src/dao/master_state_dao.dart';
 export 'src/import/master_file_source.dart';
+export 'src/import/master_image_sink.dart';
 export 'src/import/master_importer.dart';
 export 'src/schema/database.dart';
 export 'src/schema/enums.dart';

@@ -15,6 +15,53 @@ import '../schema/database.dart';
 import '../schema/enums.dart';
 import '../schema/tables.dart';
 import 'master_file_source.dart';
+import 'master_image_sink.dart';
+
+/// 配信物のうち画像の path かどうか。
+///
+/// ★★ 前置で分ける (決定 D121-1 の代償への受け皿) ★★
+/// カードとメタは `cards/` `meta/`、画像は `images/`。
+/// 取り込みの振り分けは元から前置で分けているので、同じ機構で切り分く。
+bool _isImage(String path) => path.startsWith('images/');
+
+/// 画像の取り込み計画。
+///
+/// ★`loveca_core` の `planUpdate` に足さない —— 判定の材料が
+/// 「取り込み済みのハッシュ」だけで、版ゲートも `dataVersion` も関わらない。
+class _ImagePlan {
+  const _ImagePlan({this.toWrite = const [], this.toDelete = const []});
+
+  final List<ManifestFile> toWrite;
+  final List<String> toDelete;
+}
+
+/// 画像の計画を立てる。
+///
+/// ★★ マニフェストが無ければ 1 件も計画しない ★★
+///   ★「まだ無い」と「0 枚である」は別である（決定 D121-1 の生成側と対）。
+///   ★空として扱うと、**取り込み済みの画像を全部消せ**という計画になる。
+///
+/// ★★ 保存先が無くても 1 件も計画しない ★★
+///   ★置き場は門 キ（**N-1**）待ちである。★計画だけ立てても置く先が無い。
+_ImagePlan _planImages({
+  required Manifest? remoteImageManifest,
+  required Map<String, String> localImageHashes,
+  required bool hasSink,
+}) {
+  if (remoteImageManifest == null || !hasSink) return const _ImagePlan();
+
+  final remote = remoteImageManifest.byPath;
+  return _ImagePlan(
+    toWrite: [
+      for (final file in remoteImageManifest.files)
+        if (localImageHashes[file.path] != file.hash) file,
+    ],
+    toDelete: [
+      for (final path in localImageHashes.keys)
+        if (!remote.containsKey(path)) path,
+    ]..sort(),
+  );
+}
 
 class MasterImportResult {
   const MasterImportResult({
@@ -70,16 +117,32 @@ class MasterImporter {
     required MasterFileSource source,
     required String appVersion,
     required DateTime now,
+    Manifest? remoteImageManifest,
+    MasterImageSink? imageSink,
   }) async {
     final state = MasterStateDao(db);
     final localDataVersion = await state.localDataVersion();
+
+    // ★★ 画像は別のマニフェストに載る (決定 D121-1 = 画-5) ★★
+    //   ★カードの計画に画像の path を混ぜない。混ぜると
+    //   `planUpdate` の削除計画が **画像を全部消せ** と言う
+    //   （カードのマニフェストには画像の行が 1 つも無いため）。
+    final localHashes = await state.localFileHashes();
+    final localCardHashes = {
+      for (final e in localHashes.entries)
+        if (!_isImage(e.key)) e.key: e.value,
+    };
+    final localImageHashes = {
+      for (final e in localHashes.entries)
+        if (_isImage(e.key)) e.key: e.value,
+    };
 
     final plan = planUpdate(
       remoteVersion: remoteVersion,
       remoteManifest: remoteManifest,
       appVersion: appVersion,
       localDataVersion: localDataVersion,
-      localFileHashes: await state.localFileHashes(),
+      localFileHashes: localCardHashes,
     );
 
     if (plan.decision != UpdateDecision.update) {
@@ -87,17 +150,34 @@ class MasterImporter {
         decision: plan.decision,
         dataVersion: localDataVersion,
         dataVersionAdvanced: false,
-        skippedPaths: remoteManifest.files.map((f) => f.path).toList(),
+        skippedPaths: [
+          ...remoteManifest.files.map((f) => f.path),
+          ...?remoteImageManifest?.files.map((f) => f.path),
+        ],
       );
     }
 
-    final toDownload = {for (final f in plan.filesToDownload) f.path};
+    // ★★ 画像の計画をここで立てる (決定 D121-1 の受け取り側 3／4) ★★
+    //   ★`loveca_core` に足さない —— 判定の材料が「取り込み済みの
+    //   ハッシュ」だけで、版ゲートも `dataVersion` も関わらない。
+    //   ★★保存先が無ければ画像は 1 件も計画しない★★（門 キ / N-1）。
+    final imagePlan = _planImages(
+      remoteImageManifest: remoteImageManifest,
+      localImageHashes: localImageHashes,
+      hasSink: imageSink != null,
+    );
+
+    final toDownload = {
+      for (final f in plan.filesToDownload) f.path,
+      for (final f in imagePlan.toWrite) f.path,
+    };
     final imported = <String>[];
     final failed = <String>[];
     final unhandled = <String>[];
 
-    for (final file in plan.filesToDownload) {
-      final outcome = await _importFile(file, source, state, now);
+    for (final file in [...plan.filesToDownload, ...imagePlan.toWrite]) {
+      final outcome = await _importFile(file, source, state, now,
+          imageSink: imageSink);
       switch (outcome) {
         case _Outcome.imported:
           imported.add(file.path);
@@ -108,8 +188,8 @@ class MasterImporter {
       }
     }
 
-    for (final path in plan.filesToDelete) {
-      await _deletePath(path);
+    for (final path in [...plan.filesToDelete, ...imagePlan.toDelete]) {
+      await _deletePath(path, imageSink: imageSink);
       await state.forgetFile(path);
     }
 
@@ -126,11 +206,11 @@ class MasterImporter {
           complete ? remoteVersion.dataVersion : localDataVersion,
       dataVersionAdvanced: complete,
       importedPaths: imported,
-      skippedPaths: remoteManifest.files
-          .map((f) => f.path)
-          .where((p) => !toDownload.contains(p))
-          .toList(),
-      deletedPaths: plan.filesToDelete,
+      skippedPaths: [
+        ...remoteManifest.files.map((f) => f.path),
+        ...?remoteImageManifest?.files.map((f) => f.path),
+      ].where((p) => !toDownload.contains(p)).toList(),
+      deletedPaths: [...plan.filesToDelete, ...imagePlan.toDelete],
       unhandledPaths: unhandled,
       failedPaths: failed,
     );
@@ -160,8 +240,17 @@ class MasterImporter {
     ManifestFile file,
     MasterFileSource source,
     MasterStateDao state,
-    DateTime now,
-  ) async {
+    DateTime now, {
+    MasterImageSink? imageSink,
+  }) async {
+    // ★★ 画像はバイト列で運ぶ (決定 D121-1 = 画-5) ★★
+    //   ★テキスト経路に通さない —— WebP は UTF-8 として復号できず、
+    //     `dart:io` の実装では **その場で例外になる**（実測）。
+    //   ★失敗の記録の仕方はカードと同じにする（決定 D39 の隔離）。
+    if (_isImage(file.path)) {
+      return _importImage(file, source, state, now, imageSink);
+    }
+
     String content;
     try {
       content = await source.read(file.path);
@@ -195,6 +284,58 @@ class MasterImporter {
       );
       return _Outcome.failed;
     } on Object catch (error) {
+      await state.recordIssue(
+        path: file.path,
+        hash: file.hash,
+        kind: ImportIssueKind.parseFailure,
+        message: '$error',
+        at: now,
+      );
+      return _Outcome.failed;
+    }
+
+    await state.recordFile(file, now);
+    return _Outcome.imported;
+  }
+
+  /// 画像 1 件を取り込む。
+  ///
+  /// ★カードと同じく **隔離** する（決定 D39）——
+  /// 1 枚読めなくても他の取り込みは進み、ハッシュを記録しないので
+  /// 次回の計画に残る。
+  Future<_Outcome> _importImage(
+    ManifestFile file,
+    MasterFileSource source,
+    MasterStateDao state,
+    DateTime now,
+    MasterImageSink? imageSink,
+  ) async {
+    // ★保存先が無ければ「未対応」。★今までどおりの扱いである
+    //   （置き場は門 キ / N-1 待ち）。
+    if (imageSink == null) {
+      await state.recordFile(file, now);
+      return _Outcome.unhandled;
+    }
+
+    List<int> bytes;
+    try {
+      bytes = await source.readBytes(file.path);
+    } on Object catch (error) {
+      await state.recordIssue(
+        path: file.path,
+        hash: file.hash,
+        kind: ImportIssueKind.readFailure,
+        message: '$error',
+        at: now,
+      );
+      return _Outcome.failed;
+    }
+
+    try {
+      await imageSink.write(file.path, bytes);
+    } on Object catch (error) {
+      // ★書けなかったのは「解釈できなかった」ではない。
+      //   ★それでも隔離の形は同じにする（1 枚で全体を止めない）。
       await state.recordIssue(
         path: file.path,
         hash: file.hash,
@@ -293,7 +434,12 @@ class MasterImporter {
     return false;
   }
 
-  Future<void> _deletePath(String path) async {
+  Future<void> _deletePath(String path, {MasterImageSink? imageSink}) async {
+    if (_isImage(path)) {
+      // ★保存先が無ければ何もしない。★計画も立てていないのでここへ来ない。
+      await imageSink?.delete(path);
+      return;
+    }
     if (!path.startsWith('cards/')) return;
     final expansion =
         path.substring('cards/'.length).replaceAll('.json', '');
