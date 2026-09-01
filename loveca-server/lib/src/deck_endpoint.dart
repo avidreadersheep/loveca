@@ -94,6 +94,12 @@ const String decksFetchPath = '/decks/fetch';
 /// → ★★**返せるものが★`deckId` しか無い。★選んだのではない。**★★
 const String decksListPath = '/decks/list';
 
+/// ★★ 預ける口が要求する鍵 —— ★★取ったときの印★★（**D141-1**）★★
+///
+/// ★**鍵そのものが無ければ★400 である**（★下の `_readPrecondition`）。
+/// ★**アプリ側にも★同じ字面が在る**（`loveca-ui/.../deck_sync_client.dart` / **D126-3** の代償）。
+const String deckExpectMarkKey = 'expectMark';
+
 /// 預ける口に 1 つ答える（★待ち受けを知らない）。
 Future<void> handleDeckPutRequest(
   HttpRequest request,
@@ -108,7 +114,21 @@ Future<void> handleDeckPutRequest(
     return;
   }
 
-  final isNew = decks.putDeck(parsed.userName, parsed.deckId, parsed.content!);
+  final result = decks.putDeck(
+    parsed.userName,
+    parsed.deckId,
+    parsed.content!,
+    expect: parsed.expect!,
+  );
+
+  // ★★ 印が合わなければ★断る（**D139-1** ＝ 線 β / ★状態は 412 / **D141-2**）★★
+  //   ★**サーバーは★★衝突を 1 つも解かない★★。★解くのは依然アプリ側である**（**D121-4** ＝ 主-1）。
+  if (result == DeckPutResult.preconditionFailed) {
+    await writeDeckStatus(request.response, HttpStatus.preconditionFailed);
+    return;
+  }
+
+  final isNew = result == DeckPutResult.created;
   request.response
     ..statusCode = isNew ? HttpStatus.created : HttpStatus.ok
     ..headers.contentType = ContentType.json
@@ -175,12 +195,21 @@ Future<void> handleDeckListRequest(
 }
 
 class _DeckRequest {
-  const _DeckRequest(this.userName, this.password, this.deckId, this.content);
+  const _DeckRequest(
+    this.userName,
+    this.password,
+    this.deckId,
+    this.content,
+    this.expect,
+  );
 
   final String userName;
   final String password;
   final String deckId;
   final String? content;
+
+  /// ★★ 預ける口だけが持つ（★返す口 / 一覧の口では `null`）★★
+  final DeckPrecondition? expect;
 }
 
 /// ★★ 名乗りは★要求ごとに運ぶ（★上の doc）★★
@@ -209,6 +238,7 @@ Future<_DeckRequest?> _parse(
   final String password;
   String deckId = '';
   String? content;
+  DeckPrecondition? expect;
   try {
     final body = await utf8.decoder.bind(request).join();
     final decoded = jsonDecode(body);
@@ -219,6 +249,7 @@ Future<_DeckRequest?> _parse(
     password = requireJsonString(decoded, 'password');
     if (needsDeckId) deckId = requireJsonString(decoded, 'deckId');
     if (needsContent) content = requireJsonString(decoded, 'content');
+    if (needsContent) expect = _readPrecondition(decoded);
   } on FormatException {
     await writeDeckStatus(request.response, HttpStatus.badRequest);
     return null;
@@ -234,7 +265,32 @@ Future<_DeckRequest?> _parse(
     return null;
   }
 
-  return _DeckRequest(userName, password, deckId, content);
+  return _DeckRequest(userName, password, deckId, content, expect);
+}
+
+/// ★★ 取ったときの印を読む（**D141-1** / **D141-4**）★★
+///
+/// ## ★★ 鍵が★無い★のと、★`null` である★のを★分ける ★★
+///
+/// | 送られたもの | ★意味 |
+/// |---|---|
+/// | ★★**鍵そのものが無い**★★ | ★★**壊れた要求である（400）**★★ —— ★**呼ぶ側が★前提を名乗っていない** |
+/// | `null` | ★**まだ 1 つも預けていないはず**（★初回） |
+/// | ★16 進の文字列 | ★**取ったときの印が★それだったはず** |
+///
+/// ★★**「無い」を「前提なし」に読まない**★★ ——
+/// ★**読むと、★★鍵を落とすだけで★黙って上書きできる★★**（★★塞ぎたいものがそのまま残る★★）。
+/// → ★**鍵が無ければ★400 である**（★対で固定した）。
+DeckPrecondition _readPrecondition(Map<String, Object?> decoded) {
+  if (!decoded.containsKey(deckExpectMarkKey)) {
+    throw const FormatException('★取ったときの印が名乗られていない');
+  }
+  final raw = decoded[deckExpectMarkKey];
+  if (raw == null) return const ExpectAbsent();
+  if (raw is! String || raw.isEmpty) {
+    throw const FormatException('★印が文字列でない / 空である');
+  }
+  return ExpectMark(raw);
 }
 
 /// 本文を持たない応答（★理由を 1 つも持たない / **D130** の柵）。

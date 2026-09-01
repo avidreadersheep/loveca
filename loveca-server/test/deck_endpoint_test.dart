@@ -50,18 +50,31 @@ void main() {
   const user = 'みつき';
   const pass = 'ひみつ';
 
+  // ★★ 取ったときの印を★必ず名乗る（**D141-1** / ★鍵が無ければ 400）★★
+  //   ★**既定は「まだ 1 つも預けていないはず」＝ `null` である**（★初回）。
+  //   ★**上書きする対は★★`mark:` で★取ったときの印を渡す★★。**
   Map<String, Object?> put(String deckId, String content,
-          {String userName = user, String password = pass}) =>
+          {String userName = user,
+          String password = pass,
+          String? mark}) =>
       {
         'userName': userName,
         'password': password,
         'deckId': deckId,
         'content': content,
+        deckExpectMarkKey: mark,
       };
 
   Map<String, Object?> fetch(String deckId,
           {String userName = user, String password = pass}) =>
       {'userName': userName, 'password': password, 'deckId': deckId};
+
+  // ★★ 保管に何が残っているかを★口越しに読む（★対で使う）★★
+  Future<String?> fetched(String deckId) async {
+    final res = await _post(client, server.port, decksFetchPath, fetch(deckId));
+    if (res.status != HttpStatus.ok) return null;
+    return jsonDecode(res.body)['content'] as String?;
+  }
 
   setUp(() async {
     dir = Directory.systemTemp.createTempSync('loveca_deck_endpoint_test');
@@ -113,7 +126,8 @@ void main() {
       //   ★**同じデッキを何度でも預ける。★それが同期である。**
       await _post(client, server.port, decksPath, put('d1', 'AAA'));
 
-      final res = await _post(client, server.port, decksPath, put('d1', 'BBB'));
+      final res = await _post(client, server.port, decksPath,
+          put('d1', 'BBB', mark: deckContentMark('AAA')));
 
       expect(res.status, 200);
       expect(res.status, isNot(409));
@@ -152,7 +166,8 @@ void main() {
 
     test('★★ 上書きしたら★新しいほうが返る ★★', () async {
       await _post(client, server.port, decksPath, put('d1', 'AAA'));
-      await _post(client, server.port, decksPath, put('d1', 'BBB'));
+      await _post(client, server.port, decksPath,
+          put('d1', 'BBB', mark: deckContentMark('AAA')));
 
       final res =
           await _post(client, server.port, decksFetchPath, fetch('d1'));
@@ -419,23 +434,28 @@ void main() {
     });
 
     test('★★ 書き込みが失敗したら★元の 1 件が残る ★★', () {
-      store.putDeck(user, 'd1', 'AAA');
+      store.putDeck(user, 'd1', 'AAA', expect: const ExpectAbsent());
       final file = deckDir.listSync().single as File;
 
       // ★★ 一時ファイルの場所を★ディレクトリで塞ぐ ★★
       //   ★**直に書く実装では★この場所を使わないので★★成功してしまう★★。**
       Directory('${file.path}.tmp').createSync();
 
-      expect(() => store.putDeck(user, 'd1', 'BBB'),
+      expect(
+          () => store.putDeck(user, 'd1', 'BBB',
+              expect: ExpectMark(deckContentMark('AAA'))),
           throwsA(isA<FileSystemException>()));
       expect(store.fetchDeck(user, 'd1'), 'AAA');
     });
 
     test('★★ 対: 塞がなければ★上書きできる ★★', () {
       // ★★ 上が「いつでも投げる」で通らないこと（**D-10**）★★
-      store.putDeck(user, 'd1', 'AAA');
+      store.putDeck(user, 'd1', 'AAA', expect: const ExpectAbsent());
 
-      expect(store.putDeck(user, 'd1', 'BBB'), isFalse);
+      expect(
+          store.putDeck(user, 'd1', 'BBB',
+              expect: ExpectMark(deckContentMark('AAA'))),
+          DeckPutResult.replaced);
       expect(store.fetchDeck(user, 'd1'), 'BBB');
     });
   });
@@ -453,4 +473,130 @@ void main() {
       expect(jsonDecode(res.body)['content'], nonsense);
     });
   });
+  // ★★ 取ったときの印（**D139-1** ＝ 線 β / 決定 **D141**）★★
+  //
+  // ★★ サーバーは★衝突を 1 つも解かない ★★
+  // ★**「取ったときの印が合わなければ断る」だけである**（★解くのは依然アプリ側 / **D121-4** ＝ 主-1）。
+  // ★**塞いでいるのは★★第 3 の書き込み★★である** —— ★**主-1 は「取る → 解く → 書く」の 3 手を踏み、
+  //   ★★そのあいだの他端末の書き込みが★黙って踏み潰される★★。**
+  group('★★ 取ったときの印 —— ★合わなければ断る（★★線 β / D139-1★★）★★', () {
+    test('★★ 印が合えば★上書きできる（200）★★', () async {
+      await _post(client, server.port, decksPath, put('d1', 'AAA'));
+
+      final res = await _post(client, server.port, decksPath,
+          put('d1', 'BBB', mark: deckContentMark('AAA')));
+
+      expect(res.status, HttpStatus.ok);
+      expect(await fetched('d1'), 'BBB');
+    });
+
+    test('★★ 印が合わなければ★断る（412）。★★1 バイトも書かない★★', () async {
+      // ★★ これが「第 3 の書き込み」を塞いでいる実物である ★★
+      await _post(client, server.port, decksPath, put('d1', 'AAA'));
+      // ★★ 別の端末が★あいだに書いた ★★
+      await _post(client, server.port, decksPath,
+          put('d1', 'CCC', mark: deckContentMark('AAA')));
+
+      // ★★ こちらは★まだ AAA を見ていたつもりである ★★
+      final res = await _post(client, server.port, decksPath,
+          put('d1', 'BBB', mark: deckContentMark('AAA')));
+
+      expect(res.status, HttpStatus.preconditionFailed);
+      expect(await fetched('d1'), 'CCC', reason: '★★踏み潰していない★★');
+    });
+
+    test('★★ 412 は★409 でも 401 でもない（★★意味が違う★★ / §7-7）★★', () async {
+      await _post(client, server.port, decksPath, put('d1', 'AAA'));
+
+      final res = await _post(client, server.port, decksPath,
+          put('d1', 'BBB', mark: deckContentMark('ちがう')));
+
+      expect(res.status, isNot(409), reason: '★409 は 17-2 が使っている');
+      expect(res.status, isNot(401), reason: '★名乗りは通っている');
+      expect(res.status, 412);
+    });
+
+    test('★★ 「まだ預けていないはず」で★既に在れば★断る ★★', () async {
+      await _post(client, server.port, decksPath, put('d1', 'AAA'));
+
+      final res = await _post(client, server.port, decksPath, put('d1', 'BBB'));
+
+      expect(res.status, HttpStatus.preconditionFailed);
+      expect(await fetched('d1'), 'AAA');
+    });
+
+    test('★★ 印を名乗って★まだ 1 つも無ければ★断る ★★', () async {
+      final res = await _post(client, server.port, decksPath,
+          put('d1', 'BBB', mark: deckContentMark('AAA')));
+
+      expect(res.status, HttpStatus.preconditionFailed);
+    });
+
+    test('★★ 鍵そのものが無ければ★400（★★「前提なし」と読まない★★）★★', () async {
+      // ★★ ここが★型と同じ役をする所である ★★
+      //   ★**「無い」を「前提なし」に読むと、★★鍵を落とすだけで黙って上書きできる★★。**
+      final res = await _post(client, server.port, decksPath, <String, Object?>{
+        'userName': user,
+        'password': pass,
+        'deckId': 'd1',
+        'content': 'AAA',
+      });
+
+      expect(res.status, HttpStatus.badRequest);
+      expect(res.status, isNot(HttpStatus.created));
+    });
+
+    test('★★ 印が空文字なら★400（★★`null` と分ける★★）★★', () async {
+      final res =
+          await _post(client, server.port, decksPath, put('d1', 'AAA', mark: ''));
+
+      expect(res.status, HttpStatus.badRequest);
+    });
+
+    test('★★ 印が文字列でなければ★400 ★★', () async {
+      final res = await _post(client, server.port, decksPath, <String, Object?>{
+        'userName': user,
+        'password': pass,
+        'deckId': 'd1',
+        'content': 'AAA',
+        deckExpectMarkKey: 7,
+      });
+
+      expect(res.status, HttpStatus.badRequest);
+    });
+
+    test('★★ 断るのは★名乗ったあとである（★★401 が先★★）★★', () async {
+      // ★★ 印が合わない ＋ パスワードが違う → ★401 である ★★
+      //   ★**先に 412 を返すと、★★名乗れない相手に★保管の状態を教えることになる★★。**
+      await _post(client, server.port, decksPath, put('d1', 'AAA'));
+
+      final res = await _post(client, server.port, decksPath,
+          put('d1', 'BBB', password: 'ちがう', mark: deckContentMark('ちがう')));
+
+      expect(res.status, HttpStatus.unauthorized);
+    });
+
+    test('★★ 印は★保管した字面のハッシュである（★★`deckContentHash` ではない★★）★★', () {
+      // ★★ 同じ形だが★見ている対象が違う（§7-7）★★
+      //   ★**`deckContentHash` は★`loveca_core` の量で、★★このパッケージは呼べない★★**
+      //   （★線 α は空のまま / **D115-6** / **D126-3**）。
+      expect(deckContentMark('AAA'), hasLength(64));
+      expect(deckContentMark('AAA'), isNot(deckContentMark('AAB')));
+      expect(deckContentMark('AAA'), deckContentMark('AAA'));
+    });
+
+    test('★★ サーバーは印を★保管しない（★★毎回計算する★★ / D114-1）★★', () async {
+      await _post(client, server.port, decksPath, put('d1', 'AAA'));
+      final saved = Directory('${dir.path}${Platform.pathSeparator}decks')
+          .listSync()
+          .whereType<File>()
+          .single
+          .readAsStringSync();
+
+      expect(saved.contains(deckContentMark('AAA')), isFalse,
+          reason: '★★保管の中に印が 1 文字も無い★★');
+      expect(saved.contains('AAA'), isTrue, reason: '★中身は在る');
+    });
+  });
+
 }

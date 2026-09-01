@@ -99,13 +99,46 @@ class DeckFileStore {
     temp.renameSync(file.path);
   }
 
-  /// 預かる。★★新しく預かったなら `true`、★上書きなら `false` ★★（決定 **D134-8**）。
-  bool putDeck(String userName, String deckId, String content) {
+  /// 預かる。★★取ったときの印を先に確かめる★★（**D139-1** ＝ 線 β ／ 決定 **D141**）。
+  ///
+  /// ## ★★ [expect] は★必須である。★省けない ★★
+  ///
+  /// ★**省けると、★★呼ぶ側が黙って上書きできる★★**（★★塞ぎたい「第 3 の書き込み」がそのまま残る★★）。
+  /// → ★**型で守る** —— ★[DeckPrecondition] は★★2 つの値しか持たない★★ので、
+  ///   ★**「印を持たない上書き」は★★書きようが無い★★。**
+  ///
+  /// ★★**決定 **D134-8** の「新しく預かったなら `true`」は 1 文字も動かない**★★ ——
+  /// ★**返り値が★★3 つに増えただけである★★**（★[DeckPutResult]）。★**上書きは★依然として正しい**
+  /// （★★同じデッキを何度でも預けられる。★印が合っている限り★★）。
+  ///
+  /// ## ★★ 印は★保管した字面のハッシュである（**D141-1**）★★
+  ///
+  /// ★**[deckContentMark] を参照。★★`loveca_core` の `deckContentHash` とは別物である★★**
+  /// （**§7-7** —— ★★同じ形だが★見ている対象が違う★★）。
+  ///
+  /// ## ★★ 確かめてから書くまでを★1 つの読み書きに収める ★★
+  ///
+  /// ★**呼ぶ側で確かめてから [putDeck] を呼ぶ形にすると、★★そのあいだの書き込みを見落とす★★**
+  /// （★★塞ぎたいものと同じ形である★★）。→ ★**この関数の中で★読んで・比べて・書く。**
+  DeckPutResult putDeck(
+    String userName,
+    String deckId,
+    String content, {
+    required DeckPrecondition expect,
+  }) {
     final rows = _readAll(userName);
-    final isNew = !rows.containsKey(deckId);
+    final current = rows[deckId];
+
+    final ok = switch (expect) {
+      ExpectAbsent() => current == null,
+      ExpectMark(:final mark) =>
+        current != null && deckContentMark(current) == mark,
+    };
+    if (!ok) return DeckPutResult.preconditionFailed;
+
     rows[deckId] = content;
     _writeAll(userName, rows);
-    return isNew;
+    return current == null ? DeckPutResult.created : DeckPutResult.replaced;
   }
 
   /// 返す。★無ければ `null`（★★「無い」と「空」を分ける★★）。
@@ -136,3 +169,67 @@ class DeckFileStore {
   /// その利用者が預けている件数（★試験と診断のため）。
   int countFor(String userName) => _readAll(userName).length;
 }
+
+/// ★★ 預けるときに★呼ぶ側が名乗る前提（**D141** の 印-1）★★
+///
+/// ★★ 2 つしか無い。★「前提を持たない」を★★書きようが無くする★★ ★★
+/// ★**`String?` にすると `null` が「前提なし」にも「無いはず」にも読める**（★★意味が 2 つになる★★）。
+/// → ★**型で分ける**（★先例は `loveca_core` の `SyncOutcome` / **D105-6**）。
+sealed class DeckPrecondition {
+  const DeckPrecondition();
+}
+
+/// ★まだ 1 つも預けていないはず（★初回）。
+final class ExpectAbsent extends DeckPrecondition {
+  const ExpectAbsent();
+}
+
+/// ★取ったときの印が [mark] だったはず。
+final class ExpectMark extends DeckPrecondition {
+  const ExpectMark(this.mark);
+
+  /// [deckContentMark] が返す 16 進小文字。
+  final String mark;
+}
+
+/// 預けた結果。
+///
+/// ★★ 3 つに分ける。★畳まない ★★
+/// ★**[created] と [replaced] は★★状態コードが違う★★**（201 / 200 / **D134-8**）。
+/// ★**[preconditionFailed] は★★どちらとも違う★★**（412 / **D141-2**）。
+enum DeckPutResult {
+  /// 新しく預かった。
+  created,
+
+  /// 上書きした（★印が合っていた）。
+  replaced,
+
+  /// ★★取ったときの印が合わない。★1 バイトも書いていない★★。
+  preconditionFailed,
+}
+
+/// ★★ 保管した字面の印（**D141-1**）★★
+///
+/// ## ★★ `loveca_core` の `deckContentHash` とは★★別物である★★ ★★
+///
+/// | | `deckContentHash`（**D115-1**） | ★★[deckContentMark]（★これ）★★ |
+/// |---|---|---|
+/// | ★何を掴むか | ★**デッキの 5 フィールドを★★正規化した表現★★**（**D115-3**） | ★★**サーバーが保管している★字面そのもの**★★ |
+/// | ★誰が計算するか | ★**アプリ側**（`loveca_core`） | ★★**サーバー**★★（★★毎回計算する。★持たない★★ / **D114-1**） |
+/// | ★同じ値になるか | ★—— | ★★**ならない**★★（★★同じ名前でも★見ている対象が違う★★ / **§7-7**） |
+///
+/// ★★**サーバーは印を★★保管しない★★**★★ —— ★**要求のたびに計算する。**
+/// ★**保管の形（`deckFileVersion`）は 1 も動かない**（**D114-1** / **D124-7** の (c)）。
+///
+/// ## ★★ 費用（2026-09-02 実測 / ★この機械 / ★2,000 回の平均）★★
+///
+/// | 中身の大きさ | ★1 回 |
+/// |---|---|
+/// | 1 KiB | ★**14.49 µs** |
+/// | 8 KiB | ★**80.29 µs** |
+/// | 64 KiB | ★**638.44 µs** |
+///
+/// ★★**「軽い」とは書かない**★★（**D-28**）—— ★**書けるのは上の表までである。**
+/// ★**参考: ★同じ要求が通る `authenticate` は★★1.5 秒★★である**（`rate_limit.dart` の分母）。
+String deckContentMark(String content) =>
+    sha256.convert(utf8.encode(content)).toString();

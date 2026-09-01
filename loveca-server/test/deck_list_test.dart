@@ -51,13 +51,18 @@ void main() {
   const other = 'かおり';
   const otherPass = 'べつのひみつ';
 
+  // ★★ 取ったときの印を★必ず名乗る（**D141-1**）★★
+  //   ★**この群は★一覧を見る群であり、★上書きは 1 か所だけである**（★そこは `mark:` を渡す）。
   Map<String, Object?> put(String deckId, String content,
-          {String userName = user, String password = pass}) =>
+          {String userName = user,
+          String password = pass,
+          String? mark}) =>
       {
         'userName': userName,
         'password': password,
         'deckId': deckId,
         'content': content,
+        deckExpectMarkKey: mark,
       };
 
   Map<String, Object?> list({String userName = user, String password = pass}) =>
@@ -134,8 +139,8 @@ void main() {
 
     test('★★ 上書きしても件数が増えない（★409 を使わない口である）★★', () async {
       await _post(client, server.port, decksPath, put('d1', 'a'));
-      final again =
-          await _post(client, server.port, decksPath, put('d1', 'b'));
+      final again = await _post(client, server.port, decksPath,
+          put('d1', 'b', mark: deckContentMark('a')));
       expect(again.status, HttpStatus.ok, reason: '★2 度目は 200（★201 ではない）');
       expect(await listIds(), <String>['d1']);
     });
@@ -161,8 +166,8 @@ void main() {
     test('★★ 対: 保管を直に読むと★足した順のままである（★並べているのは口ではなく保管である）★★',
         () async {
       // ★★ 口を通さず保管を直に叩く（★待ち受けを通さない）★★
-      decks.putDeck(user, 'zzz', 'a');
-      decks.putDeck(user, 'aaa', 'b');
+      decks.putDeck(user, 'zzz', 'a', expect: const ExpectAbsent());
+      decks.putDeck(user, 'aaa', 'b', expect: const ExpectAbsent());
       expect(decks.listDeckIds(user), <String>['aaa', 'zzz'],
           reason: '★並べているのは `listDeckIds` である');
     });
