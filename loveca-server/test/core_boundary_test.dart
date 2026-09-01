@@ -32,6 +32,7 @@
 /// （★**実測した**）。→ ★**その群を「コメント外しの対」と呼ばない。**
 library;
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:test/test.dart';
@@ -242,6 +243,79 @@ void main() {
       for (final name in ['loveca_core', 'loveca_db', 'loveca_ui']) {
         expect(body.contains(name), isFalse, reason: '★$name');
       }
+    });
+  });
+  group('★★ 解決 —— ★★pubspec に書かなくても入りうるか（決定 D126-3 の受け）★★', () {
+    // ★★ なぜ pubspec.yaml だけでは足りないと思ったか（★この回に実物が出た）★★
+    //   ★committed の `pubspec.lock` が `loveca_core` を **direct main** として
+    //   持っていた。★`pubspec.yaml` には無い（★実読）。
+    //
+    // ★★ 測ったら、★lock を見る検査は★対象を見ていなかった（**D-27**）★★
+    //   ★仕込んで走らせたら **0 件**だった。★理由は 2 つあり、★どちらも実測である ——
+    //   ★**(1) `dart test` は走る前に解き直し、★lock を書き直す**（★仕込みが消える）。
+    //   ★**(2) そもそも lock だけでは★★呼べる状態にならない★★** ——
+    //     ★pub は `pubspec.yaml` から依存の木を作り、★lock は★★その木の版を留めるだけ★★である。
+    //     ★木に無い項目は落ちる（★実測 —— ★解き直したら消えた）。
+    //   → ★★**lock の字面を見る検査は置かない。★対を持てないからである**★★
+    //     （★§39 で「対の無い守り」を見つけて足した回の★★逆である —— ★今回は外した★★）。
+    //
+    // ★★ 残すのは「解決」だけである ★★
+    //   `.dart_tool/package_config.json` は★★いま呼べるものそのもの★★である。
+    //   ★git 管理外だが、★★テストが走る時点では必ず在る★★（★無ければ `dart test` が動かない）。
+    /// ★解決の結果。★`dart pub get` が書く。
+    Set<String> resolvedPackages() {
+      final file = File('.dart_tool/package_config.json');
+      final json = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
+      return (json['packages'] as List<dynamic>)
+          .map((e) => (e as Map<String, dynamic>)['name'] as String)
+          .toSet();
+    }
+
+    // ★★ 走査する名前を手で並べると、★そのまま穴になる（**D-31**）★★
+    //   ★仕込んで測った —— ★**名前を 1 つ外すと、★解決に足しても 0 件だった**。
+    //   → ★**リポジトリを実際に見て突き合わせる**（★`auth_mechanism_test.dart` と同じ受け）。
+    const watched = {'loveca_core', 'loveca_db', 'loveca_ui'};
+
+    /// ★リポジトリに実在する「Dart のパッケージ」。★自分自身は外す。
+    ///
+    /// ★`loveca-data` は Python なので `pubspec.yaml` を持たず、★自動的に外れる。
+    Set<String> siblingDartPackages() {
+      final out = <String>{};
+      for (final entity in Directory('..').listSync()) {
+        if (entity is! Directory) continue;
+        final name = entity.path.split(Platform.pathSeparator).last;
+        if (!name.startsWith('loveca-')) continue;
+        if (!File('${entity.path}${Platform.pathSeparator}pubspec.yaml')
+            .existsSync()) {
+          continue;
+        }
+        final packageName = name.replaceAll('-', '_');
+        if (packageName == 'loveca_server') continue;
+        out.add(packageName);
+      }
+      return out;
+    }
+
+    test('★★ 走査する名前は★リポジトリの Dart パッケージと過不足なく一致する（D-31）★★', () {
+      // ★先に「実在する側」が空でないことを見る（0 件は何も証明しない / **D-10**）。
+      expect(siblingDartPackages(), isNotEmpty);
+      expect(watched, siblingDartPackages(),
+          reason: '★パッケージを足したなら、★ここにも足すこと');
+    });
+
+    test('★★ 前提: 解決に自分自身が入っている（★取り出しの陽性対照 / D-10）★★', () {
+      // ★これが無いと、★下の「1 つも無い」は★取り出しが壊れていても通る。
+      expect(resolvedPackages(), contains('loveca_server'));
+    });
+
+    test('★★ 解決に loveca_core / loveca_db / loveca_ui が 1 つも無い ★★', () {
+      expect(
+        resolvedPackages()
+            .intersection(watched),
+        isEmpty,
+        reason: '★★ここが「いま呼べるか」そのものである★★ —— '
+            '★pubspec の検査より★★1 段下流である★★',
+      );
     });
   });
 }

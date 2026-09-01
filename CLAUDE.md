@@ -315,13 +315,30 @@ git ls-files --others --ignored --exclude-standard \
 | `loveca-core`（Dart） | **495** | `dart test` |
 | `loveca-db`（Dart） | **208**（★skip 0） | `dart test` |
 | `loveca-ui`（Flutter） | **943**（★skip 0） | `flutter test` |
-| `loveca-server`（Dart） | **21**（★skip 0） | `dart test` |
+| `loveca-server`（Dart） | **24**（★skip 0） | `dart test` |
 
 （`loveca-core` は **Phase 4 のレーン 3 の commit 13（衝突判定 ＝ 候補 L）** 時点 / 2026-09-01。
 `loveca-db` は **Phase 4 のレーン 5 の commit 22（N-10 の器 / `schemaVersion` 5）** 時点 / 2026-09-01。
 `loveca-data` は **Phase 4 のレーン 2 の commit 4（画像だけのマニフェストを生成）** 時点 / 2026-08-31。
 `loveca-ui` は **§1 の境界の見張りを機械に移した時点** / 2026-09-01。
-`loveca-server` は **Phase 4 のレーン 4 の commit 17（線 α の許可リストと走査テスト）** 時点 / 2026-09-01。★**5 件とも実測で確認済み**）
+`loveca-server` は **線 α の走査を「解決」まで広げた時点** / 2026-09-01。★**5 件とも実測で確認済み**）
+
+★★**線 α の走査を「解決」まで広げた（決定 D126-3 の受け）で `loveca-server` が 21 → 24**★★
+（**+3** = `core_boundary_test.dart` の「解決」の群。★**内訳はファイルを見ること**）。
+★`loveca-core` / `loveca-db` / `loveca-ui` / `loveca-data` はこの commit で触っていない（★**495 / 208 / 943 / 53 を実測で確認した**）。
+★★**引き金は実物である**★★ —— ★**committed の `pubspec.lock` が `loveca_core` を「direct main」として持っていた**（★`pubspec.yaml` には無い / ★実読）。
+★★**最初は lock の字面を見る検査を書いた。★測ったら★★対象を見ていなかった★★**★★（**D-27** / ★仕込んで **0 件**）—— ★理由は 2 つで、★**どちらも実測である**:
+★**(1) `dart test` は走る前に解き直し、★lock を書き直す**（★仕込みが消える）／
+★★**(2) そもそも lock だけでは★呼べる状態にならない**★★（★pub は `pubspec.yaml` から木を作り、★lock は★★その木の版を留めるだけ★★である。★木に無い項目は落ちる）。
+→ ★★**lock の検査は★置かずに外した**★★（★**§39 で「対の無い守り」を見つけて★★足した★★回の逆である —— ★今回は★★外した★★**）。
+★★**残したのは「解決」だけである**★★ —— ★`.dart_tool/package_config.json` は★★いま呼べるものそのもの★★である（★git 管理外だが、★テストが走る時点では必ず在る）。
+★★**stale な lock は直した。★害は無かった**★★ —— ★**解決には入っていなかった**（★確かめた）。★**直さないと、★次に依存を足した commit が★★黙って消してしまう★★**。
+★★**実測した対は 6 通り**★★（2026-09-01 / ★**6 通りとも仕込んで走らせ、戻してから本番を測った**）——
+★★**(A) committed の lock を訂正前に戻す** = 0 件★★（★**これが「外した」根拠である**）／
+★**(G) 解決に `loveca_core` を 1 件足す** = 1 件 ／ ★**(H) 解決から自分自身を外す** = 1 件（★**D-10** の受け）／
+★★**(I) 走査する名前から 1 つ外す（かつ解決に足す）** = 1 件★★（★**D-31** の受けが働いた。★**受けを置く前は 0 件だった**）／
+★**(J) 取り出しを空集合にする** = 1 件 ／ ★★**(K) リポジトリに Dart パッケージをもう 1 つ置く** = 1 件★★（★同じ受け）。
+★★**D-31 の受けを 3 つ目の走査テストに置いた**★★ —— ★**`auth_mechanism_test.dart` と `package_boundary_test.dart` に続く**。★**残り 2 つ（`decision_number_test.dart` / `legacy_design_number_test.dart`）は★手で足す規約のままである**。
 
 ★★**§1 の境界の見張りを機械に移した（決定 D128-3 / D-D）で `loveca-ui` が 932 → 943**★★
 （**+11** = `test/docs/package_boundary_test.dart` の新設。★**内訳はファイルを見ること**）。
