@@ -1,0 +1,268 @@
+/// ★★ 認証の仕組みが `lib` に 1 件も無いこと、★原典に何が書かれているか（未決 **N-21**）★★
+/// （決定 **D127-1** / **D127-3** 〜 **D127-6** / `docs/同期設計メモ.md` §10 の **N-21** / §40）
+///
+/// ★★ なぜ機械に移すか ★★
+/// **D127** の回に、★前のセッション（**D126**）で手で書いた
+/// 「★仕組みを述べた行が `docs` にも `lib` にも 1 つも無い（★走査した）」が
+/// ★★**偽だった**★★ことが分かった（★原典に在った / **D-15 (j)**）。
+/// ★**同じ型を 3 回連続で踏んでいる**（`docs/同期設計メモ.md` §37-7 / §39-7 / §40-17）。
+/// → ★★**手で数えるのをやめる。★件数も内訳もこのファイルが正である**★★
+///   （`ルール整合性チェック_v1.06.md` **D-15** —— ★数を書くなら機械が数えられる形にする）。
+///
+/// ★★ 何を見張るか（★2 つ。★見ているものが違う）★★
+///
+/// | 木 | 何を意味するか | ★落ちたときの合図 |
+/// |---|---|---|
+/// | ★**4 パッケージの `lib`** | ★**認証の仕組みが★まだ 1 行も無い** | ★★**N-21 を先に閉じること**★★（★仕組みは★★利用者判断★★である） |
+/// | ★**原典**（`docs/引き継ぎドキュメント.md`） | ★**過去に何が述べられていたか** | ★**原典が動いた**（★**U31** —— ★未監査の資料である） |
+///
+/// ★★ 走査しない範囲と、その理由（**D-25**）★★
+/// ★**`docs/` の他の `.md` は走査しない。**
+/// ★★**記録が増えるたびに当たるので、★非 0 が常態になる**★★ ——
+/// D-25 が「★常に非 0 なら誰も読まない」と書いたそのものである。
+/// → ★**仮定を書く**: 「★決定と設計の記録は★★仕組みを述べているのではなく、
+///   ★仕組みが未決であることを述べている★★」。
+/// → ★**仮定が破れる場合**: ★`docs/` の記録に★仕組みそのものが書かれたとき。
+///   ★**そのときは `lib` にも来る**ので、★上の 1 つ目が受ける（★遅いが、★静かには落ちない）。
+/// → ★★**この理由が実在することを★対で固定してある**★★（★下の最後の群）。
+///
+/// ★★ 語を広げすぎない（**D-37**）★★
+/// ★**`token` を入れない。**★`loveca-db` の全文検索の分かち書きの設定と、
+/// ★`loveca-ui` の共有形式の正規化が当たる（★**実測した。★2 件とも別物である**）。
+/// ★**語を広げると許可リストが育ち、検査の意味が薄れる**（`reduce_call_site_test.dart` と同じ作法）。
+library;
+
+import 'dart:io';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
+
+/// ★見る語。★**仕組みの語 ＋ アカウントの語**。
+///
+/// ★★ 字面を直に並べてよい（★このファイルは走査対象ではない）★★
+/// ★走査するのは `lib` と原典だけである。★`test/` は入っていない。
+const _vocabulary = <String>[
+  'パスワード',
+  '合言葉',
+  '資格情報',
+  '公開鍵',
+  '秘密鍵',
+  'アカウント',
+  'password',
+  'credential',
+  'oauth',
+  'signin',
+  'login',
+  'logout',
+  'authenticate',
+  'authorization',
+];
+
+final _vocab = RegExp(_vocabulary.join('|'), caseSensitive: false);
+
+/// 走査する `lib` の木。★`loveca-ui` を作業ディレクトリとした相対パス。
+///
+/// ★★ パッケージを足したらここも足す（**D-31**）★★
+/// ★★**ただし「足すこと」を規約に頼らない**★★ —— ★下の
+/// [packagesWithLib] が**リポジトリを実際に見て**同じ集合を作り、
+/// ★**ずれたら落ちる**。★`decision_number_test.dart` /
+/// `legacy_design_number_test.dart` は★この受けを持っていない（★手で足す規約のままである）。
+const _libRoots = <String>[
+  'lib',
+  '../loveca-core/lib',
+  '../loveca-db/lib',
+  '../loveca-server/lib',
+];
+
+/// ★★ リポジトリに実在する「`lib/` を持つ Dart のパッケージ」★★
+/// ★**リポジトリ相対の POSIX パス**で返す。
+///
+/// ★`loveca-data` は Python なので `lib/` を持たず、★自動的に外れる。
+Set<String> packagesWithLib() {
+  final out = <String>{};
+  for (final entity in Directory('..').listSync()) {
+    if (entity is! Directory) continue;
+    final name = p.split(entity.path).last;
+    if (!name.startsWith('loveca-')) continue;
+    if (Directory(p.join(entity.path, 'lib')).existsSync()) {
+      out.add('$name/lib');
+    }
+  }
+  return out;
+}
+
+/// 原典。★**未監査である**（未決 **U31**）。★git 管理下に在る。
+final _origin = File(p.join('..', 'docs', '引き継ぎドキュメント.md'));
+
+/// ★走査しない理由が実在することを見るための木（★下の最後の群）。
+final _record = File(p.join('..', 'docs', '同期設計メモ.md'));
+
+/// ★★ `lib` で許される当たり。**リポジトリ相対パス → 件数**。★★
+///
+/// ★★ 理由の無い許可を作らない（**D-30**）★★
+/// 禁止対象を説明する文書は、禁止対象と同じ字面を必ず含む。
+const _allowedInLib = <String, int>{
+  // ★**N-10** の器が「アカウントごとでも端末ごとでもない」ことを述べた行（決定 **D125-9**）。
+  //   ★★仕組みではない。★器の主キーの説明である。★★
+  'loveca-db/lib/src/schema/tables.dart': 1,
+};
+
+/// ★★ 原典で当たる語ごとの件数。★**このファイルが正である**（**D-15**）★★
+///
+/// ★原典は**凍っている**（★過去の資料そのもの）。★動いたらこの検査が落ちる。
+const _originCounts = <String, int>{
+  'アカウント': 6,
+  'パスワード': 1,
+};
+
+/// 1 本の文字列に何件あるか。★分類器そのもの。★陽性対照はここへ当てる。
+int hitsIn(String source) => _vocab.allMatches(source).length;
+
+/// リポジトリのルートから見た POSIX 形式のパス。★許可リストの鍵に使う。
+String _repoRelative(String path) {
+  final parts = p.split(p.normalize(p.join('loveca-ui', path)));
+  final out = <String>[];
+  for (final part in parts) {
+    if (part == '..') {
+      out.removeLast();
+    } else {
+      out.add(part);
+    }
+  }
+  return out.join('/');
+}
+
+/// `lib` の実測。★**パス → 件数**。★生成物 `*.g.dart` は数えない。
+Map<String, int> scanLib() {
+  final found = <String, int>{};
+  for (final root in _libRoots) {
+    final dir = Directory(root);
+    if (!dir.existsSync()) continue;
+    for (final entity in dir.listSync(recursive: true)) {
+      if (entity is! File) continue;
+      if (!entity.path.endsWith('.dart')) continue;
+      if (entity.path.endsWith('.g.dart')) continue;
+      final count = hitsIn(entity.readAsStringSync());
+      if (count > 0) found[_repoRelative(entity.path)] = count;
+    }
+  }
+  return found;
+}
+
+/// [file] で当たった行（★行の中身をそのまま返す）。
+List<String> matchingLines(File file) => file
+    .readAsLinesSync()
+    .where((line) => _vocab.hasMatch(line))
+    .toList();
+
+/// [file] の**語 → 件数**。★語ごとに数える（★1 行に 2 語あれば 2 件）。
+Map<String, int> countByWord(File file) {
+  final source = file.readAsStringSync();
+  final out = <String, int>{};
+  for (final word in _vocabulary) {
+    final n = RegExp(RegExp.escape(word), caseSensitive: false)
+        .allMatches(source)
+        .length;
+    if (n > 0) out[word] = n;
+  }
+  return out;
+}
+
+void main() {
+  group('★★ 分類器が当たること（★これが無いと下の 0 件は何も証明しない / D-10）★★', () {
+    test('★ 仕組みの語を拾う', () {
+      // ★字面は連結で組む（★何を組み立てたかを読み手に見せる）。
+      expect(hitsIn('サーバーに${'パス'}${'ワード'}で名乗る'), 1);
+    });
+
+    test('★ 大文字小文字を問わない', () {
+      expect(hitsIn('OAuth'), 1);
+      expect(hitsIn('oauth'), 1);
+    });
+
+    test('★★ 語の外は拾わない ★★', () {
+      // ★★ `token` を入れていないことの対（**D-37**）★★
+      //   実データの全文検索の設定と、共有形式の正規化が当たってしまう。
+      expect(hitsIn('tokenize = trigram'), 0);
+      expect(hitsIn('normalizeShareToken'), 0);
+    });
+  });
+
+  group('★★ 原典 —— ★★何が書かれているかを固定する（未決 U31）★★', () {
+    test('★★ 前提: 原典が在り、走査が空でない ★★', () {
+      expect(_origin.existsSync(), isTrue);
+      expect(matchingLines(_origin), isNotEmpty);
+    });
+
+    test('★★ 語ごとの件数は許可リストと完全一致する ★★', () {
+      // ★件数ではなく**内訳**で見る。★入れ替わりが通らない。
+      expect(countByWord(_origin), _originCounts,
+          reason: '★原典が動いた。★**U31**（未監査）である以上、'
+              '★動いたこと自体が記録に値する');
+    });
+
+    test('★★ 決定表の 3 行が当たる集合に在る（★§40-10 の内訳）★★', () {
+      final lines = matchingLines(_origin);
+
+      // ★★ 3 行は扱いが違う。1 行にまとめない（§7-7）★★
+      //   ★2 つは「採番済みだが決定として使えない番号」（`docs/決定事項一覧.md` §3）、
+      //   ★1 つは**使える番号**だが、★台帳が写したのは別の側である。
+      expect(lines.where((l) => l.contains('ルーム保護')), hasLength(1));
+      // ★★ `必須化` だけでは★★2 行当たる★★（★実測 / **D-37**）——
+      //   ★審査の話の行にも `必須化` が在る。★語を 1 段だけ長くして分けた。
+      expect(lines.where((l) => l.contains('アカウント必須化')), hasLength(1));
+      expect(
+        lines.where((l) => l.contains('スマホと PC でデータ共有')),
+        hasLength(1),
+      );
+    });
+
+    test('★★ 名乗る操作を編集の前提にしない理由が★もう 1 つ在る（D127-4）★★', () {
+      // ★★ この行は §40 が挙げていない。★実装の記録（§41）に置いた ★★
+      //   ★別の事業者の審査の話であり、★**Phase 5 の制約**である。
+      //   ★**D127-4** は `決定 D105-1` ＋ `決定 D105-6` から導いた。
+      //   ★**同じ向きの制約が★別の根拠から出ている**（★倒していない。★事実として置く）。
+      final lines = matchingLines(_origin);
+
+      expect(lines.where((l) => l.contains('ガイドライン')), hasLength(1));
+    });
+  });
+
+  group('★★ `lib` —— ★★認証の仕組みは 1 行も無い（未決 N-21）★★', () {
+    test('★★ 根が 1 つ残らず実在する（★綴りの受け / D-10）★★', () {
+      // ★1 つでも綴りを間違えると、★その木の当たりが黙って落ちる。
+      for (final root in _libRoots) {
+        expect(Directory(root).existsSync(), isTrue, reason: '★$root');
+      }
+    });
+
+    test('★★ 根はリポジトリの `lib` を持つパッケージと★過不足なく一致する（D-31）★★', () {
+      // ★★ これが無いと、★パッケージを足した人が★この木を足し忘れても
+      //   ★★誰も気づかない★★（**D-31** —— ★走査の穴はそのまま完了条件の穴になる）。
+      final declared = _libRoots.map(_repoRelative).toSet();
+
+      // ★先に「実在する側」が空でないことを見る（0 件は何も証明しない / **D-10**）。
+      expect(packagesWithLib(), isNotEmpty);
+      expect(declared, packagesWithLib(),
+          reason: '★パッケージを足したなら、★`_libRoots` にも足すこと');
+    });
+
+    test('★★ 実測は許可リストと完全一致する ★★', () {
+      expect(scanLib(), _allowedInLib,
+          reason: '★★認証の仕組みを書く前に、★**N-21** を閉じること★★ —— '
+              '★「何で名乗るか」は★利用者にしか答えられない'
+              '（`docs/同期設計メモ.md` §40-12 の問い）');
+    });
+  });
+
+  group('★★ 走査しない範囲 —— ★理由が実在することを対で見る（D-25）★★', () {
+    test('★★ 同じ走査を決定の記録に当てると★当たる ★★', () {
+      // ★★ これが「`docs/` を走査範囲に入れない」理由そのものである ★★
+      //   ★記録が増えるたびに増えるので、★非 0 が常態になる。
+      //   ★**除外が仮定していることを 1 行で書く**（D-25）——
+      //   ★仮定: 「記録は仕組みを述べているのではなく、★未決であることを述べている」。
+      expect(matchingLines(_record), isNotEmpty,
+          reason: '★当たらないなら、★除外する理由が無い');
+    });
+  });
+}
