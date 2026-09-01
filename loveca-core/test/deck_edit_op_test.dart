@@ -77,6 +77,45 @@ void main() {
       expect(DeckEditOpKind.values, contains(DeckEditOpKind.sortByRule));
     });
 
+    test('★★ 衝突の解決が語彙に入っている（★§32-6 の 15 / 決定 D119-1 ＝ 後-1）★★', () {
+      // ★★ これは「操作」ではない。★ログに 1 件残す点が同じだから同じ列挙に居る ★★
+      //   ★`deleteDeck` とまったく同じ理由である。
+      //
+      // ★★ この 1 件には★対を組めない。★型が守っている ★★
+      //   ★**列挙から値を外すと、★★このファイルがコンパイルを通らない★★**
+      //   （★実測 2026-09-02: ★通った件数が 511 → 494。★**D-39** の判別法 1）。
+      //   ★**改名しても★参照が一緒に動くので★何も落ちない。**
+      //   → ★**先例は `docs/同期設計メモ.md` §32-7 の commit 4 の (B)(D)**
+      //     （★「★型でしか見えないものは、★型でしか守れない」）。
+      expect(DeckEditOpKind.values, contains(DeckEditOpKind.resolveConflict));
+      expect(DeckEditOpKind.resolveConflict.key, 'resolveConflict');
+    });
+
+    test('★★ 勝った側で 2 つに分けていない（★決めていないことを型で決めない）★★', () {
+      // ★★ 分けると★濃さが増える ★★
+      //   ★**§29-4 は「引数を足せば濃くなる。★★倒さない★★」と定めており、
+      //     ★種類で足すのも同じである。**
+      //   ★★**到達する。★落ちたのではない**★★（★§17-9-2 の 2 と同じ棚）。
+      //   ★**この 1 件が落ちたら、★★濃さを足す判断をしたはずである★★。**
+      final resolutionKinds = DeckEditOpKind.values
+          .where((k) => k.key.contains('esolve') || k.key.contains('onflict'))
+          .toList();
+
+      expect(resolutionKinds, hasLength(1));
+    });
+
+    test('★★ 記録点がまだ 1 つも無い（★★キーは記録点のメソッド名ではない★★）★★', () {
+      // ★★ 9 操作は `DeckEditStore` の、★削除は `DeckDao` のメソッド名である ★★
+      //   ★**解決を書き込む所は★§32-6 の 23 / 24 で、★どちらも未着手である。**
+      //   → ★**出来事の名前を採った。★★記録点が付いてもキーを変えてはならない★★**
+      //     （★変えると★送信済みのログが意味を失う）。
+      //   ★**この 1 件は★その約束を字面で固定している。**
+      expect(DeckEditOpKind.resolveConflict.key,
+          isNot(equals(DeckEditOpKind.deleteDeck.key)));
+      expect(DeckEditOpKind.tryFromKey('resolveConflict'),
+          DeckEditOpKind.resolveConflict);
+    });
+
     test('★★ 引数の型を 1 つも持たない（★決めていないことを型で決めない）★★', () {
       // ★★ 「無い」ことは走査できない（D-15 (h)）が、ここは列挙の形なので確かめられる ★★
       //   enum の値が持つのは `key` だけである。★引数を足した人はここが落ちる。
