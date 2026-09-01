@@ -1,0 +1,182 @@
+/// ★★ 「実測」と書きながら★★測った日付が併記されていない★★行を数える ★★
+///
+/// ★★ 引き金 —— ★相談役の指示（運転指示【0】(6) の 7）★★
+/// ★**「★走査する価値が在る。★★ただし『古い数』を機械で見つける手段は無い★★。
+/// ★『測った日付が併記されていない実測』を探す形にすること」。**
+///
+/// ★★ なぜ「古い数」そのものを探せないのか ★★
+/// ★**古くなったことは★★字面に 1 文字も現れない★★**（**D-28** の「汎用の検知手段は無い」と同じ機構）。
+/// ★**実例**: `docs/UI設計メモ.md` §5-5 の配信物の大きさが★191 MB → 571 MB に動いていたが、
+/// ★★**doc の側は 1 バイトも変わっていない**★★。
+/// → ★**探せるのは★★「いつ測ったかが書かれていない」ことだけである★★。**
+///
+/// ★★ これは 0 件の検査ではない。★★増やさないための検査である★★ ★★
+/// ★**いま在る件数は下の [_baseline] が持つ。★一斉に直さない**（★**D-28** が
+/// ★「既存の測定値の一斉監査はしない」と★自ら定めている）。
+/// → ★★**件数の完全一致で見張る**★★（★先例は `legacy_design_number_test.dart` の許可リスト）。
+///
+/// ★★ 完全一致にした理由と★その代償 ★★
+/// ★**「増えたときだけ落ちる」形には★★穴が在る★★** ——
+/// ★**72 から 70 へ減り、★次に 71 へ戻ると、★★71 は 72 を超えないので★新しい 1 件が隠れる★★。**
+/// ★**代償**: ★**doc に値つきの実測を 1 行足すたびに落ちる**（★型は **D-25** の別の形）。
+/// → ★**手当て: ★★落ちたときの文言が★行番号を並べる★★**ので、
+/// ★★**直し方は「日付を書く」であって「数を合わせる」ではない**★★。
+///
+/// ★★ 走査する木 —— ★絞った。★範囲外になるものを書く（**D-31**）★★
+/// ★**見るのは `CLAUDE.md` / `ルール整合性チェック_v1.06.md` / `docs/*.md` である。**
+///
+/// | 範囲外 | ★理由 |
+/// |---|---|
+/// | `docs/相談役への報告/` | ★★**ファイル名が日付である**★★。★増え続けるので★★非 0 が常態になる★★（**D-25**） |
+/// | `docs/セッション報告/` | ★同上 |
+/// | ★コードの中の doc コメント | ★★**別の走査が見ている**★★（`package_boundary_test.dart` ほか）。★**この検査は `.md` だけを見る** |
+///
+/// ★★ 何を「実測」と見るか ★★
+/// ★**行に「実測」の 2 文字が在り、★かつ★★数字が 1 つ以上在る★★行**。
+/// ★**数字を要求する理由**: ★★「実測した」だけの行は★値を持たないので、★古くなりようが無い★★。
+///
+/// ★★ 何を「日付が併記されている」と見るか ★★
+/// ★**その行が属する★★節★★（★直前の見出しからその行まで）に★4 桁 2 桁 2 桁の日付が 1 つ以上在ること。**
+/// ★**行だけを見ない理由**: ★★節の見出しや前置きに日付を書く形が★実物に多い★★。
+library;
+
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
+
+final _repoRoot = Directory('..');
+
+/// ★★ いまの件数（2026-09-02 に★この検査自身が数えた）★★
+///
+/// ★★ 直し方は「日付を書く」であって「数を合わせる」ではない ★★
+/// ★**落ちたら★★増えた行の番号が文言に出る★★。★そこに日付を足すこと。**
+/// ★**足せば件数が減るので、★ここも 1 つ減らす。**
+const _baseline = <String, int>{
+  'CLAUDE.md': 3,
+  'ルール整合性チェック_v1.06.md': 15,
+  'docs/PhaseEngine設計メモ.md': 0,
+  'docs/UI技術検証メモ.md': 9,
+  'docs/UI設計メモ.md': 14,
+  'docs/プラットフォームを足す手順.md': 0,
+  'docs/作業待ち行列.md': 0,
+  'docs/利用者への問い.md': 1,
+  'docs/同期設計メモ.md': 72,
+  'docs/引き継ぎドキュメント.md': 6,
+  'docs/引き継ぎドキュメント_注意.md': 0,
+  'docs/決定事項一覧.md': 30,
+  'docs/盤面設計メモ.md': 9,
+  'docs/相談役への引き継ぎ.md': 2,
+};
+
+final _date = RegExp(r'[0-9]{4}-[0-9]{2}-[0-9]{2}');
+final _digit = RegExp(r'[0-9]');
+
+/// ★日付の無い「実測」の行番号（★1 始まり）を返す。
+///
+/// ★★ 本番も対も★この関数を通す（**D-27** の (甲)）★★
+/// ★**対の中で★★別に数え直すと、★本番の走査が空振りしていても★対は通る★★。**
+List<int> datelessMeasurementLines(String text) {
+  final lines = const LineSplitter().convert(text);
+  final out = <int>[];
+  var sectionStart = 0;
+  for (var i = 0; i < lines.length; i++) {
+    if (lines[i].startsWith('#')) sectionStart = i;
+    if (!lines[i].contains('実測')) continue;
+    if (!_digit.hasMatch(lines[i])) continue;
+    final section = lines.sublist(sectionStart, i + 1).join('\n');
+    if (!_date.hasMatch(section)) out.add(i + 1);
+  }
+  return out;
+}
+
+/// ★走査する `.md` を★リポジトリから導く（**D-31** の受け）。
+List<String> _corpus() {
+  final out = <String>['CLAUDE.md', 'ルール整合性チェック_v1.06.md'];
+  final docs = Directory(p.join(_repoRoot.path, 'docs'));
+  for (final e in docs.listSync()) {
+    if (e is File && e.path.endsWith('.md')) {
+      out.add('docs/${p.basename(e.path)}');
+    }
+  }
+  out.sort();
+  return out;
+}
+
+String _read(String rel) =>
+    File(p.join(_repoRoot.path, rel.replaceAll('/', p.separator)))
+        .readAsStringSync();
+
+void main() {
+  group('★★ 陽性対照 —— ★走査が働くこと（**D-10**）★★', () {
+    test('★★ 日付の無い実測を★拾う ★★', () {
+      final got = datelessMeasurementLines(
+          ['## ★ 見出し', '★実測: 191 MB'].join('\n'));
+
+      expect(got, <int>[2]);
+    });
+
+    test('★★ 節に日付が在れば★拾わない（★対）★★', () {
+      final got = datelessMeasurementLines(
+          ['## ★ 見出し（2026-09-02）', '★実測: 191 MB'].join('\n'));
+
+      expect(got, isEmpty);
+    });
+
+    test('★★ 同じ行に日付が在っても★拾わない（★対）★★', () {
+      final got = datelessMeasurementLines(
+          ['## ★ 見出し', '★実測: 191 MB（2026-09-02）'].join('\n'));
+
+      expect(got, isEmpty);
+    });
+
+    test('★★ 見出しを跨いだ日付は★効かない（★節で区切れていること）★★', () {
+      final got = datelessMeasurementLines([
+        '## ★ 見出し（2026-09-02）',
+        '★何か',
+        '## ★ 別の見出し',
+        '★実測: 191 MB',
+      ].join('\n'));
+
+      expect(got, <int>[4]);
+    });
+
+    test('★★ 値を持たない「実測」は★拾わない（★古くなりようが無い）★★', () {
+      final got = datelessMeasurementLines(
+          ['## ★ 見出し', '★実測で確かめた'].join('\n'));
+
+      expect(got, isEmpty);
+    });
+  });
+
+  group('★★ 走査する木（**D-31** の受け）★★', () {
+    test('★★ 台帳の鍵は★リポジトリの `.md` と★完全一致する ★★', () {
+      expect(_corpus().toSet(), _baseline.keys.toSet(),
+          reason: '★`.md` を足したら★この表にも 1 行足すこと'
+              '（★見ないなら 0 と書く。★★書かないことだけができない★★）');
+    });
+
+    test('★★ どのファイルも★読める（★陽性対照）★★', () {
+      for (final rel in _baseline.keys) {
+        expect(_read(rel), isNotEmpty, reason: rel);
+      }
+    });
+  });
+
+  group('★★ 件数は★台帳と完全一致する ★★', () {
+    test('★★ 増えていない。★減ってもいない ★★', () {
+      final diffs = <String>[];
+      _baseline.forEach((rel, want) {
+        final got = datelessMeasurementLines(_read(rel));
+        if (got.length != want) {
+          diffs.add('$rel: 台帳 $want / 実測 ${got.length} / 行 $got');
+        }
+      });
+
+      expect(diffs, isEmpty,
+          reason: '★★直し方は「その行に測った日付を書く」ことである。'
+              '★「台帳の数を合わせる」ことではない★★');
+    });
+  });
+}
