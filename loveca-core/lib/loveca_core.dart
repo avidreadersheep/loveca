@@ -15,6 +15,7 @@ export 'src/sync/deck_content.dart';
 export 'src/sync/deck_content_hash.dart';
 export 'src/sync/deck_edit_op.dart';
 export 'src/sync/deck_resolution.dart';
+export 'src/sync/deck_wire.dart';
 export 'src/rules/deck_validator.dart';
 export 'src/game/aggregation.dart';
 export 'src/game/card_instance.dart';
