@@ -100,6 +100,12 @@ const String decksListPath = '/decks/list';
 /// ★**アプリ側にも★同じ字面が在る**（`loveca-ui/.../deck_sync_client.dart` / **D126-3** の代償）。
 const String deckExpectMarkKey = 'expectMark';
 
+/// ★★ 返す口と預ける口が★返す鍵 —— ★★いまの印★★（決定 **D141-7**）★★
+///
+/// ★**呼ぶ側に★ハッシュを計算させない** —— ★★取り違える余地を★型ではなく★★形★★で消す★★
+/// （**§7-7** —— ★`loveca_core` の `deckContentHash` とは★別物である）。
+const String deckMarkKey = 'mark';
+
 /// 預ける口に 1 つ答える（★待ち受けを知らない）。
 Future<void> handleDeckPutRequest(
   HttpRequest request,
@@ -132,7 +138,13 @@ Future<void> handleDeckPutRequest(
   request.response
     ..statusCode = isNew ? HttpStatus.created : HttpStatus.ok
     ..headers.contentType = ContentType.json
-    ..write(jsonEncode({'ok': true, 'deckId': parsed.deckId, 'created': isNew}));
+    ..write(jsonEncode({
+      'ok': true,
+      'deckId': parsed.deckId,
+      'created': isNew,
+      // ★★ 預けたあとの印（★次に預けるときに★そのまま名乗れる）★★
+      deckMarkKey: deckContentMark(parsed.content!),
+    }));
   await request.response.close();
 }
 
@@ -159,7 +171,15 @@ Future<void> handleDeckFetchRequest(
   request.response
     ..statusCode = HttpStatus.ok
     ..headers.contentType = ContentType.json
-    ..write(jsonEncode({'ok': true, 'deckId': parsed.deckId, 'content': content}));
+    ..write(jsonEncode({
+      'ok': true,
+      'deckId': parsed.deckId,
+      'content': content,
+      // ★★ 印を★一緒に返す（決定 **D141-1** / **D141-7**）★★
+      //   ★**呼ぶ側に計算させない** —— ★★`deckContentHash` と取り違えようが無くなる★★（**§7-7**）。
+      //   ★**呼ぶ側から見れば★★中身を持たない字面★★である**（★預けるときに★そのまま返してもらう）。
+      deckMarkKey: deckContentMark(content),
+    }));
   await request.response.close();
 }
 

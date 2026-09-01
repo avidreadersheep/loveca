@@ -118,7 +118,13 @@ void main() {
       final res = await _post(client, server.port, decksPath, put('d1', 'AAA'));
 
       expect(res.status, 201);
-      expect(jsonDecode(res.body), {'ok': true, 'deckId': 'd1', 'created': true});
+      expect(jsonDecode(res.body), {
+        'ok': true,
+        'deckId': 'd1',
+        'created': true,
+        // ★★ 印を一緒に返す（**D141-7**）—— ★呼ぶ側に計算させない ★★
+        deckMarkKey: deckContentMark('AAA'),
+      });
     });
 
     test('★★ 2 度目は 200（★★409 ではない★★ / 上書きが正しい）★★', () async {
@@ -596,6 +602,62 @@ void main() {
       expect(saved.contains(deckContentMark('AAA')), isFalse,
           reason: '★★保管の中に印が 1 文字も無い★★');
       expect(saved.contains('AAA'), isTrue, reason: '★中身は在る');
+    });
+  });
+
+  // ★★ 印を★返す（決定 **D141-7**）★★
+  //
+  // ★★ 呼ぶ側に★ハッシュを計算させない ★★
+  // ★**計算させると、★★`loveca_core` の `deckContentHash` と取り違えうる★★**（**§7-7** ＝ ★別物である）。
+  // ★**返せば、★呼ぶ側から見て★★中身を持たない字面★★になる**（★預けるときに★そのまま返してもらう）。
+  group('★★ 印を返す —— ★呼ぶ側に計算させない（**D141-7**）★★', () {
+    test('★★ 返す口が★印を一緒に返す ★★', () async {
+      await _post(client, server.port, decksPath, put('d1', 'AAA'));
+
+      final res = await _post(client, server.port, decksFetchPath, fetch('d1'));
+      final body = jsonDecode(res.body) as Map<String, Object?>;
+
+      expect(body[deckMarkKey], deckContentMark('AAA'));
+    });
+
+    test('★★ 預ける口も★預けたあとの印を返す ★★', () async {
+      final res = await _post(client, server.port, decksPath, put('d1', 'AAA'));
+      final body = jsonDecode(res.body) as Map<String, Object?>;
+
+      expect(body[deckMarkKey], deckContentMark('AAA'));
+    });
+
+    test('★★ 返された印を★そのまま名乗れば★上書きできる（★★往復する★★）★★', () async {
+      // ★★ これが「呼ぶ側に計算させない」の実物である ★★
+      final first = await _post(client, server.port, decksPath, put('d1', 'AAA'));
+      final mark = (jsonDecode(first.body) as Map<String, Object?>)[deckMarkKey];
+
+      final res = await _post(client, server.port, decksPath,
+          put('d1', 'BBB', mark: mark! as String));
+
+      expect(res.status, HttpStatus.ok);
+    });
+
+    test('★★ 返す口の印を★そのまま名乗っても★上書きできる ★★', () async {
+      await _post(client, server.port, decksPath, put('d1', 'AAA'));
+      final got = await _post(client, server.port, decksFetchPath, fetch('d1'));
+      final mark = (jsonDecode(got.body) as Map<String, Object?>)[deckMarkKey];
+
+      final res = await _post(client, server.port, decksPath,
+          put('d1', 'BBB', mark: mark! as String));
+
+      expect(res.status, HttpStatus.ok);
+    });
+
+    test('★★ 一覧の口は★印を返さない（★★中身を 1 バイトも返さない★★ / D105-2）★★', () async {
+      await _post(client, server.port, decksPath, put('d1', 'AAA'));
+
+      final res = await _post(client, server.port, decksListPath,
+          <String, Object?>{'userName': user, 'password': pass});
+      final body = jsonDecode(res.body) as Map<String, Object?>;
+
+      expect(body.containsKey(deckMarkKey), isFalse);
+      expect(res.body.contains(deckContentMark('AAA')), isFalse);
     });
   });
 

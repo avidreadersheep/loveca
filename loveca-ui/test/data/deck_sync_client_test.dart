@@ -172,7 +172,13 @@ void main() {
       const content = '{"これは":"デッキの字面である"}';
       final server = await _serve((request) async {
         await _reply(request, 200,
-            jsonEncode({'ok': true, 'deckId': 'd1', 'content': content}));
+            jsonEncode({
+              'ok': true,
+              'deckId': 'd1',
+              'content': content,
+              // ★★ 印を一緒に返す（**D141-7**）—— ★呼ぶ側に計算させない ★★
+              syncMarkKey: 'M1',
+            }));
       });
       addTearDown(() => server.close(force: true));
       final client = _client();
@@ -186,8 +192,9 @@ void main() {
         deckId: 'd1',
       );
 
-      expect(result, isA<SyncOk<String>>());
-      expect((result as SyncOk<String>).value, content);
+      expect(result, isA<SyncOk<RemoteDeck>>());
+      expect((result as SyncOk<RemoteDeck>).value.content, content);
+      expect(result.value.mark, 'M1');
     });
 
     test('★★ 中身を 1 バイトも解釈しない（★デッキとして成り立たない字面でも返る）★★',
@@ -195,7 +202,9 @@ void main() {
       const content = 'これは JSON ですらない';
       final server = await _serve((request) async {
         await _reply(
-            request, 200, jsonEncode({'ok': true, 'content': content}));
+            request,
+            200,
+            jsonEncode({'ok': true, 'content': content, syncMarkKey: 'M1'}));
       });
       addTearDown(() => server.close(force: true));
       final client = _client();
@@ -209,7 +218,47 @@ void main() {
         deckId: 'd1',
       );
 
-      expect((result as SyncOk<String>).value, content);
+      expect((result as SyncOk<RemoteDeck>).value.content, content);
+    });
+
+    test('★★ 印が返らなければ★受け取らない（★★取る側★★）★★', () async {
+      // ★★ 受け取ると、★預けるときに名乗れないまま先へ進む（★必ず 412 になる）★★
+      final server = await _serve((request) async {
+        await _reply(request, 200, jsonEncode({'ok': true, 'content': 'x'}));
+      });
+      addTearDown(() => server.close(force: true));
+      final client = _client();
+      addTearDown(() => client.close(force: true));
+
+      final result = await fetchRemoteDeck(
+        client: client,
+        server: Uri.parse('https://localhost:${server.port}'),
+        userName: 'みつき',
+        password: 'ひみつ',
+        deckId: 'd1',
+      );
+
+      expect(result, isA<SyncUnreachable<RemoteDeck>>());
+    });
+
+    test('★★ 印が空文字でも★受け取らない（★★取る側★★）★★', () async {
+      final server = await _serve((request) async {
+        await _reply(request, 200,
+            jsonEncode({'ok': true, 'content': 'x', syncMarkKey: ''}));
+      });
+      addTearDown(() => server.close(force: true));
+      final client = _client();
+      addTearDown(() => client.close(force: true));
+
+      final result = await fetchRemoteDeck(
+        client: client,
+        server: Uri.parse('https://localhost:${server.port}'),
+        userName: 'みつき',
+        password: 'ひみつ',
+        deckId: 'd1',
+      );
+
+      expect(result, isA<SyncUnreachable<RemoteDeck>>());
     });
 
     test('★★ 404 は★SyncAbsent である（★通信の失敗に畳まない）★★', () async {
@@ -229,7 +278,7 @@ void main() {
         deckId: 'いない',
       );
 
-      expect(result, isA<SyncAbsent<String>>());
+      expect(result, isA<SyncAbsent<RemoteDeck>>());
     });
 
     test('★ 1 つ取る口は★deckId を送る', () async {
@@ -237,7 +286,8 @@ void main() {
       final server = await _serve((request) async {
         sent = jsonDecode(await utf8.decoder.bind(request).join())
             as Map<String, Object?>;
-        await _reply(request, 200, jsonEncode({'ok': true, 'content': 'x'}));
+        await _reply(request, 200,
+            jsonEncode({'ok': true, 'content': 'x', syncMarkKey: 'M1'}));
       });
       addTearDown(() => server.close(force: true));
       final client = _client();
@@ -279,7 +329,7 @@ void main() {
       );
 
       expect(list, isA<SyncRejected<List<String>>>());
-      expect(one, isA<SyncRejected<String>>());
+      expect(one, isA<SyncRejected<RemoteDeck>>());
     });
 
     test('★★ 400 は SyncUnreachable（★「名乗れなかった」に畳まない）★★', () async {
@@ -421,6 +471,7 @@ void main() {
       //   ★引用符を外すと★doc の中の説明にも当たる。
       expect(serverSource.contains("'$decksListPath'"), isTrue);
       expect(serverSource.contains("'$decksFetchPath'"), isTrue);
+      expect(serverSource.contains("'$decksPutPath'"), isTrue);
     });
 
     test('★★ 要求の鍵が 3 つとも★サーバー側に★引用符ごと在る ★★', () {
@@ -428,13 +479,23 @@ void main() {
         syncUserNameKey,
         syncPasswordKey,
         syncDeckIdKey,
+        // ★★ 預ける口が要求する鍵（**D141-4**）★★
+        //   ★**字面が食い違うと★サーバーは 400 を返す**（★★両側の定数を比べても分からない★★）。
+        syncExpectMarkKey,
       ]) {
         expect(serverSource.contains("'$key'"), isTrue, reason: '★$key');
       }
     });
 
     test('★★ 応答の鍵が 3 つとも★サーバー側に★引用符ごと在る ★★', () {
-      for (final key in const [syncOkKey, syncDeckIdsKey, syncContentKey]) {
+      for (final key in const [
+        syncOkKey,
+        syncDeckIdsKey,
+        syncContentKey,
+        // ★★ 返す口 / 預ける口が返す鍵（**D141-7**）★★
+        syncCreatedKey,
+        syncMarkKey,
+      ]) {
         expect(serverSource.contains("'$key'"), isTrue, reason: '★$key');
       }
     });
@@ -443,4 +504,325 @@ void main() {
       expect(serverSource.contains("'この鍵はサーバー側に無い'"), isFalse);
     });
   });
+  // ★★ 送る口（★§32-6 の 23 の 2 番目 / 決定 **D141**）★★
+  //
+  // ★★ 口だけである。★呼ぶ側は 1 行も無い ★★
+  // ★**いつ送るか / ★どう見せるかは★★23 の配線と 25 であり、★どちらも未着手★★**
+  //   （★配線には★門が在る —— ★resolveDeckConflict が Deck を要求するのに、
+  //    ★取りに行く口が返すのは★★文字列である★★ / **D116-2** の理由 3）。
+  group('★★ 預ける（★§32-6 の 23 の★送る口）★★', () {
+    test('★★ 新しく預かったら SyncOk で、★★印が返る★★ ★★', () async {
+      Map<String, Object?>? sent;
+      final server = await _serve((request) async {
+        sent = jsonDecode(await utf8.decoder.bind(request).join())
+            as Map<String, Object?>;
+        await _reply(
+            request,
+            201,
+            jsonEncode({
+              'ok': true,
+              'deckId': 'd1',
+              syncCreatedKey: true,
+              syncMarkKey: 'M2',
+            }));
+      });
+      addTearDown(() => server.close(force: true));
+      final client = _client();
+      addTearDown(() => client.close(force: true));
+
+      final result = await pushRemoteDeck(
+        client: client,
+        server: Uri.parse('https://localhost:${server.port}'),
+        userName: 'みつき',
+        password: 'ひみつ',
+        deckId: 'd1',
+        content: 'ナカミ',
+        expectMark: null,
+      );
+
+      expect(result, isA<SyncOk<RemoteDeck>>());
+      expect((result as SyncOk<RemoteDeck>).value.mark, 'M2');
+      expect(result.value.content, 'ナカミ');
+      expect(sent!['content'], 'ナカミ');
+    });
+
+    test('★★ 201 も 200 も★成功である（★★新しく預かったか / 上書きか★★）★★', () async {
+      for (final status in <int>[200, 201]) {
+        final server = await _serve((request) async {
+          await _reply(
+              request, status, jsonEncode({'ok': true, syncMarkKey: 'M2'}));
+        });
+        addTearDown(() => server.close(force: true));
+        final client = _client();
+        addTearDown(() => client.close(force: true));
+
+        final result = await pushRemoteDeck(
+          client: client,
+          server: Uri.parse('https://localhost:${server.port}'),
+          userName: 'みつき',
+          password: 'ひみつ',
+          deckId: 'd1',
+          content: 'x',
+          expectMark: 'M1',
+        );
+
+        expect(result, isA<SyncOk<RemoteDeck>>(), reason: '★状態 $status');
+      }
+    });
+
+    test('★★ 印の鍵は★必ず送る（★null も 1 つの値である / **D141-4**）★★', () async {
+      // ★★ 鍵そのものを落とすと★サーバーは 400 を返す ★★
+      //   ★**落とさないことを★ここで固定する**（★★サーバー側の 400 に頼らない★★）。
+      Map<String, Object?>? sent;
+      final server = await _serve((request) async {
+        sent = jsonDecode(await utf8.decoder.bind(request).join())
+            as Map<String, Object?>;
+        await _reply(request, 201, jsonEncode({'ok': true, syncMarkKey: 'M2'}));
+      });
+      addTearDown(() => server.close(force: true));
+      final client = _client();
+      addTearDown(() => client.close(force: true));
+
+      await pushRemoteDeck(
+        client: client,
+        server: Uri.parse('https://localhost:${server.port}'),
+        userName: 'みつき',
+        password: 'ひみつ',
+        deckId: 'd1',
+        content: 'x',
+        expectMark: null,
+      );
+
+      expect(sent!.containsKey(syncExpectMarkKey), isTrue);
+      expect(sent![syncExpectMarkKey], isNull);
+    });
+
+    test('★★ 印を渡せば★そのまま送る（★★書き換えない★★）★★', () async {
+      Map<String, Object?>? sent;
+      final server = await _serve((request) async {
+        sent = jsonDecode(await utf8.decoder.bind(request).join())
+            as Map<String, Object?>;
+        await _reply(request, 200, jsonEncode({'ok': true, syncMarkKey: 'M2'}));
+      });
+      addTearDown(() => server.close(force: true));
+      final client = _client();
+      addTearDown(() => client.close(force: true));
+
+      await pushRemoteDeck(
+        client: client,
+        server: Uri.parse('https://localhost:${server.port}'),
+        userName: 'みつき',
+        password: 'ひみつ',
+        deckId: 'd1',
+        content: 'x',
+        expectMark: 'トッテキタシルシ',
+      );
+
+      expect(sent![syncExpectMarkKey], 'トッテキタシルシ');
+    });
+
+    test('★★ 412 は SyncStale である（★★401 にも通信の失敗にも畳まない★★）★★', () async {
+      // ★★ これが「線 β」を呼ぶ側から見た形である（**D139-1**）★★
+      //   ★**名乗りは通っている。★サーバーも正しく動いている。**
+      //   ★**畳むと★★「取り直して解き直せばよい」が★「パスワードを直せ」に化ける★★。**
+      final server = await _serve((request) async {
+        await _reply(request, 412, jsonEncode({'ok': false}));
+      });
+      addTearDown(() => server.close(force: true));
+      final client = _client();
+      addTearDown(() => client.close(force: true));
+
+      final result = await pushRemoteDeck(
+        client: client,
+        server: Uri.parse('https://localhost:${server.port}'),
+        userName: 'みつき',
+        password: 'ひみつ',
+        deckId: 'd1',
+        content: 'x',
+        expectMark: 'フルイ',
+      );
+
+      expect(result, isA<SyncStale<RemoteDeck>>());
+      expect(result, isNot(isA<SyncRejected<RemoteDeck>>()));
+      expect(result, isNot(isA<SyncUnreachable<RemoteDeck>>()));
+    });
+
+    test('★★ 401 は★依然 SyncRejected である（★★412 と分ける★★）★★', () async {
+      final server = await _serve((request) async {
+        await _reply(request, 401, jsonEncode({'ok': false}));
+      });
+      addTearDown(() => server.close(force: true));
+      final client = _client();
+      addTearDown(() => client.close(force: true));
+
+      final result = await pushRemoteDeck(
+        client: client,
+        server: Uri.parse('https://localhost:${server.port}'),
+        userName: 'みつき',
+        password: 'ひみつ',
+        deckId: 'd1',
+        content: 'x',
+        expectMark: null,
+      );
+
+      expect(result, isA<SyncRejected<RemoteDeck>>());
+      expect(result, isNot(isA<SyncStale<RemoteDeck>>()));
+    });
+
+    test('★★ 404 は★通信の失敗である（★★預ける口に 404 は無い★★）★★', () async {
+      // ★★ 1 つ取る口とは違う（★あちらは「そのデッキが無い」＝ 答えである）★★
+      final server = await _serve((request) async {
+        await _reply(request, 404, jsonEncode({'ok': false}));
+      });
+      addTearDown(() => server.close(force: true));
+      final client = _client();
+      addTearDown(() => client.close(force: true));
+
+      final result = await pushRemoteDeck(
+        client: client,
+        server: Uri.parse('https://localhost:${server.port}'),
+        userName: 'みつき',
+        password: 'ひみつ',
+        deckId: 'd1',
+        content: 'x',
+        expectMark: null,
+      );
+
+      expect(result, isA<SyncUnreachable<RemoteDeck>>());
+      expect(result, isNot(isA<SyncAbsent<RemoteDeck>>()));
+    });
+
+    test('★★ 印が返らなければ★受け取らない ★★', () async {
+      // ★★ 受け取ると、★次に預けるときに名乗れないまま先へ進む（★必ず 412 になる）★★
+      final server = await _serve((request) async {
+        await _reply(request, 200, jsonEncode({'ok': true, 'created': false}));
+      });
+      addTearDown(() => server.close(force: true));
+      final client = _client();
+      addTearDown(() => client.close(force: true));
+
+      final result = await pushRemoteDeck(
+        client: client,
+        server: Uri.parse('https://localhost:${server.port}'),
+        userName: 'みつき',
+        password: 'ひみつ',
+        deckId: 'd1',
+        content: 'x',
+        expectMark: null,
+      );
+
+      expect(result, isA<SyncUnreachable<RemoteDeck>>());
+    });
+
+    test('★★ パスは decksPutPath である（★★取る口と別である★★）★★', () async {
+      String? path;
+      final server = await _serve((request) async {
+        path = request.uri.path;
+        await _reply(request, 201, jsonEncode({'ok': true, syncMarkKey: 'M2'}));
+      });
+      addTearDown(() => server.close(force: true));
+      final client = _client();
+      addTearDown(() => client.close(force: true));
+
+      await pushRemoteDeck(
+        client: client,
+        server: Uri.parse('https://localhost:${server.port}/むし/される'),
+        userName: 'みつき',
+        password: 'ひみつ',
+        deckId: 'd1',
+        content: 'x',
+        expectMark: null,
+      );
+
+      expect(path, decksPutPath);
+      expect(path, isNot(decksFetchPath));
+    });
+
+    test('★★ つながらなければ SyncUnreachable（★投げない）★★', () async {
+      final client = _client();
+      addTearDown(() => client.close(force: true));
+
+      final result = await pushRemoteDeck(
+        client: client,
+        server: Uri.parse('https://localhost:1'),
+        userName: 'みつき',
+        password: 'ひみつ',
+        deckId: 'd1',
+        content: 'x',
+        expectMark: null,
+      );
+
+      expect(result, isA<SyncUnreachable<RemoteDeck>>());
+    });
+
+    test('★★ アプリ側は★ハッシュを 1 度も計算しない（★★走査★★ / **D141-7**）★★', () {
+      // ★★ 計算すると★取り違えうる（**§7-7** ＝ 別物である）★★
+      //   ★**印は★サーバーが返した字面を★そのまま持ち回る。**
+      //
+      // ★★ D-30 —— ★★禁じた字面を説明した doc が★同じ字面を必ず含む★★
+      //   ★**素の走査では★★この口の doc 自身が当たる★★**（★実測: ★2 行）。
+      //   → ★**コメントを外してから見る**（★★除外の一覧を持たない★★ —— ★除外は穴になる）。
+      final code = _stripComments(
+          File('lib/src/data/deck_sync_client.dart').readAsStringSync());
+
+      expect(code.contains('sha256'), isFalse,
+          reason: '★★この口はハッシュを計算しない★★');
+      expect(code.contains('deckContentHash'), isFalse,
+          reason: '★★loveca_core の量を持ち込まない★★');
+      expect(code.contains(syncMarkKey), isTrue, reason: '★陽性対照');
+    });
+
+    test('★★ 対: ★コメントを外さないと★doc 自身が当たる（★陽性対照 / D-30）★★', () {
+      final raw = File('lib/src/data/deck_sync_client.dart').readAsStringSync();
+
+      expect(raw.contains('deckContentHash'), isTrue,
+          reason: '★★doc は★禁じた字面を必ず含む★★');
+    });
+
+    test('★★ 対: ★コメント外しは★コードを落とさない（★陽性対照）★★', () {
+      final line = 'const String syncMarkKey = ' "'mark';";
+      // ★★ D-38 —— ★道具の経路で★改行の印が★本物の改行に化ける ★★
+      //   → ★**`String.fromCharCode(10)` で組み立てる**（★★逆斜線を 1 つも書かない★★）。
+      final nl = String.fromCharCode(10);
+      final withDoc = '/// sha256 と deckContentHash の話$nl$line';
+
+      expect(_stripComments(withDoc).contains('sha256'), isFalse);
+      expect(_stripComments(withDoc).contains(line), isTrue);
+    });
+  });
+
+}
+
+/// ★★ 行コメントと doc を落とす（★★D-30 の受け★★）★★
+///
+/// ★★ 文字列の中の // をコメントと読まない ★★
+/// ★**先例は `loveca-server/test/support/directive_scan.dart`**（★あちらは★指示行を取り出す道具）。
+/// ★★**除外の一覧を持たない**★★ —— ★**除外を足すと★★その除外自身が穴になる★★**（**D-30**）。
+String _stripComments(String source) {
+  final out = StringBuffer();
+  var inString = false;
+  String? quote;
+  for (var i = 0; i < source.length; i++) {
+    final c = source[i];
+    if (inString) {
+      out.write(c);
+      if (c == quote) inString = false;
+      continue;
+    }
+    if (c == "'" || c == '"') {
+      inString = true;
+      quote = c;
+      out.write(c);
+      continue;
+    }
+    if (c == '/' && i + 1 < source.length && source[i + 1] == '/') {
+      while (i < source.length && source[i] != String.fromCharCode(10)) {
+        i++;
+      }
+      out.write(String.fromCharCode(10));
+      continue;
+    }
+    out.write(c);
+  }
+  return out.toString();
 }

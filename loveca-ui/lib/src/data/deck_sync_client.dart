@@ -79,6 +79,22 @@ const String decksListPath = '/decks/list';
 /// 1 つ取るパス（★サーバー側の `decksFetchPath` と同じ字面である / **D134-8**）。
 const String decksFetchPath = '/decks/fetch';
 
+/// 預けるパス（★サーバー側の `decksPath` と同じ字面である）。
+const String decksPutPath = '/decks';
+
+/// ★★ 預けるときに名乗る「取ったときの印」の鍵（決定 **D141-1** / **D141-4**）★★
+///
+/// ★★ 省けない。★鍵そのものが無ければ★サーバーは 400 を返す ★★
+/// ★**「無い」を「前提なし」に読ませない**（★★鍵を落とすだけで★黙って上書きできてしまう★★）。
+const String syncExpectMarkKey = 'expectMark';
+
+/// ★★ 応答が返す「いまの印」の鍵（決定 **D141-7**）★★
+///
+/// ★★ この値の中身を★1 バイトも解釈しない ★★
+/// ★**サーバーが計算して返す**ので、★★アプリ側は★ハッシュを 1 度も計算しない★★。
+/// → ★**`loveca_core` の `deckContentHash` と★★取り違えようが無い★★**（**§7-7** ＝ ★別物である）。
+const String syncMarkKey = 'mark';
+
 /// 要求の鍵（★サーバー側と同じ字面）。
 const String syncUserNameKey = 'userName';
 
@@ -94,8 +110,18 @@ const String syncOkKey = 'ok';
 /// 同上。★一覧が返す `deckId` の列。
 const String syncDeckIdsKey = 'deckIds';
 
-/// 同上。★1 つ取ったときの中身。
+/// 同上。★1 つ取ったときの中身。★★預けるときにも同じ鍵で送る★★。
 const String syncContentKey = 'content';
+
+/// 同上。★★預ける口が返す「新しく預かったか」★★（★201 と 200 の違い）。
+const String syncCreatedKey = 'created';
+
+/// ★★ 取ってきたデッキ 1 つ —— ★中身と、★★そのときの印★★ ★★
+///
+/// ★★ 2 つを★1 つの値にする理由 ★★
+/// ★**別々に返すと、★★片方だけを持ち回れる★★** —— ★★別のデッキの印を渡す事故が書ける★★。
+/// ★**預ける口は★この [mark] を★そのまま名乗る**（★★中身を持たない字面である★★）。
+typedef RemoteDeck = ({String content, String mark});
 
 /// 取りに行った結果（★取るもので中身が違うので★型引数を持つ）。
 sealed class SyncOutcome<T> {
@@ -123,6 +149,20 @@ final class SyncRejected<T> extends SyncOutcome<T> {
 /// ★**「まだ預けていない」は★★正しい答えである★★**（★上の doc）。
 final class SyncAbsent<T> extends SyncOutcome<T> {
   const SyncAbsent();
+}
+
+/// ★★ 取ったときの印が★合わなかった（★★預ける口だけが返す★★ / **D139-1** ＝ 線 β）★★
+///
+/// ★★ 「名乗れなかった」にも「通信の失敗」にも★畳まない ★★
+/// ★**名乗りは通っている**（★合わなければ 401 が先に返る / **D141-6**）。
+/// ★**サーバーも★正しく動いている**（★★断ったのは★正しい振る舞いである★★）。
+/// → ★**畳むと★★「取り直して解き直せばよい」が★「パスワードを直せ」に化ける★★。**
+///
+/// ★★ この結果を受けて★何をするかは★ここに無い ★★
+/// ★**再試行は★★0 回である★★**（**D141-3** ＝ 再-1）—— ★**この口は★★呼ぶ側へ返すだけ★★。**
+/// ★**いつ取り直して★どう見せるかは★★§32-6 の 25 である★★**（★未着手）。
+final class SyncStale<T> extends SyncOutcome<T> {
+  const SyncStale();
 }
 
 /// つながらなかった / 応答が期待どおりでない。
@@ -170,14 +210,14 @@ Future<SyncOutcome<List<String>>> fetchRemoteDeckIds({
 ///
 /// ★★ 返るのは★文字列である。★`Deck` に組み立てない ★★
 /// ★**組み立て方は★★決まっていない★★**（**D116-2** の理由 3）。
-Future<SyncOutcome<String>> fetchRemoteDeck({
+Future<SyncOutcome<RemoteDeck>> fetchRemoteDeck({
   required HttpClient client,
   required Uri server,
   required String userName,
   required String password,
   required String deckId,
 }) async {
-  return _post<String>(
+  return _post<RemoteDeck>(
     client: client,
     server: server,
     path: decksFetchPath,
@@ -188,9 +228,72 @@ Future<SyncOutcome<String>> fetchRemoteDeck({
     },
     read: (decoded) {
       final content = decoded[syncContentKey];
-      return content is String ? content : null;
+      final mark = decoded[syncMarkKey];
+      // ★★ 印が欠けていたら★受け取らない ★★
+      //   ★**受け取ると、★★預けるときに名乗れないまま先へ進む★★**（★★必ず 412 になる★★）。
+      if (content is! String || mark is! String || mark.isEmpty) return null;
+      return (content: content, mark: mark);
     },
     absentOnNotFound: true,
+  );
+}
+
+/// ★★ デッキ 1 つを預ける（★§32-6 の **23** の★送る口）★★
+///
+/// ## ★★ [expectMark] は★必須である。★省けない（**D141-4**）★★
+///
+/// | 渡すもの | ★意味 |
+/// |---|---|
+/// | `null` | ★**まだ 1 つも預けていないはず**（★初回 / ★器の行が無い） |
+/// | ★[RemoteDeck.mark] | ★**取ったときの印が★それだったはず** |
+///
+/// ★★**「省く」という選び方が★引数に無い**★★ —— ★**`required` にしてある。**
+/// ★**渡し忘れると★★コンパイルが通らない★★**（★サーバー側の 400 に頼らない）。
+///
+/// ## ★★ 印は★取ってきた値を★そのまま渡す。★計算しない ★★
+///
+/// ★**サーバーが [fetchRemoteDeck] / この口の応答で★返した字面をそのまま渡す**（**D141-7**）。
+/// ★★**`loveca_core` の `deckContentHash` を渡してはならない**★★（**§7-7** —— ★★別物である★★）。
+/// → ★**アプリ側は★★ハッシュを 1 度も計算しない★★ので、★取り違えようが無い。**
+///
+/// ## ★★ 中身を 1 バイトも解釈しない（**D105-2**）★★
+///
+/// ★**文字列を★そのまま送る。★★`Deck` を組み立てない★★**（★組み立て方は未決 / **D116-2** の理由 3）。
+///
+/// ## ★★ 返るのは★預けたあとの [RemoteDeck] である ★★
+///
+/// ★**[RemoteDeck.content] は★送った字面そのもの**（★サーバーは 1 バイトも変えない）。
+/// ★**[RemoteDeck.mark] は★★次に預けるときに名乗る印★★**（★★取り直さなくてよい★★）。
+///
+/// ★★ 投げない ★★
+Future<SyncOutcome<RemoteDeck>> pushRemoteDeck({
+  required HttpClient client,
+  required Uri server,
+  required String userName,
+  required String password,
+  required String deckId,
+  required String content,
+  required String? expectMark,
+}) async {
+  return _post<RemoteDeck>(
+    client: client,
+    server: server,
+    path: decksPutPath,
+    body: <String, Object?>{
+      syncUserNameKey: userName,
+      syncPasswordKey: password,
+      syncDeckIdKey: deckId,
+      syncContentKey: content,
+      // ★★ 鍵は★必ず送る（★`null` も★1 つの値である）★★
+      syncExpectMarkKey: expectMark,
+    },
+    read: (decoded) {
+      final mark = decoded[syncMarkKey];
+      if (mark is! String || mark.isEmpty) return null;
+      return (content: content, mark: mark);
+    },
+    staleOnPreconditionFailed: true,
+    okOnCreated: true,
   );
 }
 
@@ -207,6 +310,8 @@ Future<SyncOutcome<T>> _post<T>({
   required Map<String, Object?> body,
   required T? Function(Map<String, Object?> decoded) read,
   bool absentOnNotFound = false,
+  bool staleOnPreconditionFailed = false,
+  bool okOnCreated = false,
 }) async {
   try {
     final request = await client.postUrl(server.replace(path: path));
@@ -221,7 +326,17 @@ Future<SyncOutcome<T>> _post<T>({
     if (absentOnNotFound && response.statusCode == HttpStatus.notFound) {
       return SyncAbsent<T>();
     }
-    if (response.statusCode != HttpStatus.ok) {
+    // ★★ 412 —— ★取ったときの印が合わない（**D141-2**）★★
+    //   ★**「名乗れなかった」にも「通信の失敗」にも畳まない**（★上の [SyncStale]）。
+    if (staleOnPreconditionFailed &&
+        response.statusCode == HttpStatus.preconditionFailed) {
+      return SyncStale<T>();
+    }
+    // ★★ 201 —— ★新しく預かった（★預ける口だけが返す）★★
+    //   ★**200 と同じ道を通す**（★下で本文を読む）。
+    final created =
+        okOnCreated && response.statusCode == HttpStatus.created;
+    if (!created && response.statusCode != HttpStatus.ok) {
       // ★400 / 404 / 405 / 429 / 5xx —— ★★どれも「サーバーが期待どおりでない」★★。
       //   ★**400 を「名乗れなかった」に畳まない**（★送り手の作りが違う / **D131-6**）。
       return SyncUnreachable<T>('状態 ${response.statusCode}');
