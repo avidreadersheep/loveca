@@ -125,6 +125,11 @@ Future<void> _writeStatus(HttpResponse response, int status) async {
 ///
 /// ★★ 知らないパスは 404（★静かに 200 を返さない）★★
 /// ★**同じ口に★配信のパスも載る**（**D130-7**）。★**まだ無い。**
+///
+/// ★★ 2026-09-01: `/decks/list` を足した（★§55-3 が「一覧を返す口が無い」と書いた分）★★
+/// ★**`/decks` と `/decks/fetch` の★前にも後にも置ける**（★`switch` は★★完全一致である★★）——
+/// ★**接頭辞で振り分けていないので、★★`/decks/list` が `/decks` に吸われない★★。**
+/// ★**対で固定する**（★4 つのパスが★1 つずつ★別の口へ行くこと）。
 Future<void> handleApiRequest(
   HttpRequest request,
   AccountFileStore store,
@@ -141,6 +146,8 @@ Future<void> handleApiRequest(
       await handleDeckPutRequest(request, store, decks);
     case decksFetchPath:
       await handleDeckFetchRequest(request, store, decks);
+    case decksListPath:
+      await handleDeckListRequest(request, store, decks);
     default:
       await _writeStatus(request.response, HttpStatus.notFound);
   }

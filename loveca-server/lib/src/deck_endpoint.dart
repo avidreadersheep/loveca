@@ -39,6 +39,10 @@
 /// | ★パス（返す） | ★`/decks/fetch` | ★**本文に名乗りが入るので★POST を 2 つに分ける**（★GET は本文を運ばない） |
 /// | ★メソッド | ★**POST**（★2 つとも） | ★**17-2 と同じ** —— ★★パスワードを URL に載せない★★ |
 ///
+/// ★★**2026-09-01 追記: ★口が 3 つになった**★★ —— ★**`/decks/list`**（★上の [decksListPath]）。
+/// ★★**上の表は 1 文字も書き換えない**★★（**D-35** —— ★書いた時点では正しい）。
+/// ★**メソッドも状態コードの分け方も★3 つとも同じである**（★対で固定した）。
+///
 /// ### ★ 状態コード
 ///
 /// | 状態 | 何 | ★なぜ |
@@ -77,6 +81,18 @@ const String decksPath = '/decks';
 
 /// デッキを返すパス（決定 **D134-8**）。
 const String decksFetchPath = '/decks/fetch';
+
+/// 預けているデッキの一覧を返すパス。
+///
+/// ★★ §55-3 が「★★一覧を返す口が無い★★」と書いた分である ★★
+/// ★**呼ぶ側は「★どのデッキが預けてあるか」を★★知りようが無かった★★。**
+/// → ★**§32-6 の **21**（★相手の版を取りに行く）が★これを要る**（**D124-7** ＝ 門 イ の (c)
+/// ★★—— ★相手の★内容★を受け取って比べる。★★受け取る前に★何が在るかを知る要がある★★）。
+///
+/// ★★ 返すのは `deckId` だけである（★中身も★件数以外の量も返さない）★★
+/// ★**サーバーは★内容ハッシュも★目印も持たない**（**D114-1** / **D124-7** —— ★あれはアプリ側の量）。
+/// → ★★**返せるものが★`deckId` しか無い。★選んだのではない。**★★
+const String decksListPath = '/decks/list';
 
 /// 預ける口に 1 つ答える（★待ち受けを知らない）。
 Future<void> handleDeckPutRequest(
@@ -127,6 +143,37 @@ Future<void> handleDeckFetchRequest(
   await request.response.close();
 }
 
+/// 一覧の口に 1 つ答える（★待ち受けを知らない）。
+///
+/// ★★ `deckId` を要らない ★★
+/// ★**名乗りだけで答えられる**ので、★[_parse] に★`deckId` を要求させない。
+///
+/// ★★ 空の一覧は 200 である。★404 にしない ★★
+/// ★**「1 つも預けていない」は★★答えであって★不在ではない★★。**
+/// ★**返す口の 404 は「★★そのデッキが無い★★」で、★★意味が違う★★**（`docs/同期設計メモ.md` §7-7）。
+Future<void> handleDeckListRequest(
+  HttpRequest request,
+  AccountFileStore accounts,
+  DeckFileStore decks,
+) async {
+  final parsed = await _parse(request, needsContent: false, needsDeckId: false);
+  if (parsed == null) return;
+
+  if (!_authorized(parsed, accounts)) {
+    await writeDeckStatus(request.response, HttpStatus.unauthorized);
+    return;
+  }
+
+  request.response
+    ..statusCode = HttpStatus.ok
+    ..headers.contentType = ContentType.json
+    ..write(jsonEncode({
+      'ok': true,
+      'deckIds': decks.listDeckIds(parsed.userName),
+    }));
+  await request.response.close();
+}
+
 class _DeckRequest {
   const _DeckRequest(this.userName, this.password, this.deckId, this.content);
 
@@ -151,6 +198,7 @@ bool _authorized(_DeckRequest parsed, AccountFileStore accounts) =>
 Future<_DeckRequest?> _parse(
   HttpRequest request, {
   required bool needsContent,
+  bool needsDeckId = true,
 }) async {
   if (request.method != 'POST') {
     await writeDeckStatus(request.response, HttpStatus.methodNotAllowed);
@@ -159,7 +207,7 @@ Future<_DeckRequest?> _parse(
 
   final String userName;
   final String password;
-  final String deckId;
+  String deckId = '';
   String? content;
   try {
     final body = await utf8.decoder.bind(request).join();
@@ -169,7 +217,7 @@ Future<_DeckRequest?> _parse(
     }
     userName = requireJsonString(decoded, 'userName');
     password = requireJsonString(decoded, 'password');
-    deckId = requireJsonString(decoded, 'deckId');
+    if (needsDeckId) deckId = requireJsonString(decoded, 'deckId');
     if (needsContent) content = requireJsonString(decoded, 'content');
   } on FormatException {
     await writeDeckStatus(request.response, HttpStatus.badRequest);
@@ -179,7 +227,7 @@ Future<_DeckRequest?> _parse(
   // ★★ 空は断る（★長さの下限は決めない / **D133-9** をそのまま持ち込む）★★
   final empty = userName.isEmpty ||
       password.isEmpty ||
-      deckId.isEmpty ||
+      (needsDeckId && deckId.isEmpty) ||
       (needsContent && content!.isEmpty);
   if (empty) {
     await writeDeckStatus(request.response, HttpStatus.badRequest);
