@@ -9,7 +9,8 @@
 /// ## ★★ 柵 —— ★★素の HTTP へ落ちない（決定 **D131-2**）★★
 ///
 /// ★**D129-6** —— ★**盗み見られる経路に載せると★★保存をどれだけ固くしても意味が無い★★。**
-/// ★★**形で守る**★★ —— ★[serveAuth] は `SecurityContext` を★★必須で受け取る★★（★省略できない）。
+/// ★★**形で守る**★★ —— ★[serveApi] は `SecurityContext` を★★必須で受け取る★★（★省略できない）。
+/// ★★**2026-09-01 訂正: ここには `serveAuth` と書いてあった**★★（★型は **D-15 (l)** —— ★§53 で改名した）。
 /// ★**このファイルに `HttpServer.bind`（★素の待ち受け）は 1 つも無い**（★走査で見張る）。
 ///
 /// ## ★★ 証明書は★渡される（決定 **D131-3**）★★
@@ -45,6 +46,15 @@
 ///
 /// ★★**失敗の 2 つは★状態コードでも区別しない**★★ —— ★**「利用者名が無い」も「パスワードが違う」も 401 である**
 /// （**D130** の柵 —— ★★区別すると利用者名の存在が漏れる★★）。
+///
+/// ### ★★ ただし★時間では区別する（★★塞いでいない★★ / 決定 **D134-2**）★★
+///
+/// ★★**実測**★★（2026-09-01 / ★本番の回数 600000）—— ★**在る利用者名 ＋ 違うパスワード = 1526 ms /
+/// ★無い利用者名 ＋ 違うパスワード = 1 ms。★★どちらも 401 である★★。**
+/// ★**原因は [authenticate] の早い戻りである**（★★利用者名が無ければ★固める処理を 1 度も回さない★★）。
+/// → ★★**「認証の口は漏らさない」と書かないこと。★漏れる。**★★
+/// ★**塞ぐかは **N-26**（★門 セ）の (3) である** —— ★★塞ぐと★無い利用者名にも 1.5 秒かかる★★ので、
+/// ★**上限の話と★逆を向く**（`docs/同期設計メモ.md` §54-2 / §10 の **N-26**）。
 library;
 
 import 'dart:convert';
@@ -53,6 +63,8 @@ import 'dart:io';
 import 'account_endpoint.dart';
 import 'account_file_store.dart';
 import 'auth.dart';
+import 'deck_endpoint.dart';
+import 'deck_store.dart';
 import 'password_hash.dart';
 
 /// 認証のパス（決定 **D131-6**）。
@@ -115,7 +127,8 @@ Future<void> _writeStatus(HttpResponse response, int status) async {
 /// ★**同じ口に★配信のパスも載る**（**D130-7**）。★**まだ無い。**
 Future<void> handleApiRequest(
   HttpRequest request,
-  AccountFileStore store, {
+  AccountFileStore store,
+  DeckFileStore decks, {
   int accountIterations = passwordHashIterations,
 }) async {
   switch (request.uri.path) {
@@ -124,6 +137,10 @@ Future<void> handleApiRequest(
     case accountsPath:
       await handleAccountRequest(request, store,
           iterations: accountIterations);
+    case decksPath:
+      await handleDeckPutRequest(request, store, decks);
+    case decksFetchPath:
+      await handleDeckFetchRequest(request, store, decks);
     default:
       await _writeStatus(request.response, HttpStatus.notFound);
   }
@@ -141,9 +158,21 @@ Future<void> handleApiRequest(
 /// ★★ 2026-09-01: `serveAuth` から改名した（決定 **D133-10**）★★
 /// ★**アカウントを作る口（**17-2**）が入り、★★1 つの待ち受けが 2 つのパスを持つ★★ようになった。
 /// ★**「認証だけを待ち受ける」という名前が★★実物と食い違った★★**（★型は **D-15 (l)**）。
+///
+/// ★★ この名前は★★動きうる。★前提を書いておく（**D134** / **D-15 (l)** の先回り）★★ ★★
+///
+/// ★**`Api` が指す範囲は★**D130-7**（★配信と同じ口。★パスで分ける）に従って★広がる。**
+///
+/// | いつ | ★何が起きるか |
+/// |---|---|
+/// | ★**カードマスタの配信が乗るとき**（**D120-1**） | ★★**配信は★静的なファイルであって「API」ではない**★★。★同じ待ち受けに乗るので、★★名前が指す範囲が広がる★★ |
+/// | ★**Phase 6 が乗るとき** | ★★**別の待ち受けか★別の口が要るかもしれない**★★ —— ★**D130-5** は WebSocket を★★落としていない★★（★「サーバーから押し込む必要が★今日 1 つも無い」＋ ★開き直す条件つき） |
+///
+/// → ★★**今日は改名しない。★前提だと書いておく**★★（★正はここ 1 か所 / `docs/同期設計メモ.md` §54-5）。
 Future<HttpServer> serveApi({
   required SecurityContext context,
   required AccountFileStore store,
+  required DeckFileStore decks,
   Object? address,
   int port = 0,
   int accountIterations = passwordHashIterations,
@@ -153,7 +182,7 @@ Future<HttpServer> serveApi({
     port,
     context,
   );
-  server.listen((request) => handleApiRequest(request, store,
+  server.listen((request) => handleApiRequest(request, store, decks,
       accountIterations: accountIterations));
   return server;
 }

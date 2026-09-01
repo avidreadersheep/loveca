@@ -62,7 +62,9 @@ void main() {
         '${dir.path}${Platform.pathSeparator}accounts.json')
       ..add(_account('みつき', 'ひみつ'));
 
-    server = await serveApi(context: context, store: store);
+    // ★★ `decks` は 20 で必須になった（★§32-6 の 20 / **D134-9**）★★
+    server = await serveApi(
+        context: context, store: store, decks: DeckFileStore(dir));
 
     // ★★ 自己署名なので★この証明書だけを信頼する ★★
     //   ★`badCertificateCallback` で素通しにしない —— ★**素通しにすると
