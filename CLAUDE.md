@@ -103,6 +103,14 @@ grep -rnE "package:flutter|dart:ui" loveca-db/lib          # 0 件であるこ�
 grep -rln "^import 'dart:io'" loveca-db/lib            # native 配下のみ
 ```
 
+★★`loveca_server` の境界はここに書かない。★正は `loveca-server/lib/loveca_server.dart` の doc である**★★
+（決定 **D126-4** / **D-15** —— ★**同じ内容を 2 か所に置けば必ず食い違う**）。
+★**格が違うので §1 に混ぜない** —— ★ここは**絶対に変更しない設計方針**であり、
+★サーバーの境界は **D126** で決めたものである（★開き直す条件が在る）。
+★**見張りは `loveca-server/test/core_boundary_test.dart`**（★決定 **D115-7** の (c) ＝ 走査テスト）。
+★★**`loveca_core` を `loveca-server/pubspec.yaml` に書いてはならない**★★（**D126-3**）——
+★線 α は**空で始まる許可リスト**（**D115-6**）であり、★**書けば「呼べる」状態になって空であることを構造で守れなくなる。**
+
 ---
 
 ## 2. ディレクトリ構成
@@ -152,6 +160,11 @@ loveca-ui/       Flutter: UI 層（Windows デスクトップ）
     main_board.dart   試作3-B 最小盤面
     main_search_variants.dart  検索改善案の比較（D49 の判断材料）
   spike/.cache/  ★DB ファイルと測定結果。git 管理外
+
+loveca-server/   Dart: 同期サーバー（★Flutter 非依存。決定 D126）
+  lib/loveca_server.dart   ★★境界の宣言（4 段）。★触る前に読む★★
+  lib/src/boundary.dart    ★線 α の許可リストの正（★空で始まる / D115-6）
+  test/core_boundary_test.dart  ★見張り（D115-7 の (c) ＝ 走査テスト）
 ```
 
 ★**`lib/` `windows/` `pubspec.yaml` と `spike/` は扱いが違う（決定 D51）。**
@@ -204,6 +217,12 @@ dart run tool/probe_sqlite.dart               # sqlite3 の FTS5 / trigram の�
 LOVECA_DIST_DIR=/path/to/dist dart test       # 実データの場所を変える
 ../loveca-data/.venv/Scripts/python.exe tool/build_fixtures.py   # ミニ配信物の再生成
 
+# Dart 側（同期サーバー）。★今日は境界の宣言しか無い
+cd loveca-server
+dart pub get
+dart test
+dart analyze                                  # ★同上
+
 # Flutter 側（UI）。★計測は profile ビルドで行う
 cd loveca-ui
 flutter pub get
@@ -246,7 +265,7 @@ FTS5 / trigram つきの SQLite 3.53.4 がバンドルされることを実測�
 
 ```bash
 git ls-files --others --ignored --exclude-standard \
-  | grep -vE "^(loveca-(core|db|ui)/\.dart_tool/|loveca-ui/build/|loveca-ui/windows/flutter/ephemeral/|loveca-ui/spike/\.cache/|loveca-data/\.venv/|loveca-data/data/|\.claude/settings\.local\.json|\.claude/worktrees/)" \
+  | grep -vE "^(loveca-(core|db|server|ui)/\.dart_tool/|loveca-ui/build/|loveca-ui/windows/flutter/ephemeral/|loveca-ui/spike/\.cache/|loveca-data/\.venv/|loveca-data/data/|\.claude/settings\.local\.json|\.claude/worktrees/)" \
   | grep -vE "(^|/)__pycache__/" \
   | grep -E "\.(dart|py|md|ya?ml|json)$"
 ```
@@ -296,11 +315,42 @@ git ls-files --others --ignored --exclude-standard \
 | `loveca-core`（Dart） | **495** | `dart test` |
 | `loveca-db`（Dart） | **208**（★skip 0） | `dart test` |
 | `loveca-ui`（Flutter） | **921**（★skip 0） | `flutter test` |
+| `loveca-server`（Dart） | **21**（★skip 0） | `dart test` |
 
 （`loveca-core` は **Phase 4 のレーン 3 の commit 13（衝突判定 ＝ 候補 L）** 時点 / 2026-09-01。
 `loveca-db` は **Phase 4 のレーン 5 の commit 22（N-10 の器 / `schemaVersion` 5）** 時点 / 2026-09-01。
 `loveca-data` は **Phase 4 のレーン 2 の commit 4（画像だけのマニフェストを生成）** 時点 / 2026-08-31。
-`loveca-ui` は **束 C の commit 6（穴 (a) を塞ぐ）** 時点 / 2026-08-30。★**4 件とも実測で確認済み**）
+`loveca-ui` は **束 C の commit 6（穴 (a) を塞ぐ）** 時点 / 2026-08-30。
+`loveca-server` は **Phase 4 のレーン 4 の commit 17（線 α の許可リストと走査テスト）** 時点 / 2026-09-01。★**5 件とも実測で確認済み**）
+
+★★**Phase 4 のレーン 4 の commit 17（線 α の許可リストと走査テスト / 決定 D115-6 / D115-7 の (c)）で
+`loveca-server` が新設 —— **21**★★
+（★**このパッケージの最初のテストである**。★**内訳はファイルを見ること**）。
+★`loveca-core` / `loveca-db` / `loveca-ui` / `loveca-data` はこの commit で**件数が動いていない**
+（★**495 / 208 / 921 / 53 を実測で確認した**。★`loveca-ui` は 2 つの走査テストの `_roots` に 2 行ずつ足しただけ）。
+★★**パッケージの誕生と同じ commit である。★離せない**★★ —— ★**D115-6** が「★空で始めれば、★最初の 1 件に必ず理由が付く」と書いており、
+★**割ると「対象が存在するのにリストが無い commit」が 1 つできる**（★§32-7 が 17 を 16 の直後に置いた理由そのもの）。
+★★**「空の器」ではない**★★（**D114-7** の理由 2 と混ぜない）—— ★**あちらは書き込み点が来るまで何も守らないが、★★こちらは今日から落ちる★★**（★下の対）。
+★★**依存は 0 本である。★`loveca_core` を pubspec にも書かない**★★（**D126-3**）—— ★**書けば「呼べる」状態になり、★線 α が空であることを構造で守れなくなる**。
+★★**走査を守っているものは 2 つ在り、★見ている対が違う**★★（★**実測して分けた** / **D-27**）——
+★**行頭の判定**（★行コメント・doc・表の中の字面を止める）と ★**コメント外し**（★ブロックコメントの中の、行頭から書かれた指示行を止める）。
+★★**実測した対は 12 通り**★★（2026-09-01 / ★**12 通りとも仕込んで走らせ、戻してから本番を測った**）——
+★**(A) lib に core の import を足す** = 1 件 ／ ★**(B) lib に core の export を足す** = 1 件 ／
+★**(C) lib に flutter の import を足す** = 1 件 ／ ★**(D) lib に `dart:ui` の import を足す** = 1 件 ／
+★**(E) lib に `loveca_db` の import を足す** = 1 件 ／ ★**(F) pubspec に core の依存キーを足す** = 2 件 ／
+★**(G) 許可リストに 1 件足す** = 2 件 ／ ★**(H) 走査から `export` を落とす** = 2 件 ／
+★**(I) コメント外しを恒等関数にする** = 2 件 ／ ★**(J) 文字列を跨がないようにする** = 1 件 ／
+★**(K) YAML のコメント外しを恒等関数にする** = 1 件 ／ ★**(L) 行頭の判定を外す** = 1 件。
+★★**(B) が要る**★★ —— ★**(A) だけでは「import を見ていること」しか分からない。★★`export` は再公開であり、★import と同じだけ線を跨ぐ★★**。
+★★**測っている途中で、★対が 1 つも無い守りが見つかった**★★（**D-27** / ★**足した**）——
+★**(L) が★最初 0 件だった**。★**行コメントも doc も、★コメント外しだけで止まっており、★行頭の判定は 1 件も見られていなかった**。
+→ ★**行の途中に在る文字列リテラル**（★コメント外しは文字列を残すので走査に届く）で対を作り直した。
+★★**もう 1 つ、★守りが働いていない所を見つけた**★★（★**分けた**）—— ★**pubspec の「キー行」の検査にはコメント外しが効かない**
+（★行頭が `#` の行は「字下げ ＋ 識別子 ＋ コロン」に当たらない）。→ ★**コメント外しが効く検査（本体の字面）を別に置いた**（★(K) がその対）。
+★★**D-31 を 2 か所で踏み、★2 か所とも直した**★★ —— ★**`CLAUDE.md` §3 の見張りの除外**（★実測: パッケージを足すと **2 件**出る。★除外を直して 0 件に戻した）と、
+★**`loveca-ui` の 2 つの走査テストの `_roots`**（★実測: `loveca-server` に偽の番号を 1 つ置くと **3 件**落ちる ＝ 決定番号 / 所見番号 / 旧設計番号）。
+★★**footgun を 1 つ記録した（★手当てしていない）**★★ —— ★**行頭から書かれた文字列リテラルの中の指示行は拾ってしまう**。
+★**`lib` に該当は 0 件**（★走査した）。★**doc とテストに書いた**（**D-28** —— ★推測で埋めない）。
 
 ★★**Phase 4 のレーン 5 の commit 22（N-10 の器 / `schemaVersion` 4 → 5 / 決定 D114-1）で
 `loveca-db` が 194 → 208**★★
