@@ -884,4 +884,80 @@ void main() {
       expect(all.map((d) => d.name), containsAll(<String>['元', '元 のコピー']));
     });
   });
+  group('★★ 受け取ったデッキを★そのまま書く（★§32-6 の 24 / 決定 **D144**）★★', () {
+    test('★★ 3 つ組を★1 つも触らない（★★N-15 / D119-1★★）★★', () async {
+      // ★★ `save` は `updatedAt` を `_clock()` に、★`revision` を +1 にする ★★
+      //   ★**受信でそれをすると★★送信側の時刻が消え、★決着層が受信するたびに答えを変える★★。**
+      final created = await repositoryOn(db).create(name: 'もと');
+      final received = Deck(
+        deckId: created.deckId,
+        name: 'うけとった',
+        entries: const [],
+        memo: 'めも',
+        tags: const ['たぐ'],
+        coverPrintingId: null,
+        createdAt: created.createdAt,
+        updatedAt: DateTime.utc(2026, 3, 1),
+        deletedAt: null,
+        revision: 42,
+        lastDeviceId: 'あいて',
+        masterDataVersion: 7,
+      );
+
+      await repositoryOn(db).saveReceived(received, ops: const []);
+
+      final back = (await repositoryOn(db).byId(created.deckId))!;
+      expect(back.updatedAt, DateTime.utc(2026, 3, 1));
+      expect(back.revision, 42);
+      expect(back.lastDeviceId, 'あいて');
+      expect(back.name, 'うけとった');
+      expect(back.memo, 'めも');
+      expect(back.tags, ['たぐ']);
+    });
+
+    test('★★ 対: `save` は★3 つ組を動かす（★★同じ入力で比べる★★）★★', () async {
+      // ★★ これが無いと「触らない」は★何も証明しない（**D-10**）★★
+      final created = await repositoryOn(db).create(name: 'もと');
+
+      final saved = await repositoryOn(db).save(
+        created,
+        DeckDraft(
+          name: 'うけとった',
+          entries: const [],
+          memo: 'めも',
+          tags: const ['たぐ'],
+          coverPrintingId: null,
+        ),
+        ops: const [],
+      );
+
+      expect(saved.revision, created.revision + 1);
+      // ★★ `updatedAt` は★★Clock から来る★★（★試験の Clock は固定なので値で見る）★★
+      //   ★**`saveReceived` は★2026-03-01 を保った**（★上の試験）。
+      //   ★★**`save` は★渡された値ではなく★Clock を書く**★★。
+      expect(saved.updatedAt, isNot(DateTime.utc(2026, 3, 1)));
+    });
+
+    test('★★ 渡した操作は★編集ログに残る（★器だけを通す）★★', () async {
+      final created = await repositoryOn(db).create(name: 'もと');
+
+      await repositoryOn(db).saveReceived(
+        created,
+        ops: [(kind: DeckEditOpKind.resolveConflict, at: DateTime.utc(2026, 9, 2))],
+      );
+
+      final rows = await DeckSyncMarkDao(db).latestLogMark(created.deckId);
+      expect(rows, greaterThan(0));
+    });
+
+    test('★★ 対: 操作を渡さなければ★1 件も残らない ★★', () async {
+      final created = await repositoryOn(db).create(name: 'もと');
+      final before = await DeckSyncMarkDao(db).latestLogMark(created.deckId);
+
+      await repositoryOn(db).saveReceived(created, ops: const []);
+
+      expect(await DeckSyncMarkDao(db).latestLogMark(created.deckId), before);
+    });
+  });
+
 }

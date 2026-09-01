@@ -362,6 +362,57 @@ Future<DeckSyncOutcome> _push({
   }
 }
 
+/// ★受け取ったデッキを書く口（★★置き場は呼び出し側が渡す★★ / [DeckSyncMarks] と同じ形）。
+abstract interface class DeckSyncWriter {
+  /// ★★ 1 フィールドも変えずに書く（**D144**）★★
+  Future<void> saveReceived(Deck received, {required List<DeckEditOpRecord> ops});
+}
+
+/// ★★ 受信（★§32-6 の **24** / 決定 **D144**）★★
+///
+/// ★★ [syncOneDeck] が「相手が勝った」と言ったときにだけ呼ぶ ★★
+/// ★**この口は★判定も解決もしない**（★★済んでいる★★）。★**書いて、★器に記録するだけである。**
+///
+/// ## ★★ ログを 1 件残すのは★解決が起きたときだけである（**D119-1**）★★
+///
+/// | [DeckSyncRemoteWins.reason] | ★ログ |
+/// |---|---|
+/// | [DeckSyncRemoteReason.resolved] | ★★**`resolveConflict` を 1 件**★★（**D119-1** ＝ 後-1） |
+/// | [DeckSyncRemoteReason.remoteOnly] | ★★**1 件も残さない**★★（★★手元の編集ではない★★） |
+///
+/// ★**残すと★★次の同期が「まだ送っていない編集が在る」と読む★★**（★候補 G の見る量である）。
+///
+/// ## ★★ 器は★書いたあとに記録する ★★
+///
+/// ★**目印は★★書いたあとの★★値を取る** —— ★`resolveConflict` の行が★★目印の内側に入る★★ため。
+/// ★**外に置くと★★その 1 件を「まだ送っていない」として★次の同期が送る★★。**
+///
+/// ★★ 書いたあとに器の記録が失敗したら（★隠さない）★★
+/// ★**手元は新しく、★器は古いままになる。**
+/// → ★**次の同期は★もう一度同じものを受け取って★同じものを書く**（★★同じ結果になる★★）。
+/// ★★**1 つのトランザクションにしていない**★★ —— ★**器は `loveca_db` の別の DAO で、
+/// ★★この層は新しいトランザクションを 1 つも開かない★★**（`DeckRepository.save` の doc と同じ線 / **D55**）。
+Future<void> applyRemoteDeck(
+  DeckSyncRemoteWins outcome, {
+  required DeckSyncWriter writer,
+  required DeckSyncMarks marks,
+  required DateTime at,
+}) async {
+  final ops = <DeckEditOpRecord>[
+    if (outcome.reason == DeckSyncRemoteReason.resolved)
+      (kind: DeckEditOpKind.resolveConflict, at: at),
+  ];
+
+  await writer.saveReceived(outcome.remote, ops: ops);
+
+  final logMark = await marks.latestLogMark(outcome.remote.deckId);
+  await marks.record(
+    deckId: outcome.remote.deckId,
+    logMark: logMark,
+    baselineHash: deckContentHash(outcome.remote),
+  );
+}
+
 /// ★★ `loveca_db` の DAO を [DeckSyncMarks] に嵌める（★★橋渡しだけ★★）★★
 ///
 /// ★★ 判断を 1 つも持たない ★★

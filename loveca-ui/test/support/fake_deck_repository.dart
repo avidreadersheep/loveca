@@ -241,6 +241,22 @@ class FakeDeckRepository implements DeckRepository {
     return next;
   }
 
+  /// ★受け取ったデッキ（★★本実装と同じく★1 フィールドも変えない★★ / **D144**）。
+  final List<({Deck deck, List<DeckEditOpRecord> ops})> receivedSaves = [];
+
+  @override
+  Future<void> saveReceived(
+    Deck received, {
+    required List<DeckEditOpRecord> ops,
+  }) async {
+    // ★★ 本実装と同じく★3 つ組を 1 つも触らない ★★
+    //   ★**触ると★★フェイクだけ N-15 を守らなくなり、★本実装と黙って食い違う★★**
+    //   （★上の [save] の doc が★同じ理由を書いている / **D70**）。
+    receivedSaves.add((deck: received, ops: ops));
+    _decks.removeWhere((d) => d.deckId == received.deckId);
+    _decks.add(received);
+  }
+
   @override
   Future<Deck> duplicate(Deck source, {required String name}) async {
     duplicateCalls++;

@@ -19,6 +19,8 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:loveca_ui/src/data/deck_sync_client.dart';
 
+import '../support/strip_comments.dart';
+
 /// ★サーバーの `lib`。★**パスと鍵の名前を突き合わせる相手**（★読むだけ。★呼ばない）。
 const _serverDeckEndpoint = '../loveca-server/lib/src/deck_endpoint.dart';
 
@@ -762,7 +764,7 @@ void main() {
       // ★★ D-30 —— ★★禁じた字面を説明した doc が★同じ字面を必ず含む★★
       //   ★**素の走査では★★この口の doc 自身が当たる★★**（★実測: ★2 行）。
       //   → ★**コメントを外してから見る**（★★除外の一覧を持たない★★ —— ★除外は穴になる）。
-      final code = _stripComments(
+      final code = stripComments(
           File('lib/src/data/deck_sync_client.dart').readAsStringSync());
 
       expect(code.contains('sha256'), isFalse,
@@ -786,43 +788,9 @@ void main() {
       final nl = String.fromCharCode(10);
       final withDoc = '/// sha256 と deckContentHash の話$nl$line';
 
-      expect(_stripComments(withDoc).contains('sha256'), isFalse);
-      expect(_stripComments(withDoc).contains(line), isTrue);
+      expect(stripComments(withDoc).contains('sha256'), isFalse);
+      expect(stripComments(withDoc).contains(line), isTrue);
     });
   });
 
-}
-
-/// ★★ 行コメントと doc を落とす（★★D-30 の受け★★）★★
-///
-/// ★★ 文字列の中の // をコメントと読まない ★★
-/// ★**先例は `loveca-server/test/support/directive_scan.dart`**（★あちらは★指示行を取り出す道具）。
-/// ★★**除外の一覧を持たない**★★ —— ★**除外を足すと★★その除外自身が穴になる★★**（**D-30**）。
-String _stripComments(String source) {
-  final out = StringBuffer();
-  var inString = false;
-  String? quote;
-  for (var i = 0; i < source.length; i++) {
-    final c = source[i];
-    if (inString) {
-      out.write(c);
-      if (c == quote) inString = false;
-      continue;
-    }
-    if (c == "'" || c == '"') {
-      inString = true;
-      quote = c;
-      out.write(c);
-      continue;
-    }
-    if (c == '/' && i + 1 < source.length && source[i + 1] == '/') {
-      while (i < source.length && source[i] != String.fromCharCode(10)) {
-        i++;
-      }
-      out.write(String.fromCharCode(10));
-      continue;
-    }
-    out.write(c);
-  }
-  return out.toString();
 }

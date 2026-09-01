@@ -44,9 +44,18 @@ const _allowed = <String, int>{
   // ★`DeckDao.save` を呼ぶ 3 箇所（`create` / `save` / `duplicate`）。
   //   ★`create` / `duplicate` が空の列を渡すことは**穴ではない** ——
   //   どちらも新規デッキ（`revision` 0）で、比べる相手が存在しない（§15-2）。
-  'deck_repository.dart': 3,
+  // ★★ 2026-09-02: ★3 → 4（★受信の口を足した / **D144**）★★
+  //   ★**`saveReceived` が★4 つ目である**（★§32-6 の **24**）。
+  //   ★★**意図は★呼び出し側が採る**★★ —— ★解決が起きたなら `resolveConflict` を 1 件、
+  //     ★相手側だけが変わっていたなら★★1 件も渡さない★★（**D119-1** / `deck_sync.dart`）。
+  //   ★★**空の列を渡して通しているのではない**★★ —— ★★渡す列を★決めているのが `applyRemoteDeck` である★★。
+  'deck_repository.dart': 4,
   // ★★ 意図を採る唯一の層（**D110-2**）★★
   'deck_edit_store.dart': 1,
+  // ★★ 受信の意図を採る層（★§32-6 の **24** / **D144**）★★
+  //   ★**手元の編集ではない**ので `DeckEditStore` を通らない。
+  //   ★**`remoteOnly` なら 1 件も残さない**（★残すと★★次の同期が「まだ送っていない」と読む★★）。
+  'deck_sync.dart': 1,
 };
 
 void main() {

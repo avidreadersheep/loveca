@@ -18,6 +18,9 @@ import 'package:loveca_core/loveca_core.dart';
 import 'package:loveca_ui/src/data/deck_sync.dart';
 import 'package:loveca_ui/src/data/deck_sync_client.dart';
 
+import '../support/fake_deck_repository.dart';
+import '../support/strip_comments.dart';
+
 const _fixtureDir = '../loveca-server/test/fixtures/tls';
 const _certPath = '$_fixtureDir/localhost-TEST-ONLY.cert.pem';
 const _keyPath = '$_fixtureDir/localhost-TEST-ONLY.key.pem';
@@ -45,6 +48,23 @@ class FakeMarks implements DeckSyncMarks {
     required String baselineHash,
   }) async {
     recorded.add((deckId: deckId, logMark: logMark, baselineHash: baselineHash));
+  }
+}
+
+/// ★書く側のフェイク（★★DB を開かない★★）。
+class FakeWriter implements DeckSyncWriter {
+  final List<({Deck deck, List<DeckEditOpRecord> ops})> saves = [];
+
+  /// ★書いたときに起こすこと（★目印を進める / ★投げる）。
+  void Function()? onSave;
+
+  @override
+  Future<void> saveReceived(
+    Deck received, {
+    required List<DeckEditOpRecord> ops,
+  }) async {
+    onSave?.call();
+    saves.add((deck: received, ops: ops));
   }
 }
 
@@ -477,15 +497,27 @@ void main() {
       expect(encodeDeckForSync(local), before);
     });
 
-    test('★★ 書き込む口を★1 つも持たない（★走査）★★', () {
-      // ★★ 手元のデッキを書く口（`DeckRepository` / `DeckDao`）を★呼ばない ★★
+    test('★★ 手元のデッキを書く口を★1 つも組み立てない（★走査）★★', () {
+      // ★★ 書くのは [DeckSyncWriter] 越しだけである（★§32-6 の 24 / **D144**）★★
+      //   ★**`DeckRepository` も `DeckDao` も★★この口が組み立てない★★。**
       //   ★**`DeckSyncMarkDao` は★★器だけを書く★★ので、★別である。**
-      final src = File('lib/src/data/deck_sync.dart').readAsStringSync();
+      //
+      // ★★ D-30 —— ★doc は★禁止対象と同じ字面を必ず含む ★★
+      //   ★**実測: ★素の走査では★★この口の doc 自身が当たる★★。**
+      final code = stripComments(
+          File('lib/src/data/deck_sync.dart').readAsStringSync());
 
-      expect(src.contains('DeckRepository'), isFalse);
-      expect(src.contains('DeckDao('), isFalse,
+      expect(code.contains('DeckRepository'), isFalse);
+      expect(code.contains('DeckDao('), isFalse,
           reason: '★★手元のデッキを書く DAO を★組み立てない★★');
-      expect(src.contains('DeckSyncMarks'), isTrue, reason: '★陽性対照');
+      expect(code.contains('DeckSyncWriter'), isTrue, reason: '★陽性対照');
+    });
+
+    test('★★ 対: ★コメントを外さないと★doc 自身が当たる（★陽性対照 / D-30）★★', () {
+      final raw = File('lib/src/data/deck_sync.dart').readAsStringSync();
+
+      expect(raw.contains('DeckRepository'), isTrue,
+          reason: '★★doc は★禁止対象と同じ字面を必ず含む★★');
     });
   });
 
@@ -507,6 +539,179 @@ void main() {
 
       expect(marks.recorded.single.logMark, 5,
           reason: '★★99 を書くと★送っていない編集を★送ったことにする★★');
+    });
+  });
+
+  group('★★ 受信（★§32-6 の **24** / 決定 **D144**）★★', () {
+    late FakeWriter writer;
+    late FakeMarks marks;
+
+    setUp(() {
+      writer = FakeWriter();
+      marks = FakeMarks(mark: 3);
+    });
+
+    DeckSyncRemoteWins wins(Deck remote, DeckSyncRemoteReason reason) =>
+        DeckSyncRemoteWins(remote: remote, mark: 'M-REMOTE', reason: reason);
+
+    test('★★ 受け取った `Deck` を★1 フィールドも変えずに書く（**N-15**）★★', () async {
+      final remote = _deck(name: 'あいて', updatedAt: DateTime.utc(2026, 3, 1));
+
+      await applyRemoteDeck(
+        wins(remote, DeckSyncRemoteReason.remoteOnly),
+        writer: writer,
+        marks: marks,
+        at: DateTime.utc(2026, 9, 2),
+      );
+
+      final saved = writer.saves.single.deck;
+      expect(saved.updatedAt, DateTime.utc(2026, 3, 1),
+          reason: '★★送信側の `updatedAt` を★そのまま採る★★');
+      expect(saved.revision, remote.revision, reason: '★+1 しない');
+      expect(saved.name, 'あいて');
+      expect(saved.lastDeviceId, remote.lastDeviceId);
+    });
+
+    test('★★ 解決が起きたときだけ★ログを 1 件残す（**D119-1**）★★', () async {
+      await applyRemoteDeck(
+        wins(_deck(), DeckSyncRemoteReason.resolved),
+        writer: writer,
+        marks: marks,
+        at: DateTime.utc(2026, 9, 2),
+      );
+
+      expect(writer.saves.single.ops, hasLength(1));
+      expect(writer.saves.single.ops.single.kind,
+          DeckEditOpKind.resolveConflict);
+      expect(writer.saves.single.ops.single.at, DateTime.utc(2026, 9, 2));
+    });
+
+    test('★★ 対: ★相手側だけが変わっていたら★ログを 1 件も残さない ★★', () async {
+      // ★★ 残すと★次の同期が「まだ送っていない編集が在る」と読む ★★
+      await applyRemoteDeck(
+        wins(_deck(), DeckSyncRemoteReason.remoteOnly),
+        writer: writer,
+        marks: marks,
+        at: DateTime.utc(2026, 9, 2),
+      );
+
+      expect(writer.saves.single.ops, isEmpty);
+    });
+
+    test('★★ 器は★書いたあとに記録する（★目印が★ログの行を含む）★★', () async {
+      // ★★ 書くと目印が進む（★`resolveConflict` の行が入る）★★
+      writer.onSave = () => marks.mark = 8;
+
+      await applyRemoteDeck(
+        wins(_deck(), DeckSyncRemoteReason.resolved),
+        writer: writer,
+        marks: marks,
+        at: DateTime.utc(2026, 9, 2),
+      );
+
+      expect(marks.recorded.single.logMark, 8,
+          reason: '★★3 を書くと★その 1 件を★次の同期が送る★★');
+    });
+
+    test('★★ 基準は★受け取った版の内容ハッシュである ★★', () async {
+      final remote = _deck(name: 'あいて');
+
+      await applyRemoteDeck(
+        wins(remote, DeckSyncRemoteReason.remoteOnly),
+        writer: writer,
+        marks: marks,
+        at: DateTime.utc(2026, 9, 2),
+      );
+
+      expect(marks.recorded.single.baselineHash, deckContentHash(remote));
+    });
+
+    test('★★ 書く前に器を触らない（★書けなければ★器は古いまま）★★', () async {
+      writer.onSave = () => throw StateError('★書けなかった');
+
+      await expectLater(
+        applyRemoteDeck(
+          wins(_deck(), DeckSyncRemoteReason.resolved),
+          writer: writer,
+          marks: marks,
+          at: DateTime.utc(2026, 9, 2),
+        ),
+        throwsA(isA<StateError>()),
+      );
+      expect(marks.recorded, isEmpty);
+    });
+
+    test('★★ 送信と受信を★通してみる（★相手が勝つ場面）★★', () async {
+      serveHolding(_deck(name: 'あいて', updatedAt: DateTime.utc(2026, 3, 1)));
+      final out = await run(_deck(name: 'てもと'), marks);
+
+      expect(out, isA<DeckSyncRemoteWins>());
+      await applyRemoteDeck(out as DeckSyncRemoteWins,
+          writer: writer, marks: marks, at: DateTime.utc(2026, 9, 2));
+
+      expect(writer.saves.single.deck.name, 'あいて');
+      expect(marks.recorded, hasLength(1));
+    });
+  });
+
+  group('★★ フェイクも★3 つ組を触らない（★★本実装と食い違わせない★★ / D70）★★', () {
+    test('★★ `saveReceived` は★1 フィールドも変えない ★★', () async {
+      // ★★ フェイクだけカバーを外すと★本実装と黙って食い違う（★上の `save` の doc）★★
+      final fake = FakeDeckRepository();
+      final received = Deck(
+        deckId: 'D-1',
+        name: 'うけとった',
+        entries: const [],
+        memo: '',
+        tags: const [],
+        coverPrintingId: null,
+        createdAt: DateTime.utc(2026, 1, 1),
+        updatedAt: DateTime.utc(2026, 3, 1),
+        deletedAt: null,
+        revision: 42,
+        lastDeviceId: 'あいて',
+        masterDataVersion: 7,
+      );
+
+      await fake.saveReceived(received, ops: const []);
+
+      final saved = fake.receivedSaves.single.deck;
+      expect(saved.updatedAt, DateTime.utc(2026, 3, 1));
+      expect(saved.revision, 42);
+      expect(saved.lastDeviceId, 'あいて');
+    });
+
+    test('★★ 書いたら★一覧から読める ★★', () async {
+      final fake = FakeDeckRepository();
+      final received = Deck(
+        deckId: 'D-2',
+        name: 'あたらしい',
+        entries: const [],
+        memo: '',
+        tags: const [],
+        coverPrintingId: null,
+        createdAt: DateTime.utc(2026, 1, 1),
+        updatedAt: DateTime.utc(2026, 3, 1),
+        deletedAt: null,
+        revision: 1,
+        lastDeviceId: '',
+        masterDataVersion: 0,
+      );
+
+      await fake.saveReceived(received, ops: const []);
+
+      expect((await fake.byId('D-2'))!.name, 'あたらしい');
+    });
+
+    test('★★ 渡した操作を★そのまま覚える（★器だけを通す）★★', () async {
+      final fake = FakeDeckRepository();
+      final received = await fake.create(name: 'もと');
+
+      await fake.saveReceived(received,
+          ops: [(kind: DeckEditOpKind.resolveConflict, at: DateTime.utc(2026, 9, 2))]);
+
+      expect(fake.receivedSaves.single.ops.single.kind,
+          DeckEditOpKind.resolveConflict);
     });
   });
 
