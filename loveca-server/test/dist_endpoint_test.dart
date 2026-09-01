@@ -363,4 +363,94 @@ void main() {
       expect(got.where((s) => s == 429), isNotEmpty);
     });
   });
+
+  // ★★ 時間以外の軸（★★運転指示【0】(2)★★ / `docs/同期設計メモ.md` §70）★★
+  //
+  // ★★ 引き金: ★相談役が「時間で足りるとしか書かれていない」と述べた ★★
+  // ★**§62 は「1 件 0.261 ms／比 5,831 倍」で★★時間について★★答えた。**
+  // ★**ここは★★同じ物を何度でも取れること／量／経路★★を★1 つずつ固定する。**
+  // ★★**時間は測らない**★★（**D-28**）—— ★**固定するのは★★数えられるものだけ★★である。**
+  group('★★ 時間以外の軸 —— ★★2 つ開き、★1 つ開いていない★★', () {
+    test('★★ 同じ物を★何度でも取れる（★★開いている★★）★★', () async {
+      // ★★ §70-3 の 1 行目 —— ★★反復に上限が 1 つも無い★★
+      final got = <int>[];
+      for (var i = 0; i < 20; i++) {
+        got.add((await _get(client, server.port, '/dist/version.json')).status);
+      }
+
+      expect(got.where((s) => s == 429), isEmpty);
+      expect(got.toSet(), <int>{200},
+          reason: '★★同じ物を 20 回取っても★1 度も断られない★★');
+    });
+
+    test('★★ 取れる量に★上限が 1 つも無い（★★開いている★★）★★', () async {
+      // ★★ §70-3 の 2 行目 —— ★★出ていくバイト数を★上限は 1 バイトも見ていない★★
+      //   ★**上限の掛かる口なら★★回数 × 1 件の大きさ★★で頭打ちになるが、★ここは頭打ちにならない。**
+      //   ★★**バイト数そのものは測らない**★★（★機械と回線で揺れる / **D-28**）——
+      //   ★**固定するのは「★★20 回ぶんが全部返ってきた★★」ことである。**
+      var total = 0;
+      for (var i = 0; i < 20; i++) {
+        final res = await _get(client, server.port, '/dist/version.json');
+        expect(res.status, 200);
+        total += res.bytes.length;
+      }
+      final one =
+          (await _get(client, server.port, '/dist/version.json')).bytes.length;
+
+      expect(total, one * 20,
+          reason: '★★20 回ぶんが★1 バイトも削られずに出ていく★★');
+    });
+
+    test('★★ 対: ★経路の柵は★上限と独立に★毎回走る（★★開いていない★★）★★', () async {
+      // ★★ §70-3 の 3 行目 —— ★★上限を 1 度も通らないのに★柵は効いている★★
+      //   ★**上限より★前★に振り分けられる**（★`handleApiRequest` / ★実読）ので、
+      //   ★★上限が守っていないことと★柵が効いていることは★別である★★。
+      //
+      // ★★ 素の `..` は使えない —— ★★`Uri.parse` が★自分で畳む★★（★上の doc / 実測）★★
+      //   ★**畳まれると★`/dist/` で始まらなくなり、★★上限の掛かる側へ行って 429 になる★★**
+      //   （★★最初この形で書いて★実際に 429 が 3 件返った★★ / **D-27** —— ★対が対象を見ていなかった）。
+      //
+      // ★★ 上へ抜ける段は★★HTTP の層で畳まれる★★ので★柵に届かない（★★実測★★）★★
+      //   ★**`/dist/../x` も `/dist/%2e%2e/x` も、★★`HttpServer` が★自分で畳む★★**
+      //   （★★素の口で投げても畳まれる★★ —— ★`uri.path` が `/x` になる / ★2026-09-02 実測）。
+      //   → ★**畳まれると★`/dist/` で始まらなくなり、★★上限の掛かる側へ行って 429 になる★★**
+      //     （★★最初この形で書いて★実際に 429 が 3 件返った★★ / **D-27** —— ★対が対象を見ていなかった）。
+      //   → ★**畳まれない形で★段 1 に届かせる** —— ★★`/dist/` は段が 0 個★★（★`sublist(1)` が空）。
+      final got = <int>[];
+      for (var i = 0; i < 8; i++) {
+        got.add((await _get(client, server.port, '/dist/')).status);
+      }
+
+      expect(got.where((s) => s == 429), isEmpty,
+          reason: '★上限は 1 度も効いていない');
+      expect(got.toSet(), <int>{404},
+          reason: '★★それでも★8 回とも★根の外を読ませない★★');
+    });
+
+    test('★★ 対: ★本文を 1 バイトも読まない（★★開いていない★★）★★', () async {
+      // ★★ §70-4 —— ★`GET` しか通さないので★要求の本文の大きさは★この口では開かない ★★
+      final request = await client
+          .postUrl(Uri.parse('https://localhost:${server.port}/dist/version.json'));
+      request.write('x' * 100000);
+      final response = await request.close();
+      await response.drain<void>();
+
+      expect(response.statusCode, 405,
+          reason: '★★本文を読む前に★メソッドで断る★★');
+    });
+
+    test('★★ 対: ★何度取っても★機械に何も残らない（★★開いていない★★）★★', () async {
+      // ★★ §70-4 —— ★書き込みが 0 件であること ★★
+      int countFiles() =>
+          distRoot.listSync(recursive: true).whereType<File>().length;
+
+      final before = countFiles();
+      for (var i = 0; i < 20; i++) {
+        await _get(client, server.port, '/dist/version.json');
+      }
+
+      expect(countFiles(), before, reason: '★★読むだけである★★');
+    });
+  });
+
 }
