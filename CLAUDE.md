@@ -245,6 +245,22 @@ LOVECA_DIST_DIR=/path/to/dist flutter run -d windows          # 実データで�
 LOVECA_SEARCH_LIMIT=50 flutter run -d windows                 # ★検証用。検索の打ち切り（D50）を実データで再現する
 ```
 
+★★**2026-09-01 追記: ★プラットフォームを問わない試作を 1 つ足した**★★
+（`loveca-ui/spike/main_sqlite_caps.dart` —— ★★`main_probe.dart` は★現物を読むので Android では走らない★★）。
+★★**上のコマンド欄は 1 文字も書き換えない**★★（**D-35**）。
+
+```bash
+# Windows —— ★★exe を直に走らせ、★出力をファイルへ落とす（★`flutter run` は返ってこない / 実測）★★
+cd loveca-ui && flutter build windows --debug -t spike/main_sqlite_caps.dart --dart-define=SPIKE_AUTOEXIT=1
+./build/windows/x64/runner/Debug/loveca_ui.exe > caps.txt 2>&1   # ★★外から止める（★自分で終わらない / 実測）★★
+
+# Android —— ★★エミュレータを起こしてから★★
+flutter emulators --launch <id>
+cd loveca-ui && flutter build apk --debug -t spike/main_sqlite_caps.dart --dart-define=SPIKE_AUTOEXIT=1
+adb install -r build/app/outputs/flutter-apk/app-debug.apk
+adb logcat -c && adb shell am start -n com.example.loveca_ui/.MainActivity && adb logcat -d | grep SQLITE_CAPS
+```
+
 ★`LOVECA_SEARCH_LIMIT` は **`LOVECA_DIST_DIR` と同格ではない**（決定 D64）。
 前者は検証用の口、後者は D60 が定めた本番の設定経路である。
 実データの最大ヒットは `ー` の 1,034 種で、**既定 2000 では打ち切りが起こらない**ため、

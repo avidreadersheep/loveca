@@ -1139,6 +1139,26 @@ D46 は profile ビルド + 合成ポインタで見つけたが、
 
 ★★**上記が未了である限り、Release 1 を「完了」と呼べない。**★★
 
+### ★★ 2026-09-01: ★3 が片づいた（★★上の表は 1 文字も書き換えない / **D-35**★★）★★
+
+★★**実測した**★★（★`loveca-ui/spike/main_sqlite_caps.dart` を新設して走らせた）——
+
+| 何 | ★結果 |
+|---|---|
+| ★Windows（x64） | ★`SQLite 3.53.4 (fts5: true, trigram: true) usable=true` |
+| ★★**Android（エミュレータ / x86_64 / API 36）**★★ | ★★**`SQLite 3.53.4 (fts5: true, trigram: true) usable=true`**★★ |
+
+★★**`sqlite3_flutter_libs` を採らない判断（**D45**）は★Android でも成り立つ**★★ ——
+★**`libsqlite3.so` が★★3 ABI とも APK に入る★★**（arm64-v8a / armeabi-v7a / x86_64。★各 1.7 MB / ★実測）。
+
+★★**「Android で動く」と★ABI をまたいで言わない**★★（**§7-10** —— ★層を書く）——
+★**走らせたのは★★x86_64 のエミュレータだけである★★**。
+★**arm64-v8a / armeabi-v7a は★★APK の中の字面を数えただけ★★**
+（★`fts5` 35 / `trigram` 1 / `unicode61` 1 / `ENABLE_FTS5` 1。★★陽性対照: `fts4` は 0★★）。
+
+★★**表の 3 の字面は 1 文字も書き換えない**★★ —— ★**書いた時点では正しい**（**D-35**）。
+★**残りの 5 項目は★1 つも動いていない。**
+
 今のうちに決められる規則を 1 つだけ先に置く。
 
 > **`cacheWidth = min(セル物理px, その段の原寸幅)`**
