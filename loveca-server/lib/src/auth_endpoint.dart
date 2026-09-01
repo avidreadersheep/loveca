@@ -128,6 +128,21 @@ Future<void> _writeStatus(HttpResponse response, int status) async {
   await response.close();
 }
 
+/// パスがどの枠に入るか（★**N-27** の 論点 (2) の★★既定値★★ / 2026-09-02）。
+///
+/// ★★ 振り分けと★同じ定数を引く（★★字面を 2 か所に持たない★★ / **D-15** の規約 3）★★
+/// ★**だからここに置いてある**（`src/rate_limit.dart` ではない）—— ★★あちらは口の名前を知らない★★。
+///
+/// ★★ 配る口はここに来ない ★★
+/// ★**`/dist/...` は★★上限より前に振り分けられる★★**（★下の [handleApiRequest] / `docs/同期設計メモ.md` §62）。
+///
+/// ★★ 知らないパスは★人が押す枠に入れる ★★
+/// ★**同期の枠は「★1 回の同期が通ること」で寸法が決まっており、★★知らないパスはその勘定に入らない★★。**
+RateLimitFrame rateLimitFrameFor(String path) => switch (path) {
+      decksPath || decksFetchPath || decksListPath => RateLimitFrame.deckSync,
+      _ => RateLimitFrame.human,
+    };
+
 /// パスで振り分ける（決定 **D130-7** —— ★同じ口。★パスで分ける）。
 ///
 /// ★★ 知らないパスは 404（★静かに 200 を返さない）★★
@@ -142,7 +157,7 @@ Future<void> handleApiRequest(
   AccountFileStore store,
   DeckFileStore decks, {
   int accountIterations = passwordHashIterations,
-  RateLimiter? rateLimiter,
+  ApiRateLimiter? rateLimiter,
   DistFileStore? dist,
 }) async {
   // ★★ 配る口は★上限より★前に振り分ける（★対象から外している）★★
@@ -159,9 +174,11 @@ Future<void> handleApiRequest(
   // ★★ 上限は★固める処理より★前に見る（★見なければ守っていない）★★
   //   ★**N-26**（門 セ）の★★既定値★★である。★決定ではない（`src/rate_limit.dart`）。
   //   ★**住所が取れない要求は★1 つの枠にまとめる**（★合成の要求 / 実際には起こらない）。
+  //   ★★**2026-09-02: ★枠で分けるようにした**★★（★**N-27** の 論点 (2) の★★既定値★★ /
+  //   ★運転指示【0】(3)）—— ★**人が押す枠と★同期の枠を★別に数える。**
   if (rateLimiter != null) {
     final key = request.connectionInfo?.remoteAddress.address ?? '★不明';
-    if (!rateLimiter.allow(key)) {
+    if (!rateLimiter.allow(rateLimitFrameFor(request.uri.path), key)) {
       await _writeStatus(request.response, HttpStatus.tooManyRequests);
       return;
     }
@@ -214,7 +231,7 @@ Future<HttpServer> serveApi({
   Object? address,
   int port = 0,
   int accountIterations = passwordHashIterations,
-  RateLimitPolicy rateLimit = defaultRateLimit,
+  RateLimitPolicySet rateLimits = defaultRateLimits,
   DateTime Function()? clock,
   DistFileStore? dist,
 }) async {
@@ -224,7 +241,7 @@ Future<HttpServer> serveApi({
     context,
   );
   // ★★ 待ち受け 1 つにつき 1 つ数える（★立て直せば忘れる）★★
-  final limiter = RateLimiter(rateLimit, clock: clock);
+  final limiter = ApiRateLimiter(rateLimits, clock: clock);
   server.listen((request) => handleApiRequest(request, store, decks,
       accountIterations: accountIterations, rateLimiter: limiter, dist: dist));
   return server;

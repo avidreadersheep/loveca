@@ -69,7 +69,7 @@ void main() {
       decks: DeckFileStore(dir),
       // ★★ 上限を外す —— ★この群は★★上限そのものを見ていない★★
       //   ★★上限を見る群は `test/rate_limit_test.dart` に在る★★。
-      rateLimit: const RateLimitPolicy.unlimited(),
+      rateLimits: const RateLimitPolicySet.unlimited(),
     );
 
     // ★★ 自己署名なので★この証明書だけを信頼する ★★

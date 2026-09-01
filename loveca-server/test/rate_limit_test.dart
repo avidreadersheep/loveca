@@ -65,6 +65,82 @@ void main() {
     });
   });
 
+  group('★★ 枠（**N-27** の 論点 (2) の★★既定値★★ / 2026-09-02）★★', () {
+    test('★★ 既定は★人が押す枠 5 / ★同期の枠 33 である（★値そのものの固定）★★', () {
+      // ★★ 導き方の正は `src/rate_limit.dart` の doc ★★
+      //   ★**60000 ms ÷ 1573 ms ＝ 38**（★★2026-09-02 実測 / この機械★★）。★**38 − 5 ＝ 33。**
+      expect(defaultRateLimits.human.maxRequests, 5);
+      expect(defaultRateLimits.deckSync.maxRequests, 33);
+      expect(defaultRateLimits.human.window, const Duration(seconds: 60));
+      expect(defaultRateLimits.deckSync.window, const Duration(seconds: 60));
+    });
+
+    test('★★ 合計は★測った上限を超えない（★★導き方そのものを固定する★★）★★', () {
+      // ★★ これが「値が導かれている」ことの対である ★★
+      //   ★**片方を上げたら★もう片方を下げないと落ちる。**
+      const measuredCostMs = 1573;
+      const windowMs = 60 * 1000;
+      final ceiling = windowMs ~/ measuredCostMs;
+
+      expect(ceiling, 38, reason: '★★2026-09-02 実測 / ★この機械★★');
+      expect(
+        defaultRateLimits.human.maxRequests +
+            defaultRateLimits.deckSync.maxRequests,
+        lessThanOrEqualTo(ceiling),
+      );
+    });
+
+    test('★★ 既定は★1 回の同期を通す（★★相談役が名指しした場合★★）★★', () {
+      // ★★ 1 回の同期 ＝ 1 ＋ デッキの数（★§10 の **N-27** の事実 2）★★
+      expect(defaultRateLimits.deckSync.maxRequests,
+          greaterThanOrEqualTo(1 + 5));
+      // ★★ 同じ住所の 2 台 × デッキ 2 つ（★同 事実 5）★★
+      expect(defaultRateLimits.deckSync.maxRequests,
+          greaterThanOrEqualTo(2 * (1 + 2)));
+    });
+
+    test('★★ 枠-1 に戻す形が★型として在る（★決まっていない分岐を先に置かない）★★', () {
+      const back = RateLimitPolicySet.uniform(defaultRateLimit);
+
+      expect(back.human.maxRequests, 5);
+      expect(back.deckSync.maxRequests, 5);
+    });
+
+    test('★★ デッキの 3 つの口は★同期の枠である ★★', () {
+      expect(rateLimitFrameFor(decksPath), RateLimitFrame.deckSync);
+      expect(rateLimitFrameFor(decksFetchPath), RateLimitFrame.deckSync);
+      expect(rateLimitFrameFor(decksListPath), RateLimitFrame.deckSync);
+    });
+
+    test('★★ 対: 人が押す口と★知らないパスは★人が押す枠である ★★', () {
+      expect(rateLimitFrameFor(authPath), RateLimitFrame.human);
+      expect(rateLimitFrameFor(accountsPath), RateLimitFrame.human);
+      expect(rateLimitFrameFor('/★知らないパス'), RateLimitFrame.human);
+    });
+
+    test('★★ 枠ごとに★別の勘定である（★鍵を混ぜていない）★★', () {
+      var now = DateTime.utc(2026, 9, 2, 12);
+      final limiter = ApiRateLimiter(
+        const RateLimitPolicySet(
+          human: RateLimitPolicy.perWindow(
+              maxRequests: 1, window: Duration(seconds: 60)),
+          deckSync: RateLimitPolicy.perWindow(
+              maxRequests: 1, window: Duration(seconds: 60)),
+        ),
+        clock: () => now,
+      );
+
+      expect(limiter.allow(RateLimitFrame.human, 'a'), isTrue);
+      // ★★ 同じ鍵でも★枠が違えば★まだ通る ★★
+      expect(limiter.allow(RateLimitFrame.deckSync, 'a'), isTrue);
+      // ★★ 対: 同じ枠なら★断られる ★★
+      expect(limiter.allow(RateLimitFrame.human, 'a'), isFalse);
+      expect(limiter.allow(RateLimitFrame.deckSync, 'a'), isFalse);
+      expect(limiter.trackedKeys(RateLimitFrame.human), 1);
+      expect(limiter.trackedKeys(RateLimitFrame.deckSync), 1);
+    });
+  });
+
   group('★★ 数え方（★時刻を渡す。★待たない）★★', () {
     late DateTime now;
     DateTime clock() => now;
@@ -178,7 +254,7 @@ void main() {
         decks: DeckFileStore(
             Directory('${dir.path}${Platform.pathSeparator}decks')),
         accountIterations: 10,
-        rateLimit: policy,
+        rateLimits: RateLimitPolicySet.uniform(policy),
         clock: () => now,
       );
     }
