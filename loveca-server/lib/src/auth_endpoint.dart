@@ -69,6 +69,7 @@ import 'account_endpoint.dart';
 import 'account_file_store.dart';
 import 'auth.dart';
 import 'deck_endpoint.dart';
+import 'dist_endpoint.dart';
 import 'deck_store.dart';
 import 'password_hash.dart';
 import 'rate_limit.dart';
@@ -142,7 +143,19 @@ Future<void> handleApiRequest(
   DeckFileStore decks, {
   int accountIterations = passwordHashIterations,
   RateLimiter? rateLimiter,
+  DistFileStore? dist,
 }) async {
+  // ★★ 配る口は★上限より★前に振り分ける（★対象から外している）★★
+  //   ★**理由は 1 つ** —— ★この口は★★名乗りを 1 度も見ない★★ので、
+  //   ★★固める処理（1.5 秒）を 1 度も通らない★★。→ ★上限を立てた理由が当たらない。
+  //   ★★**「安全である」とは書かない**★★（★押し続けられればファイルを読む費用は掛かる / **D-28**）。
+  //   ★**これは **N-27**（門 ソ）の★★入力である★★**（★論点 (2)「口ごとに枠を分けるか」）。
+  //   ★★**置き場が渡されていなければ★既定の枝で 404 に落ちる**★★（★静かに 200 を返さない）。
+  if (dist != null && request.uri.path.startsWith(distPathPrefix)) {
+    await handleDistRequest(request, dist);
+    return;
+  }
+
   // ★★ 上限は★固める処理より★前に見る（★見なければ守っていない）★★
   //   ★**N-26**（門 セ）の★★既定値★★である。★決定ではない（`src/rate_limit.dart`）。
   //   ★**住所が取れない要求は★1 つの枠にまとめる**（★合成の要求 / 実際には起こらない）。
@@ -203,6 +216,7 @@ Future<HttpServer> serveApi({
   int accountIterations = passwordHashIterations,
   RateLimitPolicy rateLimit = defaultRateLimit,
   DateTime Function()? clock,
+  DistFileStore? dist,
 }) async {
   final server = await HttpServer.bindSecure(
     address ?? InternetAddress.loopbackIPv4,
@@ -212,6 +226,6 @@ Future<HttpServer> serveApi({
   // ★★ 待ち受け 1 つにつき 1 つ数える（★立て直せば忘れる）★★
   final limiter = RateLimiter(rateLimit, clock: clock);
   server.listen((request) => handleApiRequest(request, store, decks,
-      accountIterations: accountIterations, rateLimiter: limiter));
+      accountIterations: accountIterations, rateLimiter: limiter, dist: dist));
   return server;
 }
