@@ -113,4 +113,5 @@ export 'src/boundary.dart';
 export 'src/deck_endpoint.dart';
 export 'src/deck_store.dart';
 export 'src/password_hash.dart';
+export 'src/rate_limit.dart';
 export 'src/json_field.dart';

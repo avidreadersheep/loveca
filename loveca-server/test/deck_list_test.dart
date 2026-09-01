@@ -87,6 +87,10 @@ void main() {
       store: accounts,
       decks: decks,
       accountIterations: 10,
+      // ★★ 上限を外す —— ★この群は★★上限そのものを見ていない★★
+      //   ★`accountIterations` を下げるのと同じ格である（★本番の既定は `defaultRateLimit`）。
+      //   ★★上限を見る群は `test/rate_limit_test.dart` に在る★★。
+      rateLimit: const RateLimitPolicy.unlimited(),
     );
 
     final clientContext = SecurityContext(withTrustedRoots: false)

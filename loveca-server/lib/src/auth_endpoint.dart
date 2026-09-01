@@ -44,6 +44,11 @@
 /// | **404** | ★知らないパス | ★**同じ口に配信のパスが載る**（**D130-7**）ので、★★静かに 200 を返さない★★ |
 /// | **405** | ★メソッド違い | ★**同上** |
 ///
+/// ★★**2026-09-01 追記: ★★429 が増えた**★★（★上限 / **N-26** の★★既定値★★ / `src/rate_limit.dart`）。
+/// ★★**上の表は 1 文字も書き換えない**★★（**D-35** —— ★書いた時点では正しい）。
+/// ★★**429 は★★決定ではない★★**★★ —— ★**N-26** の (1) は★★利用者判断のまま★★である。
+/// ★**429 は★誰の何も漏らさない**（★★名乗りを見る★前★に返る★★ので、★利用者名の存在に触れない）。
+///
 /// ★★**失敗の 2 つは★状態コードでも区別しない**★★ —— ★**「利用者名が無い」も「パスワードが違う」も 401 である**
 /// （**D130** の柵 —— ★★区別すると利用者名の存在が漏れる★★）。
 ///
@@ -66,6 +71,7 @@ import 'auth.dart';
 import 'deck_endpoint.dart';
 import 'deck_store.dart';
 import 'password_hash.dart';
+import 'rate_limit.dart';
 
 /// 認証のパス（決定 **D131-6**）。
 const String authPath = '/auth';
@@ -135,7 +141,19 @@ Future<void> handleApiRequest(
   AccountFileStore store,
   DeckFileStore decks, {
   int accountIterations = passwordHashIterations,
+  RateLimiter? rateLimiter,
 }) async {
+  // ★★ 上限は★固める処理より★前に見る（★見なければ守っていない）★★
+  //   ★**N-26**（門 セ）の★★既定値★★である。★決定ではない（`src/rate_limit.dart`）。
+  //   ★**住所が取れない要求は★1 つの枠にまとめる**（★合成の要求 / 実際には起こらない）。
+  if (rateLimiter != null) {
+    final key = request.connectionInfo?.remoteAddress.address ?? '★不明';
+    if (!rateLimiter.allow(key)) {
+      await _writeStatus(request.response, HttpStatus.tooManyRequests);
+      return;
+    }
+  }
+
   switch (request.uri.path) {
     case authPath:
       await handleAuthRequest(request, store);
@@ -183,13 +201,17 @@ Future<HttpServer> serveApi({
   Object? address,
   int port = 0,
   int accountIterations = passwordHashIterations,
+  RateLimitPolicy rateLimit = defaultRateLimit,
+  DateTime Function()? clock,
 }) async {
   final server = await HttpServer.bindSecure(
     address ?? InternetAddress.loopbackIPv4,
     port,
     context,
   );
+  // ★★ 待ち受け 1 つにつき 1 つ数える（★立て直せば忘れる）★★
+  final limiter = RateLimiter(rateLimit, clock: clock);
   server.listen((request) => handleApiRequest(request, store, decks,
-      accountIterations: accountIterations));
+      accountIterations: accountIterations, rateLimiter: limiter));
   return server;
 }

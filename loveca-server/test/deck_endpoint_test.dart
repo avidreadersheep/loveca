@@ -79,6 +79,10 @@ void main() {
       decks: decks,
       // ★★ 本番は 600000 回。★試験は下げる（★1 回 1.5 秒かかる / §54-2）★★
       accountIterations: 10,
+      // ★★ 上限を外す —— ★この群は★★上限そのものを見ていない★★
+      //   ★`accountIterations` を下げるのと同じ格である（★本番の既定は `defaultRateLimit`）。
+      //   ★★上限を見る群は `test/rate_limit_test.dart` に在る★★。
+      rateLimit: const RateLimitPolicy.unlimited(),
     );
 
     final clientContext = SecurityContext(withTrustedRoots: false)

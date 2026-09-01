@@ -64,7 +64,13 @@ void main() {
 
     // ★★ `decks` は 20 で必須になった（★§32-6 の 20 / **D134-9**）★★
     server = await serveApi(
-        context: context, store: store, decks: DeckFileStore(dir));
+      context: context,
+      store: store,
+      decks: DeckFileStore(dir),
+      // ★★ 上限を外す —— ★この群は★★上限そのものを見ていない★★
+      //   ★★上限を見る群は `test/rate_limit_test.dart` に在る★★。
+      rateLimit: const RateLimitPolicy.unlimited(),
+    );
 
     // ★★ 自己署名なので★この証明書だけを信頼する ★★
     //   ★`badCertificateCallback` で素通しにしない —— ★**素通しにすると
