@@ -68,11 +68,14 @@ void main() {
   });
 
   group('★★ 枠（**N-27** の 論点 (2) の★★既定値★★ / 2026-09-02）★★', () {
-    test('★★ 既定は★人が押す枠 5 / ★同期の枠 33 である（★値そのものの固定）★★', () {
+    test('★★ 既定は★人が押す枠 5 / ★同期の枠 25 である（★値そのものの固定）★★', () {
       // ★★ 導き方の正は `src/rate_limit.dart` の doc ★★
       //   ★**60000 ms ÷ 1573 ms ＝ 38**（★★2026-09-02 実測 / この機械★★）。★**38 − 5 ＝ 33。**
+      // ★★ 2026-09-02 追記: ★同じ機械で測り直し、★★規則どおり最大を採った★★ ★★
+      //   ★**上の 2 行は 1 文字も書き換えない**（**D-35** —— ★その分母では真である）。
+      //   ★**60000 ms ÷ ★★1949 ms★★ ＝ 30。★30 − 5 ＝ ★★25★★。**
       expect(defaultRateLimits.human.maxRequests, 5);
-      expect(defaultRateLimits.deckSync.maxRequests, 33);
+      expect(defaultRateLimits.deckSync.maxRequests, 25);
       expect(defaultRateLimits.human.window, const Duration(seconds: 60));
       expect(defaultRateLimits.deckSync.window, const Duration(seconds: 60));
     });
@@ -80,11 +83,11 @@ void main() {
     test('★★ 合計は★測った上限を超えない（★★導き方そのものを固定する★★）★★', () {
       // ★★ これが「値が導かれている」ことの対である ★★
       //   ★**片方を上げたら★もう片方を下げないと落ちる。**
-      const measuredCostMs = 1573;
+      const measuredCostMs = 1949;
       const windowMs = 60 * 1000;
       final ceiling = windowMs ~/ measuredCostMs;
 
-      expect(ceiling, 38, reason: '★★2026-09-02 実測 / ★この機械★★');
+      expect(ceiling, 30, reason: '★★2026-09-02 実測 / ★この機械★★');
       expect(
         defaultRateLimits.human.maxRequests +
             defaultRateLimits.deckSync.maxRequests,
@@ -454,23 +457,23 @@ void main() {
   // ★★ 分母を動かしたら★★この群が落ちる。★それが正しい ★★
   // ★**落ちたら★数を合わせるのではなく、★★`tool/measure_hash_cost.dart` の出力と突き合わせること★★。**
   // ★**先例は **D-24** / `docs/同期設計メモ.md` §57**（★いまの挙動を固定し、★動かしたら落ちる形）。
-  group('★★ 今日の分母（1573 ms）での値 —— ★★動かしたら落ちる（合図）★★', () {
-    test('★ 分母は 1573 ms', () {
-      expect(measuredPasswordHashCostMs, 1573);
+  group('★★ 今日の分母（1949 ms）での値 —— ★★動かしたら落ちる（合図）★★', () {
+    test('★ 分母は 1949 ms', () {
+      expect(measuredPasswordHashCostMs, 1949);
     });
 
-    test('★ 合計 38 / ★人が押す枠 5 / ★同期の枠 33', () {
-      expect(totalRateLimitBudget, 38);
+    test('★ 合計 30 / ★人が押す枠 5 / ★同期の枠 25', () {
+      expect(totalRateLimitBudget, 30);
       expect(humanRateLimitBudget, 5);
-      expect(syncRateLimitBudget, 33);
+      expect(syncRateLimitBudget, 25);
     });
 
-    test('★★ 1 台が同期できるデッキは 32 個まで（★★33 は 1573 に依る★★）★★', () {
+    test('★★ 1 台が同期できるデッキは 24 個まで（★★25 は 1949 に依る★★）★★', () {
       // ★**1 回の同期 ＝ 1 ＋ デッキの数**（★§10 の **N-27** の事実 2）。
       // ★★**この数は★分母が動けば動く。★入力ではなく★★帰結である★★。**
-      expect(syncRateLimitBudget - 1, 32);
+      expect(syncRateLimitBudget - 1, 24);
       // ★同じ住所の 2 台（**D107-2**）—— ★2 × (1 ＋ D) ≤ 33。
-      expect((syncRateLimitBudget ~/ 2) - 1, 15);
+      expect((syncRateLimitBudget ~/ 2) - 1, 11);
     });
   });
 
