@@ -171,6 +171,12 @@ loveca-server/   Dart: 同期サーバー（★Flutter 非依存。決定 D126�
   test/core_boundary_test.dart  ★見張り（D115-7 の (c) ＝ 走査テスト）
 ```
 
+★★**2026-09-01 追記: `loveca-ui/android/` を足した**★★（★Phase 5 の着手 / ★`flutter create --platforms=android`）。
+★★**上の構成図は 1 文字も書き換えない**★★（**D-35** —— ★書いた時点では正しい）。
+★**`windows/` と★同じ格である**（★ランナー。★`flutter create` が生成した実プロダクトの一部）。
+★**`android/.gitignore` が★`local.properties` / `gradlew` / 生成物を無視する**（★§3 の見張りは★★0 件のままである★★ / ★実測）。
+★★**`.metadata` は★`windows` の行を★手で戻した**★★ —— ★**`flutter create` が★★置き換えてしまった★★**（★実測）。
+
 ★**`lib/` `windows/` `pubspec.yaml` と `spike/` は扱いが違う（決定 D51）。**
 前者は本実装そのもの。後者は D42〜D50 の数値の再現手段であり、
 **Phase 3b 完了時に削除を再判断する。**
