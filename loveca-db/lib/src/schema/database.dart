@@ -36,6 +36,7 @@ part 'database.g.dart';
     DeckEntries,
     DeckEditOps,
     DeckSyncMarks,
+    SyncIdentities,
     MasterStates,
     MasterFiles,
     ImportIssues,
@@ -48,11 +49,12 @@ class LovecaDatabase extends _$LovecaDatabase {
   /// ★3: `deck_entries` に `ord` を足した（決定 D65 / **D99**）。
   /// ★4: 編集ログの表 `deck_edit_ops` を足した（決定 **D110-1**）。
   /// ★5: 前回同期時点の器 `deck_sync_marks` を足した（決定 **D114-1** / **N-10**）。
+  /// ★6: 同定の量の器 `sync_identities` を足した（決定 **D125-2** ＝ 帰-2 / §32-6 の **19**）。
   ///
   /// 上げるときは必ず [migration] の `onUpgrade` に対応する手順を足すこと。
   /// 版だけ上げて手順を足さないと、既存の端末が古い形のまま動き続ける。
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -127,6 +129,28 @@ class LovecaDatabase extends _$LovecaDatabase {
             // ★`m.createAll()` ではない —— それは**既存の表も作り直そうとする**。
             //   足した 1 つだけを名指しする（`from < 4` と同じ）。
             await m.createTable(deckSyncMarks);
+          }
+          if (from < 6) {
+            // ★★ v5 -> v6: 同定の量の器を作る（決定 **D125-2** ＝ 帰-2 / §32-6 の **19**）★★
+            //
+            // ★`from < 4` / `from < 5` と同じ格である。**既存の行を 1 行も読まず 1 行も書かない。**
+            //   `decks` / `deck_entries` / `deck_edit_ops` / `deck_sync_marks` に 1 文字も触れない。
+            //
+            // ★★ 「触らない」は「安全」の意味ではない ★★
+            //   `schemaVersion` は上がるので、**既存インストールの DB は必ずここを通る。**
+            //   通る以上、無傷であることは**測って確かめる**
+            //   （`test/migration_test.dart` の v5 -> v6 の群）。
+            //
+            // ★決定 **D109**: 移行は「システムが動かした」側なので
+            //   `decks.updatedAt` を動かさない。★動かさないことも上のテストが見る。
+            //
+            // ★★ 既存の DB に★行を 1 つも作らない ★★
+            //   ★**「まだ名乗っていない」は★行の不在で表す**（`SyncIdentities` の doc）。
+            //   ★既定の行を入れると、★★移行が「名乗った」状態を作ってしまう★★。
+            //
+            // ★`m.createAll()` ではない —— それは**既存の表も作り直そうとする**。
+            //   足した 1 つだけを名指しする（`from < 4` / `from < 5` と同じ）。
+            await m.createTable(syncIdentities);
           }
         },
         beforeOpen: (details) async {

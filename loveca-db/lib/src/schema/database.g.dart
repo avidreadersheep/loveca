@@ -5947,6 +5947,205 @@ class DeckSyncMarksCompanion extends UpdateCompanion<DeckSyncMarkRow> {
   }
 }
 
+class $SyncIdentitiesTable extends SyncIdentities
+    with TableInfo<$SyncIdentitiesTable, SyncIdentityRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SyncIdentitiesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _userNameMeta = const VerificationMeta(
+    'userName',
+  );
+  @override
+  late final GeneratedColumn<String> userName = GeneratedColumn<String>(
+    'user_name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, userName];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'sync_identities';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<SyncIdentityRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('user_name')) {
+      context.handle(
+        _userNameMeta,
+        userName.isAcceptableOrUnknown(data['user_name']!, _userNameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_userNameMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  SyncIdentityRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return SyncIdentityRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      userName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}user_name'],
+      )!,
+    );
+  }
+
+  @override
+  $SyncIdentitiesTable createAlias(String alias) {
+    return $SyncIdentitiesTable(attachedDatabase, alias);
+  }
+}
+
+class SyncIdentityRow extends DataClass implements Insertable<SyncIdentityRow> {
+  /// 単一行の印（`id = 0`）。★`master_states` と同じ形である。
+  final int id;
+
+  /// いまどのアカウントとして繋いでいるか。
+  ///
+  /// ★★ 識別子は★利用者名である（**D130-1** / **D129-1**）★★
+  /// ★アドレスではない（**D130** —— ★★(丁)（個人情報が残るか）の重みで選ばれた★★）。
+  /// ★★**正規化しない**★★ —— ★「同じ」の定義は★★保管の実装が持つ★★（★§46-14 の 2 /
+  /// `loveca-server` の `AccountFileStore`）。★**ここで小文字に畳むと★片側だけの規則になる。**
+  final String userName;
+  const SyncIdentityRow({required this.id, required this.userName});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['user_name'] = Variable<String>(userName);
+    return map;
+  }
+
+  SyncIdentitiesCompanion toCompanion(bool nullToAbsent) {
+    return SyncIdentitiesCompanion(id: Value(id), userName: Value(userName));
+  }
+
+  factory SyncIdentityRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return SyncIdentityRow(
+      id: serializer.fromJson<int>(json['id']),
+      userName: serializer.fromJson<String>(json['userName']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'userName': serializer.toJson<String>(userName),
+    };
+  }
+
+  SyncIdentityRow copyWith({int? id, String? userName}) =>
+      SyncIdentityRow(id: id ?? this.id, userName: userName ?? this.userName);
+  SyncIdentityRow copyWithCompanion(SyncIdentitiesCompanion data) {
+    return SyncIdentityRow(
+      id: data.id.present ? data.id.value : this.id,
+      userName: data.userName.present ? data.userName.value : this.userName,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SyncIdentityRow(')
+          ..write('id: $id, ')
+          ..write('userName: $userName')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, userName);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SyncIdentityRow &&
+          other.id == this.id &&
+          other.userName == this.userName);
+}
+
+class SyncIdentitiesCompanion extends UpdateCompanion<SyncIdentityRow> {
+  final Value<int> id;
+  final Value<String> userName;
+  const SyncIdentitiesCompanion({
+    this.id = const Value.absent(),
+    this.userName = const Value.absent(),
+  });
+  SyncIdentitiesCompanion.insert({
+    this.id = const Value.absent(),
+    required String userName,
+  }) : userName = Value(userName);
+  static Insertable<SyncIdentityRow> custom({
+    Expression<int>? id,
+    Expression<String>? userName,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (userName != null) 'user_name': userName,
+    });
+  }
+
+  SyncIdentitiesCompanion copyWith({Value<int>? id, Value<String>? userName}) {
+    return SyncIdentitiesCompanion(
+      id: id ?? this.id,
+      userName: userName ?? this.userName,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (userName.present) {
+      map['user_name'] = Variable<String>(userName.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SyncIdentitiesCompanion(')
+          ..write('id: $id, ')
+          ..write('userName: $userName')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $MasterStatesTable extends MasterStates
     with TableInfo<$MasterStatesTable, MasterStateRow> {
   @override
@@ -7124,6 +7323,7 @@ abstract class _$LovecaDatabase extends GeneratedDatabase {
   late final $DeckEntriesTable deckEntries = $DeckEntriesTable(this);
   late final $DeckEditOpsTable deckEditOps = $DeckEditOpsTable(this);
   late final $DeckSyncMarksTable deckSyncMarks = $DeckSyncMarksTable(this);
+  late final $SyncIdentitiesTable syncIdentities = $SyncIdentitiesTable(this);
   late final $MasterStatesTable masterStates = $MasterStatesTable(this);
   late final $MasterFilesTable masterFiles = $MasterFilesTable(this);
   late final $ImportIssuesTable importIssues = $ImportIssuesTable(this);
@@ -7179,6 +7379,7 @@ abstract class _$LovecaDatabase extends GeneratedDatabase {
     deckEntries,
     deckEditOps,
     deckSyncMarks,
+    syncIdentities,
     masterStates,
     masterFiles,
     importIssues,
@@ -12171,6 +12372,137 @@ typedef $$DeckSyncMarksTableProcessedTableManager =
       DeckSyncMarkRow,
       PrefetchHooks Function()
     >;
+typedef $$SyncIdentitiesTableCreateCompanionBuilder =
+    SyncIdentitiesCompanion Function({Value<int> id, required String userName});
+typedef $$SyncIdentitiesTableUpdateCompanionBuilder =
+    SyncIdentitiesCompanion Function({Value<int> id, Value<String> userName});
+
+class $$SyncIdentitiesTableFilterComposer
+    extends Composer<_$LovecaDatabase, $SyncIdentitiesTable> {
+  $$SyncIdentitiesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get userName => $composableBuilder(
+    column: $table.userName,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$SyncIdentitiesTableOrderingComposer
+    extends Composer<_$LovecaDatabase, $SyncIdentitiesTable> {
+  $$SyncIdentitiesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get userName => $composableBuilder(
+    column: $table.userName,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$SyncIdentitiesTableAnnotationComposer
+    extends Composer<_$LovecaDatabase, $SyncIdentitiesTable> {
+  $$SyncIdentitiesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get userName =>
+      $composableBuilder(column: $table.userName, builder: (column) => column);
+}
+
+class $$SyncIdentitiesTableTableManager
+    extends
+        RootTableManager<
+          _$LovecaDatabase,
+          $SyncIdentitiesTable,
+          SyncIdentityRow,
+          $$SyncIdentitiesTableFilterComposer,
+          $$SyncIdentitiesTableOrderingComposer,
+          $$SyncIdentitiesTableAnnotationComposer,
+          $$SyncIdentitiesTableCreateCompanionBuilder,
+          $$SyncIdentitiesTableUpdateCompanionBuilder,
+          (
+            SyncIdentityRow,
+            BaseReferences<
+              _$LovecaDatabase,
+              $SyncIdentitiesTable,
+              SyncIdentityRow
+            >,
+          ),
+          SyncIdentityRow,
+          PrefetchHooks Function()
+        > {
+  $$SyncIdentitiesTableTableManager(
+    _$LovecaDatabase db,
+    $SyncIdentitiesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SyncIdentitiesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$SyncIdentitiesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$SyncIdentitiesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> userName = const Value.absent(),
+              }) => SyncIdentitiesCompanion(id: id, userName: userName),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String userName,
+              }) => SyncIdentitiesCompanion.insert(id: id, userName: userName),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$SyncIdentitiesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$LovecaDatabase,
+      $SyncIdentitiesTable,
+      SyncIdentityRow,
+      $$SyncIdentitiesTableFilterComposer,
+      $$SyncIdentitiesTableOrderingComposer,
+      $$SyncIdentitiesTableAnnotationComposer,
+      $$SyncIdentitiesTableCreateCompanionBuilder,
+      $$SyncIdentitiesTableUpdateCompanionBuilder,
+      (
+        SyncIdentityRow,
+        BaseReferences<_$LovecaDatabase, $SyncIdentitiesTable, SyncIdentityRow>,
+      ),
+      SyncIdentityRow,
+      PrefetchHooks Function()
+    >;
 typedef $$MasterStatesTableCreateCompanionBuilder =
     MasterStatesCompanion Function({
       Value<int> id,
@@ -12840,6 +13172,8 @@ class $LovecaDatabaseManager {
       $$DeckEditOpsTableTableManager(_db, _db.deckEditOps);
   $$DeckSyncMarksTableTableManager get deckSyncMarks =>
       $$DeckSyncMarksTableTableManager(_db, _db.deckSyncMarks);
+  $$SyncIdentitiesTableTableManager get syncIdentities =>
+      $$SyncIdentitiesTableTableManager(_db, _db.syncIdentities);
   $$MasterStatesTableTableManager get masterStates =>
       $$MasterStatesTableTableManager(_db, _db.masterStates);
   $$MasterFilesTableTableManager get masterFiles =>
