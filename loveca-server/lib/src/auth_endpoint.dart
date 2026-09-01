@@ -50,7 +50,10 @@ library;
 import 'dart:convert';
 import 'dart:io';
 
+import 'account_endpoint.dart';
+import 'account_file_store.dart';
 import 'auth.dart';
+import 'password_hash.dart';
 
 /// 認証のパス（決定 **D131-6**）。
 const String authPath = '/auth';
@@ -64,11 +67,6 @@ Future<void> handleAuthRequest(
   HttpRequest request,
   AccountStore store,
 ) async {
-  if (request.uri.path != authPath) {
-    // ★同じ口に配信のパスが載る（D130-7）。★静かに 200 を返さない。
-    await _writeStatus(request.response, HttpStatus.notFound);
-    return;
-  }
   if (request.method != 'POST') {
     await _writeStatus(request.response, HttpStatus.methodNotAllowed);
     return;
@@ -111,6 +109,26 @@ Future<void> _writeStatus(HttpResponse response, int status) async {
   await response.close();
 }
 
+/// パスで振り分ける（決定 **D130-7** —— ★同じ口。★パスで分ける）。
+///
+/// ★★ 知らないパスは 404（★静かに 200 を返さない）★★
+/// ★**同じ口に★配信のパスも載る**（**D130-7**）。★**まだ無い。**
+Future<void> handleApiRequest(
+  HttpRequest request,
+  AccountFileStore store, {
+  int accountIterations = passwordHashIterations,
+}) async {
+  switch (request.uri.path) {
+    case authPath:
+      await handleAuthRequest(request, store);
+    case accountsPath:
+      await handleAccountRequest(request, store,
+          iterations: accountIterations);
+    default:
+      await _writeStatus(request.response, HttpStatus.notFound);
+  }
+}
+
 /// 待ち受けを立てる（決定 **D131-2** / **D131-3**）。
 ///
 /// ★★ [context] は★必須である。★省略できない ★★
@@ -119,17 +137,23 @@ Future<void> _writeStatus(HttpResponse response, int status) async {
 ///
 /// ★★ 証明書の出所を知らない ★★
 /// ★**[context] は★呼び出し側が組み立てる**（**D131-3**）。★**N-24** の (1) は★ここに現れない。
-Future<HttpServer> serveAuth({
+///
+/// ★★ 2026-09-01: `serveAuth` から改名した（決定 **D133-10**）★★
+/// ★**アカウントを作る口（**17-2**）が入り、★★1 つの待ち受けが 2 つのパスを持つ★★ようになった。
+/// ★**「認証だけを待ち受ける」という名前が★★実物と食い違った★★**（★型は **D-15 (l)**）。
+Future<HttpServer> serveApi({
   required SecurityContext context,
-  required AccountStore store,
+  required AccountFileStore store,
   Object? address,
   int port = 0,
+  int accountIterations = passwordHashIterations,
 }) async {
   final server = await HttpServer.bindSecure(
     address ?? InternetAddress.loopbackIPv4,
     port,
     context,
   );
-  server.listen((request) => handleAuthRequest(request, store));
+  server.listen((request) => handleApiRequest(request, store,
+      accountIterations: accountIterations));
   return server;
 }

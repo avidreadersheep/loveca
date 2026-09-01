@@ -19,16 +19,6 @@ const _fixtureDir = 'test/fixtures/tls';
 const _certPath = '$_fixtureDir/localhost-TEST-ONLY.cert.pem';
 const _keyPath = '$_fixtureDir/localhost-TEST-ONLY.key.pem';
 
-/// ★試験用の保管（★ファイルを触らない）。
-class _MapStore implements AccountStore {
-  _MapStore(this._rows);
-
-  final Map<String, AccountRecord> _rows;
-
-  @override
-  AccountRecord? findByUserName(String userName) => _rows[userName];
-}
-
 AccountRecord _account(String userName, String password) => AccountRecord(
       userName: userName,
       passwordHash: encodePasswordHash(password,
@@ -57,16 +47,22 @@ Future<({int status, String body})> _post(
 void main() {
   late HttpServer server;
   late HttpClient client;
+  late Directory dir;
 
   setUp(() async {
     final context = SecurityContext()
       ..useCertificateChain(_certPath)
       ..usePrivateKey(_keyPath);
 
-    server = await serveAuth(
-      context: context,
-      store: _MapStore({'みつき': _account('みつき', 'ひみつ')}),
-    );
+    // ★★ 2026-09-01: `serveAuth` から `serveApi` に改名した（決定 **D133-10**）★★
+    //   ★1 つの待ち受けが★★2 つのパスを持つ★★ようになった（★アカウントを作る口が入った）。
+    //   ★保管は★ファイルの実装を使う（★`serveApi` が★書き込みを要るため）。
+    dir = Directory.systemTemp.createTempSync('loveca_auth_endpoint_test');
+    final store = AccountFileStore.open(
+        '${dir.path}${Platform.pathSeparator}accounts.json')
+      ..add(_account('みつき', 'ひみつ'));
+
+    server = await serveApi(context: context, store: store);
 
     // ★★ 自己署名なので★この証明書だけを信頼する ★★
     //   ★`badCertificateCallback` で素通しにしない —— ★**素通しにすると
@@ -79,6 +75,7 @@ void main() {
   tearDown(() async {
     client.close(force: true);
     await server.close(force: true);
+    if (dir.existsSync()) dir.deleteSync(recursive: true);
   });
 
   group('★★ 柵 —— ★★TLS でなければつながらない（決定 D131-2）★★', () {
