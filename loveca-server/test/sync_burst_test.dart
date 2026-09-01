@@ -181,18 +181,18 @@ void main() {
       expect(got.where((s) => s == 429), isEmpty);
     });
 
-    test('★★ デッキが 32 個なら★1 回も断られない（★★ちょうど上限★★）★★', () async {
+    test('★★ 枠より 1 つ少ないデッキなら★1 回も断られない（★★ちょうど上限★★）★★', () async {
       // ★1 ＋ 32 = 33 ＝ 同期の枠そのもの。
-      final got = await syncOnce(32);
+      final got = await syncOnce(syncRateLimitBudget - 1);
 
-      expect(got, hasLength(33));
+      expect(got, hasLength(syncRateLimitBudget));
       expect(got.where((s) => s == 429), isEmpty);
     });
 
-    test('★★ デッキが 33 個なら★★断られる★★（★★値で先送りしただけである★★）★★', () async {
+    test('★★ デッキが★枠と同じ数なら★★断られる★★（★★値で先送りしただけである★★）★★', () async {
       // ★★ 「もう断られない」ではない ★★
       //   ★**1 ＋ 33 = 34 > 33**。→ ★★D を大きくすれば必ず破れる★★（★形の帰結）。
-      final got = await syncOnce(33);
+      final got = await syncOnce(syncRateLimitBudget);
 
       expect(got.last, 429);
       expect(got.where((s) => s == 429), hasLength(1));
@@ -208,18 +208,18 @@ void main() {
       expect(second.where((s) => s == 429), isEmpty);
     });
 
-    test('★★ 2 台 × デッキ 16 個で★★断られる★★（★どちらも 1 台なら通るのに）★★', () async {
+    test('★★ 2 台 × デッキ★枠の半分で★★断られる★★（★どちらも 1 台なら通るのに）★★', () async {
       // ★**1 台なら 1 ＋ 16 = 17 ≤ 33 で通る**（★下の対）。
       // ★★**2 台だと 34 > 33**★★ —— ★**枠は 1 人ぶんではない**（`rate_limit.dart` の代償 1）。
-      final first = await syncOnce(16);
-      final second = await syncOnce(16);
+      final first = await syncOnce(syncRateLimitBudget ~/ 2);
+      final second = await syncOnce(syncRateLimitBudget ~/ 2);
 
       expect(first.where((s) => s == 429), isEmpty);
       expect(second.where((s) => s == 429), hasLength(1));
     });
 
     test('★★ 対: 1 台だけなら★同じ回数でも通る ★★', () async {
-      final got = await syncOnce(16);
+      final got = await syncOnce(syncRateLimitBudget ~/ 2);
 
       expect(got.where((s) => s == 429), isEmpty);
     });
@@ -229,7 +229,7 @@ void main() {
     test('★★ 同期を上限まで使っても★名乗る口は★まだ通る ★★', () async {
       // ★★ これが「分けた」ことの実物である ★★
       //   ★**枠が 1 つなら、★同期で使い切ったあと★名乗れない。**
-      final got = await syncOnce(32);
+      final got = await syncOnce(syncRateLimitBudget - 1);
       expect(got.where((s) => s == 429), isEmpty);
 
       final auth = await _status(client, server.port, authPath, creds({}));
@@ -240,11 +240,11 @@ void main() {
     test('★★ 対: 人が押す枠は★据え置き（★5 回で打ち止め）★★', () async {
       // ★★ 分けたことで★人が押す枠が緩んでいないことを見る ★★
       final got = <int>[];
-      for (var i = 0; i < 6; i++) {
+      for (var i = 0; i < humanRateLimitBudget + 1; i++) {
         got.add(await _status(client, server.port, authPath, creds({})));
       }
 
-      expect(got.take(5).where((s) => s == 429), isEmpty);
+      expect(got.take(humanRateLimitBudget).where((s) => s == 429), isEmpty);
       expect(got.last, 429);
     });
 
@@ -252,22 +252,22 @@ void main() {
       // ★★ 同期の枠に入れていないことを見る ★★
       //   ★**入れていれば、★同期を上限まで使ったあと★知らないパスも 429 になる。**
       final got = <int>[];
-      for (var i = 0; i < 6; i++) {
+      for (var i = 0; i < humanRateLimitBudget + 1; i++) {
         got.add(await _status(client, server.port, '/★知らないパス', creds({})));
       }
 
-      expect(got.take(5).every((s) => s == 404), isTrue);
+      expect(got.take(humanRateLimitBudget).every((s) => s == 404), isTrue);
       expect(got.last, 429);
     });
   });
 
   group('★★ 断られた同期は★窓が過ぎれば通る（★恒久に締め出さない）★★', () {
     test('★★ 61 秒あとに投げ直すと通る ★★', () async {
-      final blocked = await syncOnce(33);
+      final blocked = await syncOnce(syncRateLimitBudget);
       expect(blocked.last, 429);
 
       now = now.add(const Duration(seconds: 61));
-      final again = await syncOnce(33);
+      final again = await syncOnce(syncRateLimitBudget);
 
       expect(again.where((s) => s == 429), hasLength(1),
           reason: '★★窓が空いても★1 回の同期そのものが上限を超えている★★');

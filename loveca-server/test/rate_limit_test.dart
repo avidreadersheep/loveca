@@ -15,6 +15,8 @@ import 'dart:io';
 import 'package:loveca_server/loveca_server.dart';
 import 'package:test/test.dart';
 
+import 'support/directive_scan.dart';
+
 const _fixtureDir = 'test/fixtures/tls';
 const _certPath = '$_fixtureDir/localhost-TEST-ONLY.cert.pem';
 const _keyPath = '$_fixtureDir/localhost-TEST-ONLY.key.pem';
@@ -401,4 +403,164 @@ void main() {
       );
     });
   });
+
+  // ★★ 導出 —— ★上限を「測定値から導く形」で置いたこと（★★運転指示【0】(1)★★）★★
+  //
+  // ★★ ここは★値ではなく★★規則★★を見る ★★
+  // ★**値だけを見ると、★★どの数がどこから来たかが分からない★★。**
+  // ★**分母（`measuredPasswordHashCostMs`）が動いたとき、★何が動いて何が動かないかを固定する。**
+  group('★★ 導出 —— ★上限は★分母から導く（★固定値ではない）★★', () {
+    test('★★ 合計の枠は★窓に★入りきる（★切り上げていない）★★', () {
+      // ★**上限の定義そのもの** —— ★通す回数 × 1 回の費用 ≤ 窓。
+      expect(
+        totalRateLimitBudget * measuredPasswordHashCostMs,
+        lessThanOrEqualTo(rateLimitWindowMs),
+      );
+    });
+
+    test('★★ 合計の枠は★これ以上増やせない（★★最大である★★）★★', () {
+      // ★**「入りきる」だけなら 1 でも通る。★★最大であることは別に見る★★**（**D-27**）。
+      expect(
+        (totalRateLimitBudget + 1) * measuredPasswordHashCostMs,
+        greaterThan(rateLimitWindowMs),
+      );
+    });
+
+    test('★★ 2 つの枠は★合計を★超えない。★★余らせもしない★★', () {
+      expect(humanRateLimitBudget + syncRateLimitBudget, totalRateLimitBudget);
+    });
+
+    test('★ 同期の枠は 1 以上（★★0 以下は「全部断る」になる★★）', () {
+      expect(syncRateLimitBudget, greaterThan(0));
+    });
+
+    test('★★ 既定値は★導いた値を★そのまま使う（★字面を埋め込んでいない）★★', () {
+      // ★**仕込み: ★どちらかに数字を直に書くと落ちる。**
+      expect(defaultRateLimit.maxRequests, humanRateLimitBudget);
+      expect(defaultSyncRateLimit.maxRequests, syncRateLimitBudget);
+      expect(defaultRateLimits.human.maxRequests, humanRateLimitBudget);
+      expect(defaultRateLimits.deckSync.maxRequests, syncRateLimitBudget);
+    });
+
+    test('★★ 窓は★2 つの枠で同じ（★★合計の勘定が成り立つ前提★★）★★', () {
+      // ★**窓が違えば「合計 38」の算術そのものが成り立たない。**
+      expect(defaultRateLimit.window.inMilliseconds, rateLimitWindowMs);
+      expect(defaultSyncRateLimit.window.inMilliseconds, rateLimitWindowMs);
+    });
+  });
+
+  // ★★ 今日の分母での値 —— ★★これは「合図」である ★★
+  //
+  // ★★ 分母を動かしたら★★この群が落ちる。★それが正しい ★★
+  // ★**落ちたら★数を合わせるのではなく、★★`tool/measure_hash_cost.dart` の出力と突き合わせること★★。**
+  // ★**先例は **D-24** / `docs/同期設計メモ.md` §57**（★いまの挙動を固定し、★動かしたら落ちる形）。
+  group('★★ 今日の分母（1573 ms）での値 —— ★★動かしたら落ちる（合図）★★', () {
+    test('★ 分母は 1573 ms', () {
+      expect(measuredPasswordHashCostMs, 1573);
+    });
+
+    test('★ 合計 38 / ★人が押す枠 5 / ★同期の枠 33', () {
+      expect(totalRateLimitBudget, 38);
+      expect(humanRateLimitBudget, 5);
+      expect(syncRateLimitBudget, 33);
+    });
+
+    test('★★ 1 台が同期できるデッキは 32 個まで（★★33 は 1573 に依る★★）★★', () {
+      // ★**1 回の同期 ＝ 1 ＋ デッキの数**（★§10 の **N-27** の事実 2）。
+      // ★★**この数は★分母が動けば動く。★入力ではなく★★帰結である★★。**
+      expect(syncRateLimitBudget - 1, 32);
+      // ★同じ住所の 2 台（**D107-2**）—— ★2 × (1 ＋ D) ≤ 33。
+      expect((syncRateLimitBudget ~/ 2) - 1, 15);
+    });
+  });
+
+
+  // ★★ 走査 —— ★★字面を埋め込んでいないこと（★★対を測って足した★★）★★
+  //
+  // ★★ 引き金: ★上の「導いた値をそのまま使う」の対が★★0 件だった★★（**D-27**）★★
+  // ★**仕込み（★`maxRequests: 33` と直に書く）を当てても★★1 件も落ちなかった★★。**
+  // ★**原因は★★対の形★★である** —— ★**今日の分母では★字面 33 と導いた値が★★等しい★★**ので、
+  //   ★**値を比べる限り★★区別しようがない★★**（★★本命の空振りでも★仕込みの弱さでもない★★ ——
+  //   ★★分母も一緒に動かす 2 段の仕込みでは★9 件落ちた★★）。
+  // ★**先例は §32-7 の (B)(D)**（★「型でしか見えないものは、型でしか守れない」）。
+  // → ★★**値では見えないので★★ソースの字面を見る★★。**
+  group('★★ 走査 —— ★既定値の宣言に★数字を直に書いていない ★★', () {
+    // ★★ 純粋関数にする —— ★★合成の入力で対を作れるようにするため★★ ★★
+    // ★**先例は `support/directive_scan.dart` の doc**（★「0 件は『無い』と『見えていない』の
+    //   区別がつかない」）。★**ファイルを直に読む形だと★★コメント外しに対が届かない★★**（★実測: 0 件）。
+    String argOfIn(String source, String declaration) {
+      final src = stripDartComments(source);
+      final at = src.indexOf(declaration);
+      expect(at, isNot(-1), reason: '★宣言そのものが見つからない');
+      final close = src.indexOf(');', at);
+      final chunk = src.substring(at, close);
+      final m = RegExp(r'maxRequests:\s*([^,]+),').firstMatch(chunk);
+      expect(m, isNotNull, reason: '★maxRequests の引数が読めない');
+      return m!.group(1)!.trim();
+    }
+
+    String argOf(String declaration) => argOfIn(
+          File('lib/src/rate_limit.dart').readAsStringSync(),
+          declaration,
+        );
+
+    test('★★ 同期の枠は★識別子で書かれている（★数字ではない）★★', () {
+      final arg = argOf('const RateLimitPolicy defaultSyncRateLimit');
+      expect(int.tryParse(arg), isNull,
+          reason: '★★数字を直に書くと★分母が動いても付いてこない★★');
+      expect(arg, 'syncRateLimitBudget');
+    });
+
+    test('★ 人が押す枠も★識別子で書かれている', () {
+      final arg = argOf('const RateLimitPolicy defaultRateLimit');
+      expect(int.tryParse(arg), isNull);
+      expect(arg, 'humanRateLimitBudget');
+    });
+
+    test('★★ 対: ★doc の中の宣言を★コメント外しが落とす（★★D-30★★）★★', () {
+      // ★★ この repo は★doc の中に★宣言をそのまま写す（★D-30 が「必ず含む」と書いている）★★
+      //   ★**外さないと★★doc の写しのほうが先に当たる★★**（★合成の入力で固定した）。
+      final lines = <String>[
+        '/// ★doc の写し: const RateLimitPolicy defaultSyncRateLimit ='
+            ' RateLimitPolicy.perWindow(maxRequests: 33, window: w);',
+        'const RateLimitPolicy defaultSyncRateLimit = RateLimitPolicy.perWindow(',
+        '  maxRequests: syncRateLimitBudget,',
+        '  window: Duration(milliseconds: rateLimitWindowMs),',
+        ');',
+      ];
+      final src = lines.join(String.fromCharCode(10));
+
+      expect(
+        argOfIn(src, 'const RateLimitPolicy defaultSyncRateLimit'),
+        'syncRateLimitBudget',
+      );
+    });
+
+    test('★★ 対: ★コメント外しを通さないと★doc の写しに当たる（★陽性対照）★★', () {
+      final lines = <String>[
+        '/// ★doc の写し: const RateLimitPolicy defaultSyncRateLimit ='
+            ' RateLimitPolicy.perWindow(maxRequests: 33, window: w);',
+        'const RateLimitPolicy defaultSyncRateLimit = RateLimitPolicy.perWindow(',
+        '  maxRequests: syncRateLimitBudget,',
+        ');',
+      ];
+      final raw = lines.join(String.fromCharCode(10));
+      final at = raw.indexOf('const RateLimitPolicy defaultSyncRateLimit');
+      final chunk = raw.substring(at, raw.indexOf(');', at));
+      final m = RegExp(r'maxRequests:\s*([^,]+),').firstMatch(chunk);
+
+      expect(int.tryParse(m!.group(1)!.trim()), 33,
+          reason: '★★外さなければ★doc の 33 に当たる ＝ ★守りが働いている証拠★★');
+    });
+
+    test('★★ 対: ★この走査は★数字を実際に見分ける（★陽性対照）★★', () {
+      // ★★ 走査そのものが空振りしていないことを★合成で見る（**D-10**）★★
+      // ★★ D-38 を踏んだ: ★道具の経路で★逆斜線が畳まれ、★改行の印が★本物の改行に化けた ★★
+      //   → ★**このファイルには★★逆斜線の並びを 1 つも書かない★★形にした**（★1 行に畳んだ）。
+      final chunk = 'const RateLimitPolicy x = RateLimitPolicy.perWindow(maxRequests: 33, window: Duration(milliseconds: 60000));';
+      final m = RegExp(r'maxRequests:\s*([^,]+),').firstMatch(chunk);
+      expect(int.tryParse(m!.group(1)!.trim()), 33);
+    });
+  });
+
 }
