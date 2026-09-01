@@ -125,3 +125,4 @@ export 'src/dist_endpoint.dart';
 export 'src/password_hash.dart';
 export 'src/rate_limit.dart';
 export 'src/json_field.dart';
+export 'src/machine.dart';

@@ -474,6 +474,119 @@ void main() {
     });
   });
 
+  // ★★ 測った機械 —— ★★分母と★対で持つ（★★運転指示【0】(1)★★）★★
+  //
+  // ★★ なぜ要るか ★★
+  // ★**分母は★測った機械に依る**（★`rate_limit.dart` の doc）。
+  // ★**機械が併記されていないと、★★次に測る人が「同じ機械か」を判定できない★★** ——
+  //   ★**同じなら★最大を採り、★違うなら★置き換える。★★どちらをするかが決まらない★★。**
+  //
+  // ★★ この群が落ちるのは「合図」である ★★
+  // ★**別の機械で走らせると★下の 2 件目が落ちる。★★それが正しい★★。**
+  // ★**直し方は★★`dart run tool/measure_hash_cost.dart` を走らせて★値と機械を一緒に写す★★ことで、
+  //   ★★字面を合わせることではない★★**（★先例は **D-24** / §57）。
+  group('★★ 測った機械 —— ★分母と★対で持つ ★★', () {
+    test('★ 機械の同定は★空でない', () {
+      expect(measuredPasswordHashCostMachine, isNotEmpty);
+    });
+
+    test('★★ いま走っている機械と★一致する（★★違えば★測り直して置き換える★★）★★', () {
+      expect(
+        measuredPasswordHashCostMachine,
+        currentMachineFingerprint(),
+        reason: '★★別の機械である。★★`dart run tool/measure_hash_cost.dart` を走らせ、'
+            '★★「採る値」と「測った機械」を★一緒に★★写すこと'
+            '（★★またがって最大を採らない ＝ ★置き換える★★）。',
+      );
+    });
+
+    test('★★ 同定は★OS と★コア数と★Dart の版を含む（★★どれか 1 つでは足りない★★）★★', () {
+      final fp = currentMachineFingerprint();
+      expect(fp, contains(Platform.operatingSystem));
+      expect(fp, contains('${Platform.numberOfProcessors} コア'));
+      expect(fp, contains('Dart '));
+    });
+
+    test('★★ ホスト名も利用者名も入っていない（★★リポジトリに残る字面である★★）★★', () {
+      final fp = currentMachineFingerprint();
+      final host = Platform.localHostname;
+      if (host.isNotEmpty) {
+        expect(fp.toLowerCase(), isNot(contains(host.toLowerCase())));
+      }
+      for (final key in const ['USERNAME', 'USER', 'LOGNAME']) {
+        final v = Platform.environment[key];
+        if (v != null && v.isNotEmpty) {
+          expect(fp.toLowerCase(), isNot(contains(v.toLowerCase())));
+        }
+      }
+    });
+
+    test('★★ Dart の版は★ビルド日時を含まない（★★`Platform.version` の写しではない★★）★★', () {
+      // ★**`Platform.version` は `3.11.1 (stable) (Tue Feb 24 ...) on "..."` の形**（★実測）。
+      // ★**そのまま使うと★★同じ SDK でも★字面が長くなるだけで★判定は 1 つも良くならない★★。**
+      final fp = currentMachineFingerprint();
+      expect(fp, isNot(contains(Platform.version)));
+      expect(fp.length, lessThan(Platform.version.length + 80));
+      // ★曜日の 3 文字（★ビルド日時に必ず入る）が★1 つも無いこと。
+      for (final d in const ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']) {
+        expect(fp, isNot(contains(d)));
+      }
+    });
+
+    // ★★ 走査 —— ★★値では区別できないので★ソースの字面を見る（**D-27**）★★
+    //
+    // ★★ 引き金: ★仕込み (G) が★★0 件だった★★ ★★
+    // ★**`currentMachineFingerprint()` が★★記録されている字面を直に返す★★実装は、
+    //   ★★この機械では★上の 4 件のどれからも区別できない★★**（★実測 0 件）。
+    // ★**原因は★★対の形★★である** —— ★**今日は「いま走っている機械」と「記録された機械」が
+    //   ★★同じ字面である★★**ので、★★値を比べる限り★区別しようがない★★
+    //   （★★本命の空振りでも★仕込みの弱さでもない★★）。
+    // ★**先例は §63-7 の (D)** / ★**§32-7 の (B)(D)**（★「型でしか見えないものは、型でしか守れない」）。
+    String fingerprintBodyIn(String source) {
+      final src = stripDartComments(source);
+      final at = src.indexOf('String currentMachineFingerprint()');
+      expect(at, isNot(-1), reason: '★宣言そのものが見つからない');
+      final end = src.indexOf(';', at);
+      expect(end, isNot(-1), reason: '★宣言の終わりが読めない');
+      return src.substring(at, end);
+    }
+
+    test('★★ 走査: ★同定は★`Platform` を★実際に読む（★★機械に依る★★）★★', () {
+      final body = fingerprintBodyIn(
+        File('lib/src/machine.dart').readAsStringSync(),
+      );
+      for (final needed in const [
+        'Platform.operatingSystem',
+        'Platform.numberOfProcessors',
+        '_dartVersion()',
+      ]) {
+        expect(body, contains(needed),
+            reason: '★★$needed を読んでいない ＝ ★機械に依らない字面である★★');
+      }
+    });
+
+    test('★★ 対: ★字面を直に返す実装は★この走査が捕まえる（★陽性対照）★★', () {
+      // ★★ 合成の入力で対を作る —— ★★本番に「悪い実装」が 1 つも無いからである★★
+      final bad = "String currentMachineFingerprint() => "
+          "'windows / 16 コア / Dart 3.11.1';";
+      final body = fingerprintBodyIn(bad);
+      expect(body, isNot(contains('Platform.operatingSystem')));
+    });
+
+    test('★★ 対: ★doc の中の写しを★コメント外しが落とす（★★D-30★★）★★', () {
+      // ★**この repo は★doc に★宣言をそのまま写す**（★**D-30** が「必ず含む」と書いている）。
+      // ★**外さないと★★doc の写し（★悪い実装）のほうが先に当たる★★。**
+      final lines = <String>[
+        "/// ★doc の写し: String currentMachineFingerprint() => 'windows / 16 コア';",
+        "String currentMachineFingerprint() => '\${Platform.operatingSystem} / '",
+        "    '\${Platform.numberOfProcessors} コア / '",
+        "    'Dart \${_dartVersion()}';",
+      ];
+      final body = fingerprintBodyIn(lines.join(String.fromCharCode(10)));
+      expect(body, contains('Platform.operatingSystem'));
+    });
+  });
+
 
   // ★★ 走査 —— ★★字面を埋め込んでいないこと（★★対を測って足した★★）★★
   //

@@ -22,6 +22,7 @@
 /// | # | ★段 |
 /// |---|---|
 /// | ★**1** | ★**下の出力の★★「採る値」★★を [measuredPasswordHashCostMs] に写す** |
+/// | ★★**1-2**★★ | ★★**同じ出力の★★「測った機械」★★を [measuredPasswordHashCostMachine] に写す**★★（★2026-09-02 追記 / ★運転指示【0】(1)）—— ★**片方だけ写すと★★次に測る人が「同じ機械か」を判定できない★★** |
 /// | ★★**2**★★ | ★★**それ以外は 1 つも書き換えない**★★ —— ★38 も 33 も★★定数から導かれる★★ |
 /// | ★**3** | ★**`dart test` を走らせる**。★★`rate_limit_test.dart` の「今日の分母での値」の群が落ちる★★ |
 /// | ★**4** | ★**落ちた件の期待値を★新しい値に直す**（★★それが「分母が動いた」の合図である★★ / ★先例は **D-24** / §57） |
@@ -30,10 +31,18 @@
 /// ★**上限は「窓に入りきること」なので、★★1 回の費用を小さく見積もると★上限が大きくなりすぎる★★。**
 /// ★**大きい側に振れた標本を採ると★上限が小さくなる ＝ ★★安全側である★★。**
 /// → ★**この道具は★★最大★★を「採る値」として出す。★平均と中央とばらつきも★併せて出す**（**D-28** の作法）。
+///
+/// ★★ 2026-09-02 追記: ★★何の集合の最大か★★（★運転指示【0】(1)）★★
+/// ★★**上の 3 行は 1 文字も書き換えない**★★（**D-35**）—— ★**この道具が出すのは★★この 1 回の標本の最大★★である。**
+/// ★★**定数に写す値は★★同じ機械で記録されている全標本の最大★★である**★★
+///   （★★この 1 回だけの最大ではない★★ / ★規則の全文は [measuredPasswordHashCostMs] の doc）。
+/// → ★**下の出力は★★いま書かれている分母とも突き合わせて出す★★**（★どちらが大きいかを★人が見て決められるように）。
+/// ★★**機械が違うなら★★置き換える★★。★またがって最大を採らない**★★（★同上）。
 library;
 
 import 'dart:io';
 
+import 'package:loveca_server/src/machine.dart';
 import 'package:loveca_server/src/password_hash.dart';
 import 'package:loveca_server/src/rate_limit.dart';
 
@@ -45,6 +54,7 @@ void main(List<String> args) {
     return;
   }
 
+  stdout.writeln('★ 測った機械: ${currentMachineFingerprint()}');
   stdout.writeln('★ 繰り返し回数: $passwordHashIterations');
   stdout.writeln('★ 標本の数: $samples（★ウォームアップ 2 回は勘定に入れない）');
   stdout.writeln('');
@@ -82,6 +92,8 @@ void main(List<String> args) {
   stdout.writeln('★★ 採る値 = $take ms ★★'
       '（★両側の最大のうち大きいほう ＝ ★★安全側★★）');
   stdout.writeln('  → measuredPasswordHashCostMs = $take');
+  stdout.writeln('  → measuredPasswordHashCostMachine = '
+      "'${currentMachineFingerprint()}'");
   stdout.writeln('  → 合計の枠 = $rateLimitWindowMs ~/ $take = $total');
   stdout.writeln('  → 人が押す枠 = $humanRateLimitBudget（★据え置き）');
   stdout.writeln('  → 同期の枠 = ${total - humanRateLimitBudget}');
