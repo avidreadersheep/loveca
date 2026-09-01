@@ -340,7 +340,7 @@ git ls-files --others --ignored --exclude-standard \
 | `loveca-data`（Python） | **53** | `python tests/run_all.py` |
 | `loveca-core`（Dart） | **495** | `dart test` |
 | `loveca-db`（Dart） | **208**（★skip 0） | `dart test` |
-| `loveca-ui`（Flutter） | **989**（★skip 0） | `flutter test` |
+| `loveca-ui`（Flutter） | **995**（★skip 0） | `flutter test` |
 | `loveca-server`（Dart） | **192**（★skip 0） | `dart test` |
 
 （`loveca-core` は **Phase 4 のレーン 3 の commit 13（衝突判定 ＝ 候補 L）** 時点 / 2026-09-01。
@@ -348,6 +348,19 @@ git ls-files --others --ignored --exclude-standard \
 `loveca-data` は **Phase 4 のレーン 2 の commit 4（画像だけのマニフェストを生成）** 時点 / 2026-08-31。
 `loveca-ui` は **§32-6 の 18 の口を実施した時点** / 2026-09-01。
 `loveca-server` は **§32-6 の 20（デッキを預かる / 返す口）を実施した時点** / 2026-09-01。★**5 件とも実測で確認済み**）
+
+★★**§7 の 1（`thumb` がモバイルの物理セル幅を下回るか）を測った ★で `loveca-ui` が 989 → 995**★★
+（**+6** = `test/ui/mobile_image_tier_test.dart` の新設。★**内訳はファイルを見ること**）。
+★`loveca-core` / `loveca-db` / `loveca-server` / `loveca-data` はこの commit で触っていない（★**495 / 208 / 192 / 53 を実測で確認した**）。
+★★**エミュレータは要らない**★★ —— ★**`tester.view.physicalSize` と `devicePixelRatio` を渡せば済む**（★`card_art_test.dart` が★DPR 3 で同じことをしている）。
+★★**実測**★★（★電話の画面 1080 × 2400 / DPR 2.625）—— ★**3 列 / ★セル論理 129.14 / ★★物理 339★★ / ★デコード 200**。
+→ ★★**§7 の 1 の断定「モバイルは… 原寸 200px を超える」は★真である**★★（★あちらは「300〜400」と幅で書いていた。★**実測を固定した**）。
+★★**書きかけた断定が 1 つ偽だった。★対が教えた**★★（**D-15 (j)**）—— ★**「デコード幅が 200 を超える」と書いたが、★★`cacheWidthPx` は原寸で切られる★★**（★実読）。
+→ ★**測るのは★★物理セル幅★★であって★デコード幅ではない**。★**「デコードは 200 で頭打ち → 339 へ引き伸ばされる」が★★ぼやける の中身である★★**。
+★★**手当ては★既に在る。★一覧が呼んでいないだけである**★★ —— ★**`cardImageSizeFor`（**D82**）は★同じ入力で `normal` を選ぶ**（★対で固定した）。★**呼ぶのは盤面（`board_slot.dart`）だけである**。
+★★**直していない。★いまの挙動を固定した**★★ —— ★**直すと★この群が落ちる。★★それが合図である★★**（★先例は **D-24**）。
+★**直すには★§3-3 のキャッシュの見積り（1 枚 74 KB / 1000 枚）を★★測り直す必要がある★★**（★§7 の 1 が自らそう書いている）。
+★★**対は 4 つ置いた**★★ —— ★**PC / DPR 1 では原寸を超えない**（★陽性対照）／ ★**PC では `cardImageSizeFor` も `thumb` を選ぶ**（★「何を渡しても `normal`」で通らないこと）／ ★**デコードは原寸で頭打ち**／ ★**段は `thumb` のまま**。
 
 ★★**§32-6 の 21 の★口★を実施した（★相手の版を取りに行く）で `loveca-ui` が 968 → 989**★★
 （**+21** = `test/data/deck_sync_client_test.dart` の新設。★**内訳はファイルを見ること**）。
