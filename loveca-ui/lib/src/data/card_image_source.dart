@@ -64,6 +64,71 @@ CardImageSize cardImageSizeFor(double logicalWidth, double devicePixelRatio) =>
         ? CardImageSize.normal
         : CardImageSize.thumb;
 
+/// ★★ 画像の読み先の出所（★段 / 決定 **D137-1** ＝ 画経-4 ＋ **D149**）★★
+///
+/// ★**`DistSource`（**D60**）と★同じ形である** —— ★★「どの段で解決したか」を値として持つ★★。
+enum CardImagesSource {
+  /// 段 1: ★配信物の中（`dist/images`）。★**PC の既定。★今日までの唯一の形。**
+  dist,
+
+  /// ★★段 2: ★端末の領域（★取り込みが書いた写し）★★。★**モバイルの既定。**
+  device;
+
+  String get label => switch (this) {
+        CardImagesSource.dist => '配信物の中（dist/images）',
+        CardImagesSource.device => '端末の領域（取り込みが書いた写し）',
+      };
+}
+
+/// 解決の答え。★**根と★段を★対で持つ。**
+typedef CardImagesLocation = ({Directory? root, CardImagesSource? source});
+
+/// ★★ 画像の読み先を決める（★決定 **D137-1** ＝ 画経-4 の「段を 1 つ足す」）★★
+///
+/// ## ★★ 読み先は★常に 1 つである（**D137-4** の柵 1）★★
+///
+/// ★**2 つを同時に読むと★★D43 の害がそのまま戻る★★**
+///   （★どちらから来た画像かで★不具合の切り分けができなくなる）。
+/// → ★**この関数は★★どちらか 1 つしか返さない★★**（★対で固定した）。
+///
+/// | 段 | 出所 | ★条件 |
+/// |---|---|---|
+/// | ★**1** | ★`dist/images` | ★**dist が解決できている**（**D60**） |
+/// | ★★**2**★★ | ★★**端末の領域**★★ | ★**dist が解決できていない ★かつ★ ★★そのディレクトリが実在する★★** |
+///
+/// ## ★★ 段 1 が先である —— ★★今日の形を 1 ミリも変えないため★★
+///
+/// ★**PC では dist が解決できる**ので、★★段 2 に落ちない★★（**D137-2** の決め手そのもの）。
+/// ★**逆にすると、★★PC で★端末の写しのほうが勝つ★★** —— ★配信物のほうが★★完全である★★。
+///
+/// ## ★★ 段 2 は「実在するときだけ」である。★理由は **D89** ★★
+///
+/// ★**実在しなくても採ると、★★`hasImageStore` が★常に真になる★★。**
+/// → ★**D89 が撃ち分けた「★★設定の問題★★」と「★★データの問題★★」が★★1 つに畳まれる★★。**
+/// ★★**それは★実機で 2 人が別々の誤診をした形そのものである**★★（★あちらの doc）。
+///
+/// ## ★★ 「モバイルで画像が出るようになった」と読まないこと ★★
+///
+/// ★**この関数は★★読み先を決めるだけである★★。**
+/// ★**書く側（取り込み）も、★★いつ取りに行くか★★も★別である**（★§32-6 の 8 の 2 / 3 / 5）。
+CardImagesLocation resolveCardImagesRoot({
+  required Directory? distDir,
+  required Directory? deviceImagesDir,
+}) {
+  // ★★ 段 1 —— 配信物の中 ★★
+  if (distDir != null) {
+    return (
+      root: Directory(p.join(distDir.path, 'images')),
+      source: CardImagesSource.dist,
+    );
+  }
+  // ★★ 段 2 —— 端末の領域（★実在するときだけ）★★
+  if (deviceImagesDir != null && deviceImagesDir.existsSync()) {
+    return (root: deviceImagesDir, source: CardImagesSource.device);
+  }
+  return (root: null, source: null);
+}
+
 abstract class CardImageSource {
   /// ★★ 画像の置き場そのものがあるか（決定 D89）★★
   ///

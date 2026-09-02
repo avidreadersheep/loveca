@@ -59,6 +59,9 @@ class FakeMasterRepository implements MasterRepository {
     required covariant Object settings,
     required DateTime now,
     Object? settingsRecoveredFrom,
+    // ★★ 2026-09-02: ★端末へ写す口が増えた（★決定 **D149-3**）★★
+    //   ★**フェイクも★署名を揃える** —— ★★揃えないと本実装と黙って食い違う★★（**D70**）。
+    covariant Object? imageSink,
   }) =>
       throw UnimplementedError('★取り込みは起動ゲートでのみ走る（決定 D56）');
 }

@@ -40,6 +40,26 @@ class AppPaths {
 
   File get settingsFile => File(p.join(supportDir.path, 'settings.json'));
 
+  /// ★★ 端末に取り込んだカード画像の置き場（★§32-6 の **8** の 1 / 決定 **D149**）★★
+  ///
+  /// ## ★★ キャッシュ領域に置かない。★理由は DB とは違う ★★
+  ///
+  /// ★**DB をキャッシュに置かない理由は「★★作り直せないユーザデータが混ざるから★★」である**（★上）。
+  /// ★★**画像は★作り直せる。★それでもキャッシュに置かない**★★ ——
+  ///   ★**取り込み層は★「取り込み済み」を★★DB に記録する★★**（`master_import_files`）。
+  ///   ★**OS が画像だけ消すと、★★記録は残り★実体だけが消える★★** ——
+  ///     ★★次の取り込みは★ハッシュが一致するので★1 件も計画しない★★（★実読）。
+  ///   → ★**画像が★★痕跡を残さず落ちる★★**（★型は **D-4** / **D-32** と同じ）。
+  /// ★★**「消えない」とは書かない**★★（**D-28**）—— ★**利用者が消すことも、★端末が壊れることも在る。**
+  ///   ★**書けるのは「★★OS がいつでも消してよい場所には置かない★★」までである。**
+  ///
+  /// ## ★★ 段 2 の相手そのものである ★★
+  ///
+  /// ★**読む側は `resolveCardImagesRoot` の★段 2**（`card_image_source.dart`）。
+  /// ★**書く側は `LocalDirectoryMasterImageSink`**（`loveca_db` の `native.dart`）。
+  /// ★★**dist のディレクトリではない**★★（**D137-4** の柵 2 —— ★★取り込みが dist へ書かない★★）。
+  Directory get cardImagesDir => Directory(p.join(supportDir.path, 'images'));
+
   @override
   String toString() => 'AppPaths(${supportDir.path})';
 }

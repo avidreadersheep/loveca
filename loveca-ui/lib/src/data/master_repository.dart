@@ -87,12 +87,25 @@ class MasterRepository {
   /// dist から差分取り込みを行う。
   ///
   /// [now] は呼び出し側から渡す（`Clock` / `docs/UI設計メモ.md` §9-1）。
+  /// ★★ [imageSink] —— ★端末へ写すか（★§32-6 の **8** の 3 / 決定 **D149-3**）★★
+  ///
+  /// ## ★★ ローカルの dist から取り込むときは★渡さない ★★
+  ///
+  /// ★**画像は★★既に読み先に在る★★**（★`resolveCardImagesRoot` の★段 1 ＝ `dist/images`）。
+  /// ★**写すと★★571 MB を二重に持つ★★**（★§59-4 の 理由 3 —— ★画経-2 を採らなかった理由そのもの）。
+  /// ★★**「今日は使わない引数」ではない。★★渡さないことが答えである★★**（★対で固定した）。
+  ///
+  /// ## ★★ 渡す相手は★HTTP から取り込むときである（★★まだ 1 行も無い★★）★★
+  ///
+  /// ★**`HttpMasterFileSource` を使う経路は★★§32-6 の 8 の 5 である★★**（★★モバイルの UI の形★★ / ★未着手）。
+  /// ★**その経路が★段 2 の読み先を作る。**
   Future<MasterImportOutcome> import({
     required DistLocation location,
     required String appVersion,
     required AppSettings settings,
     required DateTime now,
     Object? settingsRecoveredFrom,
+    MasterImageSink? imageSink,
   }) =>
       guardRepository('master.import', () async {
         final distDir = location.directory!;
@@ -103,12 +116,27 @@ class MasterRepository {
           await File('${distDir.path}/manifest.json').readAsString(),
         );
 
+        // ★★ 画像は★別のマニフェストに載る（決定 **D121-1** ＝ 画-5）★★
+        //   ★**「まだ無い」と「0 枚である」を書き分ける**（★生成側が `--skip-images` なら書かない）——
+        //     ★★[VersionInfo.hasImageManifest] が偽なら★1 バイトも読まない★★。
+        //   ★**読む先は★配信物の根である** —— ★`version.json` の
+        //     `imageManifestPath` は★★配る側のパスであって★ローカルの置き場ではない★★
+        //     （★カードのマニフェストと★同じ扱い / ★上の 2 行と揃えてある）。
+        final imageManifest = version.hasImageManifest
+            ? Manifest.parseImages(
+                await File('${distDir.path}/image_manifest.json')
+                    .readAsString(),
+              )
+            : null;
+
         final result = await MasterImporter(_db).import(
           remoteVersion: version,
           remoteManifest: manifest,
+          remoteImageManifest: imageManifest,
           source: LocalDirectoryMasterFileSource(distDir),
           appVersion: appVersion,
           now: now,
+          imageSink: imageSink,
         );
 
         return MasterImportOutcome(

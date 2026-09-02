@@ -254,6 +254,11 @@ class RealBootSteps implements BootSteps {
       settings: settings.settings,
       now: clock(),
       settingsRecoveredFrom: settingsRecoveredFrom,
+      // ★★ 画像を★端末へ写さない（★決定 **D149-3**）★★
+      //   ★**ここはローカルの dist から取り込む経路である** ——
+      //     ★★画像は既に読み先（段 1）に在る★★ので、★写すと 571 MB を二重に持つ。
+      //   ★**渡す相手は★HTTP から取り込む経路**（★§32-6 の 8 の 5 / ★未着手）。
+      imageSink: null,
     );
   }
 
@@ -278,10 +283,18 @@ class RealBootSteps implements BootSteps {
     );
   }
 
+  /// ★★ 読み先は★段で決まる（★決定 **D137-1** ＝ 画経-4 / **D149-2**）★★
+  ///
+  /// ★**段 1 ＝ `dist/images`（★今日までの唯一の形）／ ★★段 2 ＝ 端末の領域★★。**
+  /// ★★**読み先は★常に 1 つである**★★（**D137-4** の柵 1 —— ★2 つ読むと **D43** の害が戻る）。
+  /// ★**判定は★★純粋関数に切り出してある★★**（`resolveCardImagesRoot`）—— ★対を置くため。
   @override
   CardImageSource imageSourceFor(MasterImportOutcome importOutcome) =>
       LocalDirectoryCardImageSource(
-        _distDir == null ? null : Directory('${_distDir!.path}/images'),
+        resolveCardImagesRoot(
+          distDir: _distDir,
+          deviceImagesDir: _handle?.paths.cardImagesDir,
+        ).root,
       );
 
   @override

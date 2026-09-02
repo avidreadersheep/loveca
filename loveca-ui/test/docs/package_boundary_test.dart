@@ -62,8 +62,14 @@ const _forbiddenUrisInDb = <String>['package:flutter', 'dart:ui'];
 const _dbNativeOnly = <String>{
   // ★★ 汚染範囲はこの 2 つに閉じる（`CLAUDE.md` §2）★★
   //   `lib/native.dart` と `lib/src/native/` の下だけ、と §2 が定めている。
+  // ★★ 2026-09-02: ★2 → 3 に増やした（★★見張りが落ちた★★ / ★決定 **D149**）★★
+  //   ★**上の 2 行は 1 文字も書き換えない**（**D-35** —— ★★範囲そのものは 1 ミリも動いていない★★）。
+  //   ★**増えたのは `lib/src/native/` の下の 1 ファイルである**
+  //     （`local_dir_image_sink.dart` —— ★★端末の領域へ画像を書く★★ / ★§32-6 の 8 の 2）。
+  //   ★★**`CLAUDE.md` §2 の走査は★★0 件のままである★★**（★★`native` 配下だから★★ / ★実測）。
   'loveca-db/lib/native.dart',
-  'loveca-db/lib/src/native/local_dir_source.dart',
+  'loveca-db/lib/src/native/local_dir_image_sink.dart',
+    'loveca-db/lib/src/native/local_dir_source.dart',
 };
 
 /// ★`loveca_core` の**本文**に許される当たり。★**リポジトリ相対パス → 件数**。
