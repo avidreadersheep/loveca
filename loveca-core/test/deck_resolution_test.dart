@@ -419,5 +419,86 @@ void main() {
       }
     });
   });
-}
 
+  // ★★ 段 3 を★段 2 の★後ろ★に置いたことの穴 —— ★★収束するか★★
+  //
+  // ★★ 引き金 —— ★運転指示【0】(1) ★★
+  // ★**§82-9 の 1 が「★★内容ハッシュも削除も違う場合、★生きている側の内容が消えうる★★」と書いた。**
+  // ★**指示** ——「★★それは W-43 と同じ形である。★収束するか、★永久に食い違うかを確かめること★★」。
+  //
+  // ★★ 測った答え: ★★収束する。★(甲) 違反ではない★★ ★★
+  // ★**理由は 1 行である** —— ★★段 2 が★対称だからである★★（★内容ハッシュの字面で決める）。
+  // ★**W-43 が (甲) 違反だったのは「★★自分が勝つ★★」＝ ★★向きを持つ規則だったからである★★**
+  //   （★§65-5 の 同-1）。★**段 2 は★向きを持たない。**
+  //
+  // ★★ それでも「害が無い」とは書かない ★★
+  // ★**負けた側の編集は★消える。**★★ただしそれは **D138-1** が★既に受け入れた偏りであって、
+  //   ★この段 3 が作ったものではない★★（★§82-9 の 1 / ★§88）。
+  group('★★ 穴 —— ★内容ハッシュも★削除も違うとき（★運転指示【0】(1)）★★', () {
+    // ★★ A: ★削除した（★中身は古いまま）／ ★B: ★中身を編集した（★生きている）★★
+    //   ★**`updatedAt` は★★同じ秒である★★**（★保存精度は秒 / **D115-8** の測定 1）。
+    final deletedOld =
+        _deck(name: 'ふるい', updatedAt: early, deletedAt: DateTime.utc(2026, 6));
+    final aliveNew = _deck(name: 'あたらしい', updatedAt: early);
+
+    test('★★ 前提: ★内容ハッシュも★削除も★両方違う ★★', () {
+      expect(deletedOld.updatedAt, aliveNew.updatedAt);
+      expect(deckContentHash(deletedOld), isNot(deckContentHash(aliveNew)));
+      expect(deletedOld.deletedAt, isNot(aliveNew.deletedAt));
+    });
+
+    test('★★ 手 1 / 手 2 —— ★向きを入れ替えても★★同じ側が勝つ★★（＝ 収束する）★★', () {
+      // ★★ これが (甲) の中身である（§9-3 の 15 の判別法）★★
+      final ab = resolveDeckConflict(local: deletedOld, remote: aliveNew);
+      final ba = resolveDeckConflict(local: aliveNew, remote: deletedOld);
+
+      expect(deckContentHash(ab.winner), deckContentHash(ba.winner));
+      expect(ab.winner.deletedAt, ba.winner.deletedAt);
+      expect(ab.reason, ba.reason);
+    });
+
+    test('★★ 手 3 以降 —— ★負けた側が書いたあとは★★もう動かない★★', () {
+      // ★★ 不動点である ＝ ★永久に食い違わない ★★
+      final winner =
+          resolveDeckConflict(local: deletedOld, remote: aliveNew).winner;
+      final again = resolveDeckConflict(local: winner, remote: winner);
+
+      expect(again.reason, DeckResolutionReason.identical);
+      expect(deckContentHash(again.winner), deckContentHash(winner));
+      expect(again.winner.deletedAt, winner.deletedAt);
+    });
+
+    test('★★ 決めるのは段 2 である（★段 3 は★1 度も呼ばれない）★★', () {
+      final got = resolveDeckConflict(local: deletedOld, remote: aliveNew);
+
+      expect(got.reason, DeckResolutionReason.contentHashTieBreak);
+      expect(got.winner.name, _largerHashName(deletedOld, aliveNew));
+    });
+
+    test('★★ 削除の状態は★答えに 1 ビットも効かない（★★穴そのもの★★）★★', () {
+      // ★**同じ 2 つの中身で、★削除の向きだけを入れ替える。**
+      // ★★勝つ「中身」は 1 バイトも変わらない★★ —— ★段 2 が先に決めるからである。
+      final deletedNew = _deck(
+          name: 'あたらしい', updatedAt: early, deletedAt: DateTime.utc(2026, 6));
+      final aliveOld = _deck(name: 'ふるい', updatedAt: early);
+
+      final first = resolveDeckConflict(local: deletedOld, remote: aliveNew);
+      final second = resolveDeckConflict(local: aliveOld, remote: deletedNew);
+
+      expect(first.winner.name, second.winner.name);
+      expect(first.reason, DeckResolutionReason.contentHashTieBreak);
+      expect(second.reason, DeckResolutionReason.contentHashTieBreak);
+    });
+
+    test('★★ 対: ★内容ハッシュが同値なら★段 3 が決める（★穴はここまでである）★★', () {
+      final alive = _deck(name: 'おなじ', updatedAt: early);
+      final deleted =
+          _deck(name: 'おなじ', updatedAt: early, deletedAt: DateTime.utc(2026, 6));
+
+      final got = resolveDeckConflict(local: deleted, remote: alive);
+
+      expect(got.reason, DeckResolutionReason.deletionTieBreak);
+      expect(got.side, DeckResolutionWinner.remote);
+    });
+  });
+}

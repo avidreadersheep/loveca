@@ -494,6 +494,91 @@ void main() {
     });
   });
 
+  // ★★ 穴の道筋を★2 台で通す —— ★★1 手で止まる★★（★運転指示【0】(1)）
+  //
+  // ★★ 何を見るか ★★
+  // ★**§82-9 の 1 が「★内容ハッシュも削除も違う場合、★★生きている側の内容が消えうる★★」と書いた。**
+  // ★**指示は「★★それは収束するか、★永久に食い違うかを確かめよ★★」である。**
+  // → ★★収束する★★。★**段 2（内容ハッシュ）が★★向きを持たない★★からである。**
+  //
+  // ★★ W-43 との違いは 1 点だけである ★★
+  // ★**W-43 は「★★自分が勝つ★★」＝ ★★向きを持つ規則★★だったので、★2 台が押し合った。**
+  // ★**ここは★向きを持たない規則が決める** —— ★★どちらの端末も★同じ側を勝たせる★★。
+  //
+  // ★★ 「害が無い」とは書かない ★★
+  // ★**負けた側の編集は★消える。**★それは **D138-1** が★★既に受け入れた偏りである★★
+  //   （★この段 3 が作ったものではない）。★**下の 4 件目が★それを固定している。**
+  group('★★ 穴の道筋を★2 台で通す —— ★★1 手で止まる★★（★運転指示【0】(1)）★★', () {
+    DeckSyncBaseline baselineOf(Deck deck) =>
+        (hasOpsSinceMark: true, contentHash: deckContentHash(deck));
+
+    /// ★★ 基準がどちらとも違う ＝ ★判定は `conflict` になる ★★
+    const conflictBaseline =
+        (hasOpsSinceMark: true, contentHash: '★どちらとも違う基準');
+
+    final at = DateTime.utc(2026, 2, 1, 3, 4, 5);
+
+    /// ★端末 A —— ★削除した（★★中身は古いまま★★）。
+    final aDeleted = _deck(count: 4, updatedAt: at, deletedAt: at);
+
+    /// ★端末 B —— ★中身を編集した（★★生きている★★）。
+    final bAlive = _deck(count: 3, updatedAt: at);
+
+    test('★★ 前提: ★時刻は同値で、★内容ハッシュも★削除も違う ★★', () {
+      expect(aDeleted.updatedAt, bAlive.updatedAt);
+      expect(deckContentHash(aDeleted), isNot(deckContentHash(bAlive)));
+      expect(aDeleted.deletedAt, isNot(bAlive.deletedAt));
+    });
+
+    test('★★ 手 1 / 手 2 —— ★片方が送り、★もう片方が受け取る（★★両方が送る形にならない★★）★★',
+        () async {
+      // ★★ 両方が `DeckSyncSent` を返す形が ＝ ★永久に食い違う形である ★★
+      serveHolding(bAlive);
+      final fromA = await run(aDeleted, FakeMarks(baseline: conflictBaseline));
+
+      serveHolding(aDeleted);
+      final fromB = await run(bAlive, FakeMarks(baseline: conflictBaseline));
+
+      final outcomes = <DeckSyncOutcome>[fromA, fromB];
+      expect(outcomes.whereType<DeckSyncSent>(), hasLength(1),
+          reason: '★★送るのは 1 台だけである★★');
+      expect(outcomes.whereType<DeckSyncRemoteWins>(), hasLength(1),
+          reason: '★★もう 1 台は受け取る側になる★★');
+    });
+
+    test('★★ 手 3 —— ★両側が勝った版を持てば★★もう何も送らない★★（★不動点）★★', () async {
+      final winner = resolveDeckConflict(local: aDeleted, remote: bAlive).winner;
+      serveHolding(winner);
+
+      final out = await run(winner, FakeMarks(baseline: baselineOf(winner)));
+
+      expect(out, isA<DeckSyncSkipped>());
+    });
+
+    test('★★ 負けた側の中身は★1 バイトも残らない（★★穴そのもの★★）★★', () async {
+      // ★**これは **D138-1** が★★既に受け入れた偏りである★★**（★§82-9 の 1）。
+      // ★**段 3 を段 2 の★前★に置けば★★生きている側が必ず勝つ★★が、
+      //   ★★それは **D138-1** の訂正になる★★（`CLAUDE.md` §7 の止まる条件 4）。
+      final winner = resolveDeckConflict(local: aDeleted, remote: bAlive).winner;
+      final loser = winner.deletedAt == null ? aDeleted : bAlive;
+      serveHolding(winner);
+
+      final out = await run(loser, FakeMarks(baseline: conflictBaseline));
+
+      expect(out, isA<DeckSyncRemoteWins>());
+      final writer = FakeWriter();
+      await applyRemoteDeck(out as DeckSyncRemoteWins,
+          writer: writer,
+          marks: FakeMarks(),
+          at: DateTime.utc(2026, 9, 2));
+
+      final saved = writer.saves.single.deck;
+      expect(deckContentHash(saved), deckContentHash(winner));
+      expect(saved.deletedAt, winner.deletedAt,
+          reason: '★★負けた側の削除の状態も★残らない★★');
+    });
+  });
+
   group('★★ 送れなかったら★器を 1 バイトも触らない ★★', () {
     DeckSyncBaseline baselineOf(Deck deck) =>
         (hasOpsSinceMark: true, contentHash: deckContentHash(deck));
