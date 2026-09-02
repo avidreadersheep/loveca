@@ -49,6 +49,42 @@ const _exempt = <String>{
   '2026-09-02-02.md',
 };
 
+/// ★★ 規約 4-5-2 —— ★端末へ出した字面を★報告に写す ★★
+///
+/// ★**README の §4-5-2 が「★報告の★★最後の節★★にそのまま写す」と定めている。**
+/// ★★**規約 6 と違って★機械が見ていなかった**★★ —— ★**04 / 05 / 06 は持ち、★★07 が落とした★★**
+///   （★2026-09-02 実測 / ★★規約が在るのに★次の回で抜けた ＝ **D-2** の型★★）。
+const _terminalSectionMark = '端末へ出した字面';
+
+/// ★★ 免除するファイル（★★理由は 2 種類ある。★混ぜない★★ / ★先例は `CLAUDE.md` §8）★★
+///
+/// | ★理由 | ★ファイル |
+/// |---|---|
+/// | ★**書いた時点にこの規約が無かった** | ★`2026-09-01-01` / `-02` / `2026-09-02-01` / `-02` / `-03` |
+/// | ★★**規約が在ったのに★落とした**★★ | ★★`2026-09-02-07`★★（★★1 文字も書き換えない★★ / **D-35**） |
+const _exemptTerminalSection = <String>{
+  '2026-09-01-01.md',
+  '2026-09-01-02.md',
+  '2026-09-02-01.md',
+  '2026-09-02-02.md',
+  '2026-09-02-03.md',
+  '2026-09-02-07.md',
+};
+
+/// ★[content] に★端末へ出した字面の節が在るか（★★見出しの行で見る★★）。
+///
+/// ★★ 見出しの字面を★固定しない ★★
+/// ★**実物は 2 通りある**（★`§4-5-2 の測定用の記録` / ★`規約 4-5-2 の受け` / ★2026-09-02 実測）。
+/// → ★**見るのは★★見出しの行に [_terminalSectionMark] が在ること★★だけである。**
+bool hasTerminalSection(String content) {
+  for (final raw in const LineSplitter().convert(content)) {
+    final line = raw.trimLeft();
+    if (!line.startsWith('#')) continue;
+    if (line.contains(_terminalSectionMark)) return true;
+  }
+  return false;
+}
+
 List<File> _reports() {
   final dir = Directory(_reportDir);
   if (!dir.existsSync()) return const <File>[];
@@ -210,4 +246,38 @@ void main() {
     });
   });
 
+  group('★★ 規約 4-5-2 —— ★端末へ出した字面が★報告に在る ★★', () {
+    test('★★ 免除したファイルは 1 つ残らず実在する（★綴りの受け / D-10）★★', () {
+      final actual = _reports().map(_basename).toSet();
+
+      expect(actual.containsAll(_exemptTerminalSection), isTrue,
+          reason: '★免除に★実在しない名前が混じっている: '
+              '${_exemptTerminalSection.difference(actual)}');
+    });
+
+    test('★★ 免除したファイルは★実際に節を持っていない（★陽性対照）★★', () {
+      for (final f in _reports()) {
+        if (!_exemptTerminalSection.contains(_basename(f))) continue;
+
+        expect(hasTerminalSection(f.readAsStringSync()), isFalse,
+            reason: '★★免除が空振りしている★★: ${_basename(f)}');
+      }
+    });
+
+    test('★★ 免除されていない報告は★節を持つ ★★', () {
+      for (final f in _reports()) {
+        if (_exemptTerminalSection.contains(_basename(f))) continue;
+
+        expect(hasTerminalSection(f.readAsStringSync()), isTrue,
+            reason: '★★README の §4-5-2 —— ★端末へ出した字面を★最後の節に写すこと★★: '
+                '${_basename(f)}');
+      }
+    });
+
+    test('★★ 合成の入力 —— ★見出しの行でだけ数える ★★', () {
+      expect(hasTerminalSection('## ★ 10. 端末へ出した字面'), isTrue);
+      expect(hasTerminalSection('★本文に 端末へ出した字面 と書いただけ'), isFalse);
+      expect(hasTerminalSection('## ★ 別の見出し'), isFalse);
+    });
+  });
 }
