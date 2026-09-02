@@ -153,24 +153,37 @@ def run_once(cwd, command, keep_json):
 
 
 def apply_edits(root, edits):
-    """仕込む。★★元の中身を★ファイルごとに 1 度だけ覚える★★（★(1) の受け）."""
+    """仕込む。★★元の中身を★ファイルごとに 1 度だけ覚える★★（★(1) の受け）.
+
+    ★★ 途中で失敗したら★★書いた分を戻してから投げる★★ ★★
+    ★**1 つの仕込みが 2 つ以上の edit を持つとき、★2 つ目で当て先が見つからないと
+      ★★1 つ目だけが適用されたまま残る★★**（★2026-09-02 に実際に起きた）。
+    ★**型は §64 の不具合と同じ列である**（★戻し損ね）。
+    """
     original = {}
-    for edit in edits:
-        path = os.path.join(root, edit["file"])
-        if path not in original:
-            original[path] = _read(path)
-        find = edit["find"]
-        replace = edit["replace"]
-        if replace == "":
-            raise ValueError(
-                "★空文字への置換は禁じている（★番兵を置くこと / §43 の事故）: %s" % edit["file"]
-            )
-        current = _read(path)
-        want = int(edit.get("count", 1))
-        got = current.count(find)
-        if got != want:
-            raise ValueError("★当て先が %d 件（★期待 %d 件）: %s" % (got, want, edit["file"]))
-        _write(path, current.replace(find, replace))
+    try:
+        for edit in edits:
+            path = os.path.join(root, edit["file"])
+            if path not in original:
+                original[path] = _read(path)
+            find = edit["find"]
+            replace = edit["replace"]
+            if replace == "":
+                raise ValueError(
+                    "★空文字への置換は禁じている（★番兵を置くこと / §43 の事故）: %s"
+                    % edit["file"]
+                )
+            current = _read(path)
+            want = int(edit.get("count", 1))
+            got = current.count(find)
+            if got != want:
+                raise ValueError(
+                    "★当て先が %d 件（★期待 %d 件）: %s" % (got, want, edit["file"])
+                )
+            _write(path, current.replace(find, replace))
+    except Exception:
+        restore(original)
+        raise
     return original
 
 

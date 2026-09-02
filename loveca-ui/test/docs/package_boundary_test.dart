@@ -286,4 +286,108 @@ void main() {
           reason: '★汚染範囲は `lib/native.dart` と `lib/src/native/` に閉じる');
     });
   });
+
+  // ★★ `loveca_core` は★★★barrel 経由でしか引かれていない★★
+  //
+  // ★★ なぜ見張るか（**N-28** の α-3 / `docs/同期設計メモ.md` §90）★★
+  // ★**§N-28 の (己) が「★α-3 は★★Phase 4 の実装に今日当たる★★（★`loveca_core` を割ると
+  //   ★4 パッケージの import が動く）」と書いた。**
+  // ★**測ったら★★その理由は成り立たない★★** —— ★★引いているのは barrel 1 本だけ★★なので、
+  //   ★barrel が新しいパッケージから再公開すれば★★import は 1 つも動かない★★。
+  // → ★**この群は★★その前提を★機械で保つ★★**（★深い import が 1 つ入ると★前提が崩れる）。
+  //
+  // ★★ これは α-3 を選んだのではない ★★
+  // ★**§N-28 は 5 候補とも「★今日は決めない」である。★★測っただけである★★。**
+  group('★★ `loveca_core` は★barrel 経由でしか引かれていない（**N-28** の入力）★★', () {
+    // ★★ `loveca-core` 自身は見ない ★★
+    //   ★**自分のパッケージは★★相対 import で書く★★**ので、★この走査に当たらない（★実読）。
+    const roots = <String>[
+      '../loveca-ui/lib',
+      '../loveca-ui/test',
+      '../loveca-db/lib',
+      '../loveca-db/test',
+      '../loveca-server/lib',
+      '../loveca-server/test',
+      '../loveca-core/test',
+    ];
+
+    /// ★1 つのソースから★`package:loveca_core/...` を引いている URI を取り出す。
+    ///
+    /// ★★ 下の走査と★合成の対が★同じものを通ること（**D-27** の (甲)）★★
+    /// ★**最初は★合成の対の中に★同じ `where` を★★書き写していた★★**ので、
+    ///   ★★分類器を絞る仕込みを当てても★1 件も落ちなかった★★（★2026-09-02 実測 / ★0 件）。
+    List<String> coreUrisIn(String source) => directiveUris(source)
+        .where((u) => u.startsWith('package:loveca_core/'))
+        .toList();
+
+    /// ★[root] 以下で★`package:loveca_core/...` を引いている URI を全部集める。
+    List<String> coreUris(String root) {
+      final out = <String>[];
+      final dir = Directory(root);
+      if (!dir.existsSync()) return out;
+      for (final entity in dir.listSync(recursive: true)) {
+        if (entity is! File || !entity.path.endsWith('.dart')) continue;
+        out.addAll(coreUrisIn(entity.readAsStringSync()));
+      }
+      return out;
+    }
+
+    test('★★ 走査する根が★1 つ残らず実在する（★綴りの受け / D-10）★★', () {
+      for (final root in roots) {
+        expect(Directory(root).existsSync(), isTrue, reason: root);
+      }
+    });
+
+    test('★★ 走査の根は★`loveca-core/lib` を除く★全部を覆う（★**D-31** の受け）★★', () {
+      // ★★ 根を手で足す規約に頼らない ★★
+      //   ★**パッケージや `test/` が増えたとき、★★黙って範囲外になる★★のを止める。**
+      //   ★**先例は [libPackageWatchers]**（★同じファイルの★同じ受け）。
+      final expected = <String>{};
+      for (final entity in Directory('..').listSync()) {
+        if (entity is! Directory) continue;
+        final name = p.split(entity.path).last;
+        if (!name.startsWith('loveca-')) continue;
+        for (final sub in const <String>['lib', 'test']) {
+          // ★★ 自分のパッケージは★相対 import で書くので★この走査に当たらない ★★
+          if (name == 'loveca-core' && sub == 'lib') continue;
+          if (!Directory('../$name/$sub').existsSync()) continue;
+          expected.add('../$name/$sub');
+        }
+      }
+
+      expect(roots.toSet(), expected,
+          reason: '★★増えた木は★根に足すか、★見ない理由をここに書くこと★★');
+    });
+
+    test('★★ 引いている URI は★barrel の 1 つだけである ★★', () {
+      final found = <String>{};
+      for (final root in roots) {
+        found.addAll(coreUris(root));
+      }
+
+      expect(found, {'package:loveca_core/loveca_core.dart'},
+          reason: '★★深い import が 1 つでも在ると、'
+              '★barrel の再公開では済まなくなる★★');
+    });
+
+    test('★★ 対: ★barrel は★実際に引かれている（★★0 件が「見えていない」ではない★★）★★', () {
+      var total = 0;
+      for (final root in roots) {
+        total += coreUris(root).length;
+      }
+
+      expect(total, greaterThan(100),
+          reason: '★★引かれていなければ★上の集合は★空でも通ってしまう★★');
+    });
+
+    test('★★ 対: ★分類器は★深い形を★実際に見分ける（★陽性対照 / ★合成の入力）★★', () {
+      final lines = <String>[
+        "import 'package:loveca_core/loveca_core.dart';",
+        "import 'package:loveca_core/src/game/reduce.dart';",
+      ];
+      final got = coreUrisIn(lines.join(String.fromCharCode(10))).toSet();
+
+      expect(got, hasLength(2), reason: '★★深い形も★同じ走査に当たる★★');
+    });
+  });
 }
