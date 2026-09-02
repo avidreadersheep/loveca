@@ -572,6 +572,52 @@ void main() {
       expect(raw.contains('DeckRepository'), isTrue,
           reason: '★★doc は★禁止対象と同じ字面を必ず含む★★');
     });
+
+    // ★★ 純粋関数にする —— ★★合成の入力で対を作れるようにするため★★ ★★
+    //   ★**実測: ★本番のファイルだけを見る形だと、★★コメント外しに対が届かない★★**
+    //     （★★`deck_sync.dart` の doc は★`Deck.fromJson` を 1 度も引いていない★★ / ★仕込んで 0 件）。
+    //   ★**先例は §63-7 の (J)** —— ★★同じ処置である★★。
+    bool callsFromJsonIn(String source) =>
+        stripComments(source).contains('Deck.fromJson');
+
+    test('★★ 同期の経路は `Deck.fromJson` を 1 度も呼ばない（★走査）★★', () {
+      // ★★ 取り違えたときの害は [Deck.fromJson] の doc に書いた（★★1 か所である★★）★★
+      //   ★**組むのは `decodeDeckForSync` だけである**（★決定 **D142** ＝ 組-1）。
+      //   ★**`Deck.fromJson` は★★欠けた鍵を既定値で埋める★★**ので、
+      //     ★★壊れた字面が「空のデッキ」として成立し、★解決で勝って★手元のデッキが消えうる★★。
+      for (final path in const [
+        'lib/src/data/deck_sync.dart',
+        'lib/src/data/deck_sync_client.dart',
+      ]) {
+        final source = File(path).readAsStringSync();
+        expect(callsFromJsonIn(source), isFalse, reason: '★$path');
+        expect(
+            stripComments(source).contains('decodeDeckForSync') ||
+                path.contains('client'),
+            isTrue,
+            reason: '★陽性対照 —— ★組む口は★こちらである');
+      }
+    });
+
+    test('★★ 対: ★呼べば★この走査が捕まえる（★陽性対照）★★', () {
+      expect(
+        callsFromJsonIn('Deck f(Map<String, dynamic> j) => Deck.fromJson(j);'),
+        isTrue,
+      );
+    });
+
+    test('★★ 対: ★doc の中の字面は★コメント外しが落とす（★★D-30★★）★★', () {
+      // ★★ 合成の入力で対を作る —— ★★本番の doc に★この字面が 1 つも無いからである★★
+      //   ★**実測: ★本番だけを見る形では★★仕込んでも 0 件だった★★**（**D-27**）。
+      final lines = <String>[
+        '/// ★doc の写し: ★この口は `Deck.fromJson` を呼ばない。',
+        'Deck f(String s) => decodeDeckForSync(s);',
+      ];
+      final source = lines.join(String.fromCharCode(10));
+
+      expect(source.contains('Deck.fromJson'), isTrue, reason: '★陽性対照');
+      expect(callsFromJsonIn(source), isFalse);
+    });
   });
 
   group('★★ 目印は★先に取る（★同期のあいだの編集を★送ったことにしない）★★', () {

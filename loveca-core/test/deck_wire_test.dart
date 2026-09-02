@@ -9,6 +9,7 @@
 library;
 
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:loveca_core/loveca_core.dart';
 import 'package:test/test.dart';
@@ -233,4 +234,89 @@ void main() {
     });
   });
 
+  // ★★ 走査 —— ★★同期の経路は `Deck.fromJson` を 1 度も呼ばない（★運転指示【0】(4)）★★
+  //
+  // ★★ なぜ走査で見張るか ★★
+  // ★**「使わない」は★★型では守れない★★** —— ★`Deck.fromJson` は公開の factory で、
+  //   ★★同期の口から呼んでもコンパイルは通る★★。
+  // ★**取り違えたときの害は★[Deck.fromJson] の doc に書いた**（★★1 か所である★★）。
+  group('★★ 走査 —— ★同期の経路は `Deck.fromJson` を呼ばない ★★', () {
+    // ★★ 純粋関数にする —— ★★合成の入力で対を作れるようにするため★★ ★★
+    bool callsFromJsonIn(String source) =>
+        _stripDartComments(source).contains('Deck.fromJson');
+
+    test('★ `lib/src/sync/` の全ファイルで 0 件', () {
+      final dir = Directory('lib/src/sync');
+      final files = dir
+          .listSync(recursive: true)
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.dart'))
+          .toList();
+      expect(files, isNotEmpty, reason: '★★走査する木が空である（★D-31 の受け）★★');
+
+      for (final f in files) {
+        expect(callsFromJsonIn(f.readAsStringSync()), isFalse,
+            reason: '★★${f.path} が `Deck.fromJson` を呼んでいる —— '
+                '★`decodeDeckForSync` を使うこと（**D142** ＝ 組-1）★★');
+      }
+    });
+
+    test('★★ 対: ★呼べば★この走査が捕まえる（★陽性対照）★★', () {
+      expect(
+        callsFromJsonIn('Deck f(Map<String, dynamic> j) => Deck.fromJson(j);'),
+        isTrue,
+      );
+    });
+
+    test('★★ 対: ★doc の中の字面は★コメント外しが落とす（★★D-30★★）★★', () {
+      // ★**`deck_wire.dart` の doc は★★`Deck.fromJson` を 3 度以上引いている★★**（★実測）。
+      //   ★**外さないと★★本命が★doc 自身に当たる★★。**
+      final raw = File('lib/src/sync/deck_wire.dart').readAsStringSync();
+      expect(raw.contains('Deck.fromJson'), isTrue, reason: '★陽性対照');
+      expect(callsFromJsonIn(raw), isFalse);
+    });
+
+    test('★★ `lib` 全体で★呼び出しは 0 件である（★★D-20 の受け★★）★★', () {
+      // ★★ 事実の固定 —— ★★今日この口を呼ぶ側は 1 人も居ない★★ ★★
+      //   ★**[Deck.fromJson] の doc がそう書いている。★★書いたら走らせる★★**（**D-15 (j)**）。
+      //   ★**足したときに落ちる。★そのとき doc を直すこと**（★★数を合わせるのではない★★）。
+      final hits = <String>[];
+      for (final f in Directory('lib')
+          .listSync(recursive: true)
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.dart'))) {
+        final code = _stripDartComments(f.readAsStringSync());
+        // ★宣言そのもの（`factory Deck.fromJson`）は★呼び出しではない。
+        final calls = code.replaceAll('factory Deck.fromJson', '');
+        if (calls.contains('Deck.fromJson')) hits.add(f.path);
+      }
+      expect(hits, isEmpty);
+    });
+  });
+
+}
+
+/// ★★ Dart のコメントを外す（★行 / ブロック / doc）★★
+///
+/// ★**文字列リテラルは★★残す★★**（★走査は★★文字列の中の字面も見たい★★）。
+String _stripDartComments(String source) {
+  final out = StringBuffer();
+  var i = 0;
+  while (i < source.length) {
+    if (source.startsWith('//', i)) {
+      final nlAt = source.indexOf(String.fromCharCode(10), i);
+      if (nlAt < 0) break;
+      i = nlAt;
+      continue;
+    }
+    if (source.startsWith('/*', i)) {
+      final endAt = source.indexOf('*/', i + 2);
+      if (endAt < 0) break;
+      i = endAt + 2;
+      continue;
+    }
+    out.write(source[i]);
+    i++;
+  }
+  return out.toString();
 }
