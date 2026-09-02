@@ -265,6 +265,27 @@ adb install -r build/app/outputs/flutter-apk/app-debug.apk
 adb logcat -c && adb shell am start -n com.example.loveca_ui/.MainActivity && adb logcat -d | grep SQLITE_CAPS
 ```
 
+★★**2026-09-02 追記: ★★画像キャッシュを★実データで測り直す試作を 1 つ足した**★★
+（`loveca-ui/spike/main_image_cache.dart` —— ★★**W-34** / `docs/UI技術検証メモ.md` §3-3-2★★）。
+★★**上のコマンド欄は 1 文字も書き換えない**★★（**D-35**）。
+
+```bash
+# ★★Windows —— ★★陽性対照。★§3-3 の「1 枚 74 KB / 1000 枚」を再現できるかを見る★★
+cd loveca-ui && flutter build windows --debug -t spike/main_image_cache.dart --dart-define=LOVECA_DIST_DIR=C:/Users/hiimo/loveca/loveca-data/data/dist --dart-define=SPIKE_AUTOEXIT=1
+./build/windows/x64/runner/Debug/loveca_ui.exe > cache.txt 2>&1
+
+# ★★Android —— ★★dist を★アプリ専有の内部領域へ置いてから★★（★`/sdcard/Android/data/…` は★★読めない★★ / errno 13）
+adb push <dist の各段> /data/local/tmp/lovecadist/...
+adb shell chmod -R a+rX /data/local/tmp/lovecadist
+adb shell run-as com.example.loveca_ui cp -r /data/local/tmp/lovecadist /data/data/com.example.loveca_ui/files/dist
+adb shell rm -rf /data/local/tmp/lovecadist
+cd loveca-ui && flutter build apk --debug -t spike/main_image_cache.dart --dart-define=LOVECA_DIST_DIR=/data/data/com.example.loveca_ui/files/dist --dart-define=SPIKE_AUTOEXIT=1
+adb install -r build/app/outputs/flutter-apk/app-debug.apk
+adb logcat -c && adb shell am start -n com.example.loveca_ui/.MainActivity && adb logcat -d | grep IMAGE_CACHE
+#   ★★MSYS の bash からは `MSYS2_ARG_CONV_EXCL='*'` を先に置く★★
+#     （★置かないと `--dart-define` の `/data/...` が★★`C:/Program Files/Git/data/...` に化ける★★ / ★実測）
+```
+
 ★★**2026-09-02 追記: ★上限の★分母を測り直す道具を 1 つ足した**★★
 （`loveca-server/tool/measure_hash_cost.dart` —— ★★上限は 60000 ÷ この値で導かれる★★ / **D-15**）。
 ★★**上のコマンド欄は 1 文字も書き換えない**★★（**D-35**）。
