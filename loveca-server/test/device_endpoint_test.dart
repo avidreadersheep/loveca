@@ -50,14 +50,24 @@ void main() {
   const other = 'かおり';
   const otherPass = 'べつのひみつ';
 
+  // ★★ 2026-09-02: ★`join` が増えた（**D148-1**）★★
+  //   ★**既定を `true` にしてある** —— ★★旧の「判定 ＋ 記録」と★同じ振る舞いになる★★ので、
+  //     ★**この下の群は★1 件も書き換わっていない**（★`join: false` の群は★別に置いた）。
   Map<String, Object?> body(String deviceId,
-          {String userName = user, String password = pass}) =>
-      {'userName': userName, 'password': password, deviceIdKey: deviceId};
+          {String userName = user, String password = pass, bool join = true}) =>
+      {
+        'userName': userName,
+        'password': password,
+        deviceIdKey: deviceId,
+        deviceJoinKey: join,
+      };
 
   Future<({bool known, List<String> ids})> touch(String deviceId,
-      {String userName = user, String password = pass}) async {
+      {String userName = user,
+      String password = pass,
+      bool join = true}) async {
     final res = await _post(client, server.port, devicesPath,
-        body(deviceId, userName: userName, password: password));
+        body(deviceId, userName: userName, password: password, join: join));
     expect(res.status, HttpStatus.ok);
     final decoded = jsonDecode(res.body) as Map<String, Object?>;
     return (
@@ -390,11 +400,116 @@ void main() {
       // ★★ 待ち受けを通さない —— ★保管だけを見る ★★
       expect(
         () => devices.touch('みつき', 'DEV-2',
-            now: clockNow, maxIdle: defaultDeviceMaxIdle),
+            now: clockNow, maxIdle: defaultDeviceMaxIdle, join: true),
         throwsA(anything),
       );
       expect(file.readAsStringSync(), before,
           reason: '★★元の 1 件が★1 バイトも変わっていない★★');
+    });
+  });
+
+  // ★★ `join` —— ★★問う → 器を消す → 記録する、の★「問う」を作る（決定 D148-1）★★
+  //
+  // ★★ なぜ要るか ★★
+  // ★**旧は「★判定 ＋ 記録」が★★1 つの要求で不可分だった★★**ので、
+  //   ★★記録のあとに呼ぶ側が器を消し損ねると★次の要求が `known: true` を返し、★器が古いまま残った★★
+  //   （★`docs/同期設計メモ.md` §80-4）。
+  // → ★**記録を★★後ろへ移せる形にする★★**（★順序で解く / ★新しい量は 1 つも要らない）。
+  group('★★ `join` —— ★記録を★呼ぶ側が後ろへ移せる（決定 D148-1）★★', () {
+    test('★★ `join: false` は★名簿に居ない端末を★書き加えない ★★', () async {
+      final got = await touch('DEV-1', join: false);
+
+      expect(got.known, isFalse);
+      expect(got.ids, isEmpty, reason: '★★自分も入っていない★★');
+      expect(devices.listDeviceIds(user), isEmpty);
+    });
+
+    test('★★ 対: ★`join: true` なら★書き加える ★★', () async {
+      await touch('DEV-1', join: false);
+      final got = await touch('DEV-1', join: true);
+
+      expect(got.known, isFalse, reason: '★★書く★前★の値を返す★★');
+      expect(devices.listDeviceIds(user), ['DEV-1']);
+    });
+
+    test('★★ `join: false` を★何度投げても★名簿は 0 件のままである（★冪等）★★', () async {
+      await touch('DEV-1', join: false);
+      await touch('DEV-1', join: false);
+      await touch('DEV-1', join: false);
+
+      expect(devices.listDeviceIds(user), isEmpty);
+    });
+
+    test('★★ `join: false` でも★★居る端末の時刻は書き直す★★（★★10 日で外れない★★）★★', () {
+      // ★★ 待ち受けを通さない —— ★時刻をこちらが動かす（**D-28**）★★
+      const user2 = 'ときめき';
+      final t0 = DateTime.utc(2026, 9, 1, 12);
+      devices.touch(user2, 'DEV-1',
+          now: t0, maxIdle: defaultDeviceMaxIdle, join: true);
+
+      // ★9 日後に★問うだけ（★`join: false`）
+      final t1 = t0.add(const Duration(days: 9));
+      final r1 = devices.touch(user2, 'DEV-1',
+          now: t1, maxIdle: defaultDeviceMaxIdle, join: false);
+      expect(r1.wasKnown, isTrue);
+
+      // ★さらに 9 日後 —— ★★時刻が書き直されていれば★まだ居る★★
+      final t2 = t1.add(const Duration(days: 9));
+      final r2 = devices.touch(user2, 'DEV-1',
+          now: t2, maxIdle: defaultDeviceMaxIdle, join: false);
+      expect(r2.wasKnown, isTrue,
+          reason: '★★書き直していなければ★18 日ぶんで外れている★★');
+    });
+
+    test('★★ `join` の鍵が無ければ 400（★★省けない★★ / 先例は D141-4）★★', () async {
+      final res = await _post(client, server.port, devicesPath, {
+        'userName': user,
+        'password': pass,
+        deviceIdKey: 'DEV-1',
+      });
+
+      expect(res.status, HttpStatus.badRequest);
+      expect(devices.listDeviceIds(user), isEmpty,
+          reason: '★★1 バイトも書いていない★★');
+    });
+
+    test('★ `join` が真偽値でなければ 400', () async {
+      final res = await _post(client, server.port, devicesPath, {
+        'userName': user,
+        'password': pass,
+        deviceIdKey: 'DEV-1',
+        deviceJoinKey: 'true',
+      });
+
+      expect(res.status, HttpStatus.badRequest);
+    });
+
+    test('★★ 柵: ★名乗りが通らなければ★`join` を見る前に 401 ★★', () async {
+      final res = await _post(client, server.port, devicesPath, {
+        'userName': user,
+        'password': 'ちがう',
+        deviceIdKey: 'DEV-1',
+        deviceJoinKey: true,
+      });
+
+      expect(res.status, HttpStatus.unauthorized);
+      expect(devices.listDeviceIds(user), isEmpty);
+    });
+
+    test('★★ `join: false` でも★★古いものは外す★★（★段 1 は条件つきでない）★★', () {
+      const user2 = 'あやむ';
+      final t0 = DateTime.utc(2026, 9, 1, 12);
+      devices.touch(user2, 'OLD',
+          now: t0, maxIdle: defaultDeviceMaxIdle, join: true);
+      expect(devices.listDeviceIds(user2), ['OLD']);
+
+      final t1 = t0.add(const Duration(days: 11));
+      final got = devices.touch(user2, 'NEW',
+          now: t1, maxIdle: defaultDeviceMaxIdle, join: false);
+
+      expect(got.wasKnown, isFalse);
+      expect(devices.listDeviceIds(user2), isEmpty,
+          reason: '★★外した結果は★join に関わらず保存する★★');
     });
   });
 }

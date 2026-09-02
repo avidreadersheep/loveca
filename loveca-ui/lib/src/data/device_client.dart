@@ -47,6 +47,13 @@ const String devicesPath = '/devices';
 /// 要求の鍵（★端末の同定）。
 const String syncDeviceIdKey = 'deviceId';
 
+/// ★★ 要求の鍵（★名簿へ★入れてよいか）—— **D148-1** ★★
+///
+/// ★★ 省けない（★サーバー側が★鍵の不在を 400 で断る）★★
+/// ★**既定を `false` に読むと、★★鍵を落とすだけで★端末が永久に名簿へ入れず、
+///   ★同期のたびに器が消える★★**（★先例は **D141-4**）。
+const String syncJoinKey = 'join';
+
 /// 応答の鍵（★名簿に居たか）。
 const String syncKnownKey = 'known';
 
@@ -63,12 +70,17 @@ typedef DeviceRoster = ({bool known, List<String> deviceIds});
 /// 名簿に触れる（★§32-6 の **26** の 3 番目）。
 ///
 /// ★★ 投げない（★18 / 21 / 23 と同じ） ★★
+///
+/// ★★ [join] —— ★★名簿へ★入れてよいか（**D148-1**）★★
+/// ★**`false` なら★★名簿に居ない端末を★書き加えない★★**（★居る端末の時刻は書き直す）。
+/// ★**省けない**（★サーバーが★鍵の不在を 400 で断る / ★上の [syncJoinKey]）。
 Future<SyncOutcome<DeviceRoster>> touchDeviceRoster({
   required HttpClient client,
   required Uri server,
   required String userName,
   required String password,
   required String deviceId,
+  required bool join,
 }) async {
   return postSyncRequest<DeviceRoster>(
     client: client,
@@ -78,6 +90,7 @@ Future<SyncOutcome<DeviceRoster>> touchDeviceRoster({
       syncUserNameKey: userName,
       syncPasswordKey: password,
       syncDeviceIdKey: deviceId,
+      syncJoinKey: join,
     },
     read: (decoded) {
       final known = decoded[syncKnownKey];
@@ -126,6 +139,32 @@ abstract interface class DeviceIdentityStore {
 /// ★**そのときは★サーバーから見ても「初めて」なので、★★`known` は必ず `false` になる★★** ——
 ///   ★**器を戻すが、★★行が 0 件なら何も消えない★★**（★上の doc）。
 ///
+/// ## ★★ 順序 —— ★★問う → ★器を消す → ★記録する（**D148-1** / ★運転指示【0】(4)）★★
+///
+/// ★**§80-4 が「★途中で落ちたときは★★自分で直らない★★」と記録した分である。**
+/// ★★**新しい量を置く前に、★順序で解けるかを見た。★解けた**★★（★相談役の指示）。
+///
+/// | 段 | 何をするか | ★ここで落ちたら |
+/// |---|---|---|
+/// | ★**1** | ★**名簿に★問う**（`join: false` —— ★★1 行も増やさない★★） | ★**名簿は古いまま** → ★次の同期が★同じ経路 |
+/// | ★**2** | ★**器の行を★全部消す** | ★**同上**（★名簿にまだ入っていない） |
+/// | ★**3** | ★**名簿へ★入る**（`join: true`） | ★**同上** |
+///
+/// ★★**単純な入れ替え（★器を先に消して★名簿を後に）は★成立しない**★★ ——
+/// ★**「消すかどうか」は★★サーバーの答えで決まる★★。★答えの前には消せない。**
+/// ★**無条件に消すと、★★つながるたびに基準を捨てる★★**（★次の同期が全件を衝突として解く）。
+/// → ★**成立するのは「★★判定と記録を分けて、★記録を後ろへ移す★★」形だけである。**
+///
+/// ★★ 冪等である ★★
+/// ★**[DeviceIdentityStore.forgetAllMarks] は★★2 度消しても結果が同じ★★**（★対で固定した）。
+/// → ★**同じ経路を何度通っても★★1 度通ったのと同じ状態になる★★。**
+///
+/// ★★ 代償を隠さない —— ★★名簿に居ないときは★1 回多く投げる ★★
+/// ★**定常（★名簿に居る）は★★1 回のまま★★。★名簿に居ないときだけ★★2 回★★。**
+/// → ★**1 回の同期 ＝ ★2 ＋ デッキの数（定常）／ ★★3 ＋ デッキの数（名簿に居ないとき）★★。**
+/// ★**上限の側は★★悪いほうで見る★★**（`loveca-server/test/sync_burst_test.dart`）。
+/// ★★**「小さい」とは書かない**★★（**D-28**）—— ★**書けるのは★★1 回増えることまで★★である。**
+///
 /// ## ★★ 通信が失敗したら★器を 1 バイトも触らない ★★
 ///
 /// ★**触ると、★★つながらなかっただけで★基準を捨てる★★**（★次の同期が全件を衝突として解く）。
@@ -153,19 +192,31 @@ Future<SyncOutcome<DeviceRoster>> syncDeviceRoster({
     await identity.recordIdentity(userName: userName, deviceId: deviceId);
   }
 
-  final result = await touchDeviceRoster(
+  // ★★ 段 1 —— ★問う（★★名簿を 1 行も増やさない★★ / **D148-1**）★★
+  final asked = await touchDeviceRoster(
     client: client,
     server: server,
     userName: userName,
     password: password,
     deviceId: deviceId,
+    join: false,
   );
-
-  if (result case SyncOk<DeviceRoster>(:final value) when !value.known) {
-    // ★★ §32-6 の 27 —— ★器の行を消して「まだ一度も同期していない」に戻す ★★
+  if (asked case SyncOk<DeviceRoster>(:final value) when !value.known) {
+    // ★★ 段 2 —— §32-6 の 27 ＝ ★器の行を消して「まだ一度も同期していない」に戻す ★★
     await identity.forgetAllMarks();
+
+    // ★★ 段 3 —— ★名簿へ入る（★★器を消したあとである★★）★★
+    //   ★**ここで落ちても★★名簿は古いまま★★なので、★次の同期が★同じ経路を通る。**
+    return touchDeviceRoster(
+      client: client,
+      server: server,
+      userName: userName,
+      password: password,
+      deviceId: deviceId,
+      join: true,
+    );
   }
-  return result;
+  return asked;
 }
 
 /// ★★ `loveca_db` の DAO を [DeviceIdentityStore] に嵌める（★★橋渡しだけ★★）★★
@@ -186,6 +237,12 @@ Future<SyncOutcome<DeviceRoster>> syncDeviceRoster({
 /// ★★**「次の同期が同じことをする」とは書かない。★成り立たない**★★（★実読）。
 /// ★**手当てには★★新しい量が要る**★★（★「名簿に受け入れられたことを★端末側でも覚える」）——
 ///   ★**今日は置かない**（**D114-7** の理由 2）。
+///
+/// ★★ 2026-09-02 追記: ★★手当てした。★新しい量は 1 つも要らなかった（**D148-1**）★★
+/// ★★**上の 5 行は 1 文字も書き換えない**★★（**D-35** —— ★★その順序では真である★★）。
+/// ★**順序を「★問う → ★器を消す → ★記録する」に変えた**（★[syncDeviceRoster] の doc）。
+/// → ★**途中で落ちても★★名簿は古いまま★★なので、★次の同期が★同じ経路を通る。**
+/// ★**[forgetAllMarks] は★★冪等である★★**（★2 度消しても★結果が同じ）。
 class DaoDeviceIdentityStore implements DeviceIdentityStore {
   const DaoDeviceIdentityStore(this._identity, this._marks);
 

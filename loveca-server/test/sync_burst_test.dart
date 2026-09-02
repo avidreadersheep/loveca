@@ -109,13 +109,26 @@ void main() {
   ///   （★口が増えたらここだけ直す / ★先例は §63-7 の「導出形」）。
   int syncCost(int deckCount) => 2 + deckCount;
 
-  Future<List<int>> syncOnce(int deckCount) async {
+  /// ★★ 2026-09-02: ★名簿に居ないときは★1 回多い（決定 **D148-1**）★★
+  ///
+  /// ★**順序が「★問う → ★器を消す → ★記録する」になった**（★§80-4 の手当て）。
+  /// ★**定常（★名簿に居る）は [syncCost] のまま。★★居ないときだけ 1 増える★★。**
+  /// ★★**上の [syncCost] は 1 文字も書き換えない**★★（**D-35** —— ★★定常では真である★★）。
+  int joiningSyncCost(int deckCount) => syncCost(deckCount) + 1;
+
+  Future<List<int>> syncOnce(int deckCount, {bool joining = false}) async {
     final out = <int>[];
     // ★★ 2026-09-02: ★名簿の口が★1 回増えた（決定 **D145-4** ＝ 名-1）★★
     //   ★**1 回の同期 ＝ ★★2 ＋ デッキの数★★**（★名簿 1 ＋ 一覧 1 ＋ デッキごと 1）。
     //   ★★**代償である。★隠さない**★★ —— ★§77-6 の (丙)。
-    out.add(await _status(
-        client, server.port, devicesPath, creds({deviceIdKey: 'DEV-1'})));
+    // ★★ 2026-09-02: ★[joining] のときは★名簿へ 2 回投げる（決定 **D148-1**）★★
+    //   ★**段 1 は「問う」（`join: false`）、★段 3 は「記録する」（`join: true`）。**
+    out.add(await _status(client, server.port, devicesPath,
+        creds({deviceIdKey: 'DEV-1', deviceJoinKey: !joining})));
+    if (joining) {
+      out.add(await _status(client, server.port, devicesPath,
+          creds({deviceIdKey: 'DEV-1', deviceJoinKey: true})));
+    }
     out.add(await _status(client, server.port, decksListPath, creds({})));
     for (var i = 0; i < deckCount; i++) {
       out.add(await _status(
@@ -219,6 +232,38 @@ void main() {
       // ★★ 代償を★数で固定する（**D145-4** の (丙)）★★
       //   ★**前は 枠 − 1 だった。★★1 つ減った★★。**
       expect(syncRateLimitBudget - 2, 32, reason: '★★今日の分母（1529）での値★★');
+    });
+
+    // ★★ 名簿に居ないとき —— ★★1 回多い（決定 D148-1）★★
+    //
+    // ★★ 悪いほうで見る ★★
+    // ★**上限は「窓に入りきること」なので、★★起きうる最も多い回数で見る★★。**
+    // ★**定常（★名簿に居る）は 1 つ上の群が見ている。★★どちらも残す★★。**
+    test('★★ 名簿に居ないときは★★1 回多く投げる★★（★問う ＋ 記録する）★★', () async {
+      final got = await syncOnce(1, joining: true);
+
+      expect(got, hasLength(joiningSyncCost(1)));
+      expect(got.where((s) => s == 429), isEmpty);
+    });
+
+    test('★★ 名簿に居ないときに同期できるデッキは★★枠 − 3 個まで★★', () async {
+      final got = await syncOnce(syncRateLimitBudget - 3, joining: true);
+
+      expect(got, hasLength(syncRateLimitBudget));
+      expect(got.where((s) => s == 429), isEmpty);
+    });
+
+    test('★★ 対: ★枠 − 2 個だと★断られる（★★定常なら通る数である★★）★★', () async {
+      final got = await syncOnce(syncRateLimitBudget - 2, joining: true);
+
+      expect(got.last, 429);
+      expect(got.where((s) => s == 429), hasLength(1));
+    });
+
+    test('★★ 代償を★数で固定する（★★1 つ減った★★ / 決定 D148-1）★★', () {
+      expect(syncRateLimitBudget - 3, 31, reason: '★★今日の分母（1529）での値★★');
+      expect(joiningSyncCost(0) - syncCost(0), 1,
+          reason: '★★増えるのは★1 回だけである★★');
     });
   });
 

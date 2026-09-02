@@ -32,6 +32,20 @@
 /// ★★**409 も 404 も持ち込まない**★★ —— ★**名簿に無い端末は★★答えであって不在ではない★★**
 /// （★§55-3 が「空の一覧は 200」と書いたのと★同じ形）。
 ///
+/// ## ★★ 2026-09-02 追記: ★★要求に `join` が増えた（**D148-1** / ★運転指示【0】(4)）★★
+///
+/// ★★**上の表は 1 文字も書き換えない**★★（**D-35**）。
+/// ★**§80-4 が「★途中で落ちたときは★★自分で直らない★★」と記録した分である。**
+///
+/// | 何 | 決めたこと | ★なぜ |
+/// |---|---|---|
+/// | ★要求の鍵 | ★`join`（★★真偽値。★省けない★★） | ★**D148-1** —— ★★呼ぶ側が「問う → 器を消す → 記録する」の順で通せるようにする★★ |
+/// | ★`join` が無い / 型が違う | ★**400** | ★**既定に読むと★★鍵を落とすだけで★端末が永久に名簿へ入れない★★**（★先例は **D141-4**） |
+///
+/// ★★ 代償を隠さない —— ★★名簿に居ない端末は★同期が 1 回多く投げる ★★
+/// ★**1 回の同期 ＝ ★★2 ＋ デッキの数★★**（★定常）／ ★★**3 ＋ デッキの数**★★（★★名簿に居ないとき★★）。
+/// → ★**上限の側は★★悪いほうで見る★★**（`test/sync_burst_test.dart`）。
+///
 /// ## ★★ 柵: ★名乗りが先である（**D141** と同じ向き）★★
 ///
 /// ★**名乗りが通らなければ★★名簿を 1 バイトも読み書きしない★★**（★対で固定した）——
@@ -62,6 +76,14 @@ const String deviceIdsKey = 'deviceIds';
 /// 要求の鍵（★端末の同定）。
 const String deviceIdKey = 'deviceId';
 
+/// ★★ 要求の鍵（★名簿へ★入れてよいか）—— **D148-1** ★★
+///
+/// ★★ 省けない。★鍵が無ければ 400 である ★★
+/// ★**既定を `false` に読むと、★★鍵を落とすだけで★端末が永久に名簿へ入れない★★。**
+/// ★**呼ぶ側は★★毎回の同期で器を消し続ける★★**（★`known` が★永久に `false` のままだから）。
+/// ★**先例は **D141-4****（★「印は必須である。★省けない」）。
+const String deviceJoinKey = 'join';
+
 /// 名簿に触れる口（★§32-6 の **26**）。
 ///
 /// ★★ 期間と時刻は★呼び出し側から渡す ★★
@@ -82,6 +104,7 @@ Future<void> handleDeviceRequest(
   final String userName;
   final String password;
   final String deviceId;
+  final bool join;
   try {
     final body = await utf8.decoder.bind(request).join();
     final decoded = jsonDecode(body);
@@ -91,6 +114,12 @@ Future<void> handleDeviceRequest(
     userName = requireJsonString(decoded, 'userName');
     password = requireJsonString(decoded, 'password');
     deviceId = requireJsonString(decoded, deviceIdKey);
+    // ★★ 省けない（**D148-1**）—— ★鍵の不在も★型違いも 400 である ★★
+    final rawJoin = decoded[deviceJoinKey];
+    if (rawJoin is! bool) {
+      throw const FormatException('★join が真偽値ではない');
+    }
+    join = rawJoin;
   } on FormatException {
     await writeDeckStatus(request.response, HttpStatus.badRequest);
     return;
@@ -112,8 +141,8 @@ Future<void> handleDeviceRequest(
     return;
   }
 
-  final result =
-      devices.touch(userName, deviceId, now: now, maxIdle: maxIdle);
+  final result = devices.touch(userName, deviceId,
+      now: now, maxIdle: maxIdle, join: join);
 
   request.response
     ..statusCode = HttpStatus.ok

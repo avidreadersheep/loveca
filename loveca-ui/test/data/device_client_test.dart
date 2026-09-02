@@ -81,6 +81,22 @@ class _FakeIdentity implements DeviceIdentityStore {
   Future<void> forgetAllMarks() async => forgotten++;
 }
 
+/// ★★ 起きた順を記録するフェイク（★決定 **D148-1** の対）★★
+///
+/// ★**器を消したことを★★通信と同じ列に混ぜて記録する★★**ので、
+/// ★★「記録より★先に消したか」が★1 つの列で読める★★。
+class _OrderedIdentity extends _FakeIdentity {
+  _OrderedIdentity(this._order, {super.identity});
+
+  final List<String> _order;
+
+  @override
+  Future<void> forgetAllMarks() async {
+    _order.add('forget');
+    return super.forgetAllMarks();
+  }
+}
+
 void main() {
   group('★★ 名簿に触れる口（★本物の待ち受けに当てる / D-10）★★', () {
     test('★ 取れたら SyncOk で、★1 ビットと全端末が返る', () async {
@@ -104,6 +120,7 @@ void main() {
         userName: 'みつき',
         password: 'ひみつ',
         deviceId: 'DEV-1',
+        join: true,
       );
 
       expect(result, isA<SyncOk<DeviceRoster>>());
@@ -130,13 +147,41 @@ void main() {
         userName: 'みつき',
         password: 'ひみつ',
         deviceId: 'DEV-1',
+        join: true,
       );
 
+      // ★★ 2026-09-02: ★`join` が増えた（決定 **D148-1**）★★
+      //   ★**送るものは 4 つになった。★★字面をここで固定する★★。**
       expect(sent, {
         syncUserNameKey: 'みつき',
         syncPasswordKey: 'ひみつ',
         syncDeviceIdKey: 'DEV-1',
+        syncJoinKey: true,
       });
+    });
+
+    test('★★ `join: false` を渡すと★★そのまま送る★★（★問うだけ / D148-1）★★', () async {
+      Map<String, Object?>? sent;
+      final server = await _serve((request) async {
+        sent = jsonDecode(await utf8.decoder.bind(request).join())
+            as Map<String, Object?>;
+        await _reply(request, 200,
+            jsonEncode({'ok': true, syncKnownKey: true, syncDeviceIdsKey: []}));
+      });
+      addTearDown(() => server.close(force: true));
+      final client = _client();
+      addTearDown(() => client.close(force: true));
+
+      await touchDeviceRoster(
+        client: client,
+        server: Uri.parse('https://localhost:${server.port}'),
+        userName: 'みつき',
+        password: 'ひみつ',
+        deviceId: 'DEV-1',
+        join: false,
+      );
+
+      expect(sent![syncJoinKey], isFalse);
     });
 
     test('★★ 1 ビットが欠けていたら★受け取らない（★★SyncUnreachable★★）★★', () async {
@@ -156,6 +201,7 @@ void main() {
         userName: 'みつき',
         password: 'ひみつ',
         deviceId: 'DEV-1',
+        join: true,
       );
 
       expect(result, isA<SyncUnreachable<DeviceRoster>>());
@@ -175,6 +221,7 @@ void main() {
         userName: 'みつき',
         password: 'ちがう',
         deviceId: 'DEV-1',
+        join: true,
       );
 
       expect(result, isA<SyncRejected<DeviceRoster>>());
@@ -195,6 +242,7 @@ void main() {
         userName: 'みつき',
         password: 'ひみつ',
         deviceId: 'DEV-1',
+        join: true,
       );
 
       expect(result, isA<SyncUnreachable<DeviceRoster>>());
@@ -210,6 +258,7 @@ void main() {
         userName: 'みつき',
         password: 'ひみつ',
         deviceId: 'DEV-1',
+        join: true,
       );
 
       expect(result, isA<SyncUnreachable<DeviceRoster>>());
@@ -221,14 +270,17 @@ void main() {
     late HttpClient client;
     late bool known;
     late List<String> sentDeviceIds;
+    late List<bool> sentJoins;
 
     setUp(() async {
       known = true;
       sentDeviceIds = [];
+      sentJoins = [];
       server = await _serve((request) async {
         final body = jsonDecode(await utf8.decoder.bind(request).join())
             as Map<String, Object?>;
         sentDeviceIds.add(body[syncDeviceIdKey]! as String);
+        sentJoins.add(body[syncJoinKey]! as bool);
         await _reply(
             request,
             200,
@@ -264,6 +316,9 @@ void main() {
 
       expect(identity.forgotten, 0);
       expect(sentDeviceIds, ['DEV-1'], reason: '★★覚えている同定を使う★★');
+      // ★★ 2026-09-02: ★★居れば 1 回で済む（決定 D148-1）★★
+      //   ★**代償は「★名簿に居ないときだけ 1 回増える」である。★★定常では増えない★★。**
+      expect(sentJoins, [false], reason: '★★問うだけ ＝ 名簿を 1 行も増やさない★★');
     });
 
     test('★★ 居なければ★器を戻す（**D121-7** ＝ 落-1）★★', () async {
@@ -283,7 +338,10 @@ void main() {
       await run(identity);
 
       expect(identity.recorded, [(userName: 'みつき', deviceId: 'NEW-1')]);
-      expect(sentDeviceIds, ['NEW-1']);
+      // ★★ 2026-09-02: ★名簿に居ないので★2 回投げる（決定 **D148-1**）★★
+      //   ★**段 1（問う）と 段 3（記録する）。★★同じ同定を名乗る★★。**
+      expect(sentDeviceIds, ['NEW-1', 'NEW-1']);
+      expect(sentJoins, [false, true]);
       expect(identity.forgotten, 1, reason: '★★行が 0 件なら★何も消えない★★');
     });
 
@@ -339,6 +397,106 @@ void main() {
     });
   });
 
+  // ★★ 順序 —— ★★問う → 器を消す → 記録する（決定 D148-1 / 運転指示【0】(4)）★★
+  //
+  // ★★ 何を守っているか ★★
+  // ★**§80-4 が「★途中で落ちたときは★★自分で直らない★★」と記録した分である。**
+  // ★**記録が★器を消す★★前★★に起きると、★次の同期が `known: true` を返して★器が古いまま残る。**
+  // → ★**この群は★★3 段の順序そのもの★★を見る。**
+  group('★★ 順序 —— ★問う → 器を消す → 記録する（決定 D148-1）★★', () {
+    late HttpServer server;
+    late HttpClient client;
+    late List<bool> sentJoins;
+    late List<String> order;
+    late bool failJoin;
+
+    setUp(() async {
+      sentJoins = [];
+      order = [];
+      failJoin = false;
+      server = await _serve((request) async {
+        final body = jsonDecode(await utf8.decoder.bind(request).join())
+            as Map<String, Object?>;
+        final join = body[syncJoinKey]! as bool;
+        sentJoins.add(join);
+        order.add(join ? 'join' : 'ask');
+        if (join && failJoin) {
+          await _reply(request, 500, jsonEncode({'ok': false}));
+          return;
+        }
+        await _reply(
+            request,
+            200,
+            jsonEncode({
+              'ok': true,
+              syncKnownKey: false,
+              syncDeviceIdsKey: [body[syncDeviceIdKey]],
+            }));
+      });
+      client = _client();
+    });
+
+    tearDown(() async {
+      client.close(force: true);
+      await server.close(force: true);
+    });
+
+    Future<SyncOutcome<DeviceRoster>> run(_OrderedIdentity identity) =>
+        syncDeviceRoster(
+          client: client,
+          server: Uri.parse('https://localhost:${server.port}'),
+          userName: 'みつき',
+          password: 'ひみつ',
+          identity: identity,
+          newDeviceId: () => 'NEW-1',
+        );
+
+    test('★★ 3 段が★この順で起きる（★★記録は★器を消したあとである★★）★★', () async {
+      final identity = _OrderedIdentity(order,
+          identity: (userName: 'みつき', deviceId: 'DEV-1'));
+
+      await run(identity);
+
+      expect(order, ['ask', 'forget', 'join']);
+    });
+
+    test('★★ 問う段は★名簿を 1 行も増やさない（`join: false`）★★', () async {
+      final identity = _OrderedIdentity(order,
+          identity: (userName: 'みつき', deviceId: 'DEV-1'));
+
+      await run(identity);
+
+      expect(sentJoins, [false, true]);
+    });
+
+    test('★★ 記録が落ちても★器は消えたままである（★★次の同期が同じ経路を通る★★）★★',
+        () async {
+      failJoin = true;
+      final identity = _OrderedIdentity(order,
+          identity: (userName: 'みつき', deviceId: 'DEV-1'));
+
+      final result = await run(identity);
+
+      expect(result, isA<SyncUnreachable<DeviceRoster>>(),
+          reason: '★★落ちたことを★呼ぶ側に返す★★');
+      expect(identity.forgotten, 1);
+      expect(order, ['ask', 'forget', 'join']);
+    });
+
+    test('★★ もう一度通しても★同じ状態になる（★★冪等★★）★★', () async {
+      final identity = _OrderedIdentity(order,
+          identity: (userName: 'みつき', deviceId: 'DEV-1'));
+
+      await run(identity);
+      order.clear();
+      await run(identity);
+
+      expect(order, ['ask', 'forget', 'join'],
+          reason: '★★2 度目も★同じ経路を通る★★');
+      expect(identity.forgotten, 2, reason: '★★2 度消しても★結果は同じである★★');
+    });
+  });
+
   group('★★ 走査 —— ★★パスと鍵の名前が★両側で同じである（**D126-3** の代償）★★', () {
     // ★★ 純粋関数にする —— ★★合成の入力で対を作れるようにするため★★ ★★
     //   ★**実測: ★本番のファイルだけを見る形だと、★★コメント外しに対が届かない★★**
@@ -361,6 +519,12 @@ void main() {
       expect(declaresIn(serverSource, syncDeviceIdKey), isTrue);
       expect(declaresIn(serverSource, syncUserNameKey), isTrue);
       expect(declaresIn(serverSource, syncPasswordKey), isTrue);
+      // ★★ 2026-09-02: ★`join` を足した（決定 **D148-1**）★★
+      //   ★**引き金**: ★`syncJoinKey` の字面を変えても★★1 件も落ちなかった★★
+      //     （★2026-09-02 実測 / ★0 件）—— ★**両側が★★同じ定数を読む★★ので★一緒に動く。**
+      //   ★**原因は★★対の形★★である**（**D-27** / ★先例は §72 の (D)(J)）。
+      //   → ★**サーバーのソースに★★引用符ごと在ること★★を見る。**
+      expect(declaresIn(serverSource, syncJoinKey), isTrue);
     });
 
     test('★ 返る鍵の名前が同じ', () {
