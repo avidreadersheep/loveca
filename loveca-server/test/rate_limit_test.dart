@@ -437,6 +437,16 @@ void main() {
       expect(syncRateLimitBudget, greaterThan(0));
     });
 
+    test('★★ 名簿の口は★同期の枠である（★★人が押す枠を食わない★★ / D145-4）★★', () {
+      // ★★ D-27: ★これが無いと、★★枠の割り当てを変えても 1 件も落ちない★★（★実測 0 件）★★
+      //   ★**1 回の同期が★必ず 1 回呼ぶ**（★§77-6 の (丙) —— ★2 ＋ デッキの数）。
+      //   ★**人が押す枠に入れると、★★同期が★人の枠（5）を食い切る★★。**
+      expect(rateLimitFrameFor(devicesPath), RateLimitFrame.deckSync);
+
+      // ★対: 知らないパスは★人が押す枠のままである（★走査そのものが効いている）。
+      expect(rateLimitFrameFor('/★知らないパス'), RateLimitFrame.human);
+    });
+
     test('★★ 既定値は★導いた値を★そのまま使う（★字面を埋め込んでいない）★★', () {
       // ★**仕込み: ★どちらかに数字を直に書くと落ちる。**
       expect(defaultRateLimit.maxRequests, humanRateLimitBudget);

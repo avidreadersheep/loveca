@@ -69,6 +69,8 @@ import 'account_endpoint.dart';
 import 'account_file_store.dart';
 import 'auth.dart';
 import 'deck_endpoint.dart';
+import 'device_endpoint.dart';
+import 'device_store.dart';
 import 'dist_endpoint.dart';
 import 'deck_store.dart';
 import 'password_hash.dart';
@@ -139,7 +141,14 @@ Future<void> _writeStatus(HttpResponse response, int status) async {
 /// ★★ 知らないパスは★人が押す枠に入れる ★★
 /// ★**同期の枠は「★1 回の同期が通ること」で寸法が決まっており、★★知らないパスはその勘定に入らない★★。**
 RateLimitFrame rateLimitFrameFor(String path) => switch (path) {
-      decksPath || decksFetchPath || decksListPath => RateLimitFrame.deckSync,
+      decksPath ||
+      decksFetchPath ||
+      decksListPath ||
+      // ★★ 2026-09-02: ★名簿の口も★同期の枠である（決定 **D145-4**）★★
+      //   ★**1 回の同期が★必ず 1 回呼ぶ**（★§77-6 の (丙) —— ★2 ＋ デッキの数）。
+      //   ★★**人が押す枠に入れると、★★同期が★人の枠を食う★★。**
+      devicesPath =>
+        RateLimitFrame.deckSync,
       _ => RateLimitFrame.human,
     };
 
@@ -159,6 +168,9 @@ Future<void> handleApiRequest(
   int accountIterations = passwordHashIterations,
   ApiRateLimiter? rateLimiter,
   DistFileStore? dist,
+  DeviceFileStore? devices,
+  DateTime Function()? clock,
+  Duration deviceMaxIdle = defaultDeviceMaxIdle,
 }) async {
   // ★★ 配る口は★上限より★前に振り分ける（★対象から外している）★★
   //   ★**理由は 1 つ** —— ★この口は★★名乗りを 1 度も見ない★★ので、
@@ -196,6 +208,15 @@ Future<void> handleApiRequest(
       await handleDeckFetchRequest(request, store, decks);
     case decksListPath:
       await handleDeckListRequest(request, store, decks);
+    case devicesPath:
+      // ★★ 置き場が渡されていなければ★404 に落ちる（★配る口と同じ形）★★
+      //   ★**静かに 200 を返さない。**
+      if (devices == null) {
+        await _writeStatus(request.response, HttpStatus.notFound);
+      } else {
+        await handleDeviceRequest(request, store, devices,
+            now: (clock ?? DateTime.now)(), maxIdle: deviceMaxIdle);
+      }
     default:
       await _writeStatus(request.response, HttpStatus.notFound);
   }
@@ -228,6 +249,8 @@ Future<HttpServer> serveApi({
   required SecurityContext context,
   required AccountFileStore store,
   required DeckFileStore decks,
+  DeviceFileStore? devices,
+  Duration deviceMaxIdle = defaultDeviceMaxIdle,
   Object? address,
   int port = 0,
   int accountIterations = passwordHashIterations,
@@ -243,6 +266,11 @@ Future<HttpServer> serveApi({
   // ★★ 待ち受け 1 つにつき 1 つ数える（★立て直せば忘れる）★★
   final limiter = ApiRateLimiter(rateLimits, clock: clock);
   server.listen((request) => handleApiRequest(request, store, decks,
-      accountIterations: accountIterations, rateLimiter: limiter, dist: dist));
+      accountIterations: accountIterations,
+      rateLimiter: limiter,
+      dist: dist,
+      devices: devices,
+      clock: clock,
+      deviceMaxIdle: deviceMaxIdle));
   return server;
 }

@@ -103,8 +103,19 @@ void main() {
       };
 
   /// ★1 台の 1 回の同期（★★一覧 1 ＋ 取る [deckCount] 回★★）を投げ、★状態コードを返す。
+  /// ★★ 1 回の同期が投げる回数（★★2 ＋ デッキの数★★ / 決定 **D145-4**）★★
+  ///
+  /// ★**名簿 1 ＋ 一覧 1 ＋ デッキごと 1。★★字面を各所に埋め込まない★★**
+  ///   （★口が増えたらここだけ直す / ★先例は §63-7 の「導出形」）。
+  int syncCost(int deckCount) => 2 + deckCount;
+
   Future<List<int>> syncOnce(int deckCount) async {
     final out = <int>[];
+    // ★★ 2026-09-02: ★名簿の口が★1 回増えた（決定 **D145-4** ＝ 名-1）★★
+    //   ★**1 回の同期 ＝ ★★2 ＋ デッキの数★★**（★名簿 1 ＋ 一覧 1 ＋ デッキごと 1）。
+    //   ★★**代償である。★隠さない**★★ —— ★§77-6 の (丙)。
+    out.add(await _status(
+        client, server.port, devicesPath, creds({deviceIdKey: 'DEV-1'})));
     out.add(await _status(client, server.port, decksListPath, creds({})));
     for (var i = 0; i < deckCount; i++) {
       out.add(await _status(
@@ -120,6 +131,8 @@ void main() {
         '${dir.path}${Platform.pathSeparator}accounts.json');
     decks = DeckFileStore(
         Directory('${dir.path}${Platform.pathSeparator}decks'));
+    final devices = DeviceFileStore(
+        Directory('${dir.path}${Platform.pathSeparator}devices'));
 
     final context = SecurityContext()
       ..useCertificateChain(_certPath)
@@ -128,6 +141,7 @@ void main() {
       context: context,
       store: accounts,
       decks: decks,
+      devices: devices,
       accountIterations: 10,
       // ★★ ここが要点 —— ★★本番の既定値をそのまま使う★★
       rateLimits: defaultRateLimits,
@@ -177,25 +191,34 @@ void main() {
       //   ★**前は 1 ＋ 5 = 6 > 5 で断られた**（★上の doc の表）。
       final got = await syncOnce(5);
 
-      expect(got, hasLength(6));
+      expect(got, hasLength(7), reason: '★★2 ＋ 5（★名簿の口が 1 増えた / D145-4）★★');
       expect(got.where((s) => s == 429), isEmpty);
     });
 
-    test('★★ 枠より 1 つ少ないデッキなら★1 回も断られない（★★ちょうど上限★★）★★', () async {
-      // ★1 ＋ 32 = 33 ＝ 同期の枠そのもの。
-      final got = await syncOnce(syncRateLimitBudget - 1);
+    test('★★ 枠より 2 つ少ないデッキなら★1 回も断られない（★★ちょうど上限★★）★★', () async {
+      // ★★ 2026-09-02: ★名簿の口が 1 増えた（**D145-4**）★★
+      //   ★**2 ＋ (枠 − 2) = 枠 ＝ 同期の枠そのもの。**
+      //   ★**上の 2 行（1 ＋ 32 = 33）は★★書き換えない★★**（**D-35** —— ★その口の数では真である）。
+      final got = await syncOnce(syncRateLimitBudget - 2);
 
       expect(got, hasLength(syncRateLimitBudget));
       expect(got.where((s) => s == 429), isEmpty);
     });
 
-    test('★★ デッキが★枠と同じ数なら★★断られる★★（★★値で先送りしただけである★★）★★', () async {
+    test('★★ デッキが★枠より 1 つ少ない数でも★★断られる★★（★★値で先送りしただけである★★）★★',
+        () async {
       // ★★ 「もう断られない」ではない ★★
-      //   ★**1 ＋ 33 = 34 > 33**。→ ★★D を大きくすれば必ず破れる★★（★形の帰結）。
-      final got = await syncOnce(syncRateLimitBudget);
+      //   ★**2 ＋ (枠 − 1) = 枠 ＋ 1 > 枠**。→ ★★D を大きくすれば必ず破れる★★（★形の帰結）。
+      final got = await syncOnce(syncRateLimitBudget - 1);
 
       expect(got.last, 429);
       expect(got.where((s) => s == 429), hasLength(1));
+    });
+
+    test('★★ 1 台が同期できるデッキは★★枠 − 2 個まで★★（★名簿の口の代償）★★', () {
+      // ★★ 代償を★数で固定する（**D145-4** の (丙)）★★
+      //   ★**前は 枠 − 1 だった。★★1 つ減った★★。**
+      expect(syncRateLimitBudget - 2, 23, reason: '★★今日の分母（1949）での値★★');
     });
   });
 
@@ -209,13 +232,17 @@ void main() {
     });
 
     test('★★ 2 台 × デッキ★枠の半分で★★断られる★★（★どちらも 1 台なら通るのに）★★', () async {
-      // ★**1 台なら 1 ＋ 16 = 17 ≤ 33 で通る**（★下の対）。
-      // ★★**2 台だと 34 > 33**★★ —— ★**枠は 1 人ぶんではない**（`rate_limit.dart` の代償 1）。
-      final first = await syncOnce(syncRateLimitBudget ~/ 2);
-      final second = await syncOnce(syncRateLimitBudget ~/ 2);
+      // ★**1 台なら 2 ＋ 12 = 14 ≤ 25 で通る**（★下の対）。
+      // ★★**2 台だと 28 > 25**★★ —— ★**枠は 1 人ぶんではない**（`rate_limit.dart` の代償 1）。
+      // ★**上の 2 行は★★書き換えない★★**（**D-35** —— ★その分母と口の数では真である）。
+      final half = syncRateLimitBudget ~/ 2;
+      final first = await syncOnce(half);
+      final second = await syncOnce(half);
 
       expect(first.where((s) => s == 429), isEmpty);
-      expect(second.where((s) => s == 429), hasLength(1));
+      expect(second.where((s) => s == 429),
+          hasLength(2 * syncCost(half) - syncRateLimitBudget),
+          reason: '★★超えた分だけ断られる（★★字面を書かない★★）★★');
     });
 
     test('★★ 対: 1 台だけなら★同じ回数でも通る ★★', () async {
@@ -229,7 +256,7 @@ void main() {
     test('★★ 同期を上限まで使っても★名乗る口は★まだ通る ★★', () async {
       // ★★ これが「分けた」ことの実物である ★★
       //   ★**枠が 1 つなら、★同期で使い切ったあと★名乗れない。**
-      final got = await syncOnce(syncRateLimitBudget - 1);
+      final got = await syncOnce(syncRateLimitBudget - 2);
       expect(got.where((s) => s == 429), isEmpty);
 
       final auth = await _status(client, server.port, authPath, creds({}));
@@ -263,13 +290,15 @@ void main() {
 
   group('★★ 断られた同期は★窓が過ぎれば通る（★恒久に締め出さない）★★', () {
     test('★★ 61 秒あとに投げ直すと通る ★★', () async {
-      final blocked = await syncOnce(syncRateLimitBudget);
+      final over = syncRateLimitBudget - 1;
+      final blocked = await syncOnce(over);
       expect(blocked.last, 429);
 
       now = now.add(const Duration(seconds: 61));
-      final again = await syncOnce(syncRateLimitBudget);
+      final again = await syncOnce(over);
 
-      expect(again.where((s) => s == 429), hasLength(1),
+      expect(again.where((s) => s == 429),
+          hasLength(syncCost(over) - syncRateLimitBudget),
           reason: '★★窓が空いても★1 回の同期そのものが上限を超えている★★');
     });
   });
