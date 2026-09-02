@@ -36,6 +36,34 @@ spec.json の形（★UTF-8）——
 ★find は★★ちょうど 1 回★★現れること（count で明示できる）。
 ★replace に★★空文字を書けない★★（★(2) の受け。★番兵を置くこと）。
 
+★★ 仕込みの形は 3 つある（★2026-09-03 に 2 つ足した）★★
+
+    {"file": "a/b.dart", "find": "...", "replace": "..."}   ★置換
+    {"file": "loveca-probe/lib/probe.dart", "create": "..."} ★★新設（既に在れば断る）★★
+    {"file": "a/b.dart", "delete": true}                     ★★削除（無ければ断る）★★
+
+★★新設したものは★戻すときに★消す★★（★書き戻さない / D-40）。★作ったディレクトリも★★空のときだけ消す★★。
+★★「パッケージを 1 つ足すと走査テストが落ちるか」の類は★この形で測る★★
+  （★2026-09-03 まで★使い捨ての sh で測っており、★★ファイル名を間違えて `+0 -1` が 4 本並んだ★★ / §97）。
+
+★★ どこまでを★この道具に載せるか（★線 / 2026-09-03 / 運転指示【0】(3) ★★）★★
+
+★★**載せる** —— ★★仕込んで走らせ、★戻して突き合わせる形★★（＝ ★対を測るもの）。
+★★**載せない** —— ★★仕込みを持たない形★★（＝ ★数えるだけ / ★同じものを N 回走らせるだけ）。
+
+★**この回までに使った★使い捨ての測定 4 つに当てた**（★★それ以外は数えていない★★ / D-28）——
+
+| ★測定 | ★形 | ★★載せるか★★ |
+|---|---|---|
+| ★台帳の写しの頻度（★履歴を歩いて数える / §96-2） | ★仕込み無し | ★★載せない★★ |
+| ★U33 の発生率（★同じ試験を N 回 / D-34） | ★仕込み無し（★反復） | ★★載せない★★ |
+| ★★パッケージを 1 つ足すと走査テストが落ちるか（§97）★★ | ★★仕込み（新設）★★ | ★★**載せた**★★（★下の (2)） |
+| ★落ちたときの文言を採る（§96-3） | ★仕込み（置換） | ★★既に載っている★★（★`--keep-json` の json に文言が出る） |
+
+★★**載せられないもの**★★ ——
+★**仕込みが★★ファイルの編集で表せないもの★★**（★例: ★環境変数を変える / ★別の機械で走らせる / ★時計を進める）。
+★★**今日そういう測定は 1 つも使っていない**★★（★上の 4 つに当てた）。★**出てきたら★★その日に線を引き直すこと★★。**
+
 ★★ 絶対にしないこと ★★
 ★**git checkout を打たない**（D-40 —— ★未追跡の新規ファイルが巻き添えになる）。
 ★戻すのは★★この道具が自分で読んだ元の中身だけ★★である。
@@ -163,6 +191,19 @@ def run_once(cwd, command, keep_json):
                 pass
 
 
+class _Absent(object):
+    """★★仕込む前に★そのファイルが存在しなかったことの印★★.
+
+    ★**戻すときは★★書き戻すのではなく★消す★★**（★D-40 —— ★★未追跡のファイルを残さない★★）。
+    """
+
+    def __repr__(self):
+        return "<absent>"
+
+
+ABSENT = _Absent()
+
+
 def apply_edits(root, edits):
     """仕込む。★★元の中身を★ファイルごとに 1 度だけ覚える★★（★(1) の受け）.
 
@@ -170,11 +211,50 @@ def apply_edits(root, edits):
     ★**1 つの仕込みが 2 つ以上の edit を持つとき、★2 つ目で当て先が見つからないと
       ★★1 つ目だけが適用されたまま残る★★**（★2026-09-02 に実際に起きた）。
     ★**型は §64 の不具合と同じ列である**（★戻し損ね）。
+
+    ★★ 仕込みの形は 3 つある（2026-09-03 に 2 つ足した）★★
+    ★**(1) 置換**: `{"file", "find", "replace"[, "count"]}`（★元から在った形）
+    ★**(2) 新設**: `{"file", "create": "<中身>"}` —— ★★既に在れば断る★★
+    ★**(3) 削除**: `{"file", "delete": true}` —— ★★無ければ断る★★
+
+    ★★ なぜ (2)(3) を足したか ★★
+    ★**「パッケージを 1 つ足すと★走査テストが落ちるか」を測るのに、★★道具を通せなかった★★**
+      （★2026-09-03 / §97 —— ★★使い捨ての sh で測り、★ファイル名を間違えて `+0 -1` が 4 本並んだ★★）。
+    ★★**道具を通していれば★D-39 の判別法が★その場で出ていた**★★（★型は **D-2**）。
     """
     original = {}
+    created_dirs = []
     try:
         for edit in edits:
             path = os.path.join(root, edit["file"])
+
+            if "create" in edit:
+                if os.path.exists(path):
+                    raise ValueError(
+                        "★新設しようとしたが★既に在る: %s" % edit["file"]
+                    )
+                if path not in original:
+                    original[path] = ABSENT
+                parent = os.path.dirname(path)
+                missing = []
+                probe = parent
+                while probe and not os.path.isdir(probe):
+                    missing.append(probe)
+                    probe = os.path.dirname(probe)
+                if parent:
+                    os.makedirs(parent, exist_ok=True)
+                created_dirs.extend(missing)
+                _write(path, edit["create"])
+                continue
+
+            if edit.get("delete"):
+                if not os.path.isfile(path):
+                    raise ValueError("★消そうとしたが★無い: %s" % edit["file"])
+                if path not in original:
+                    original[path] = _read(path)
+                os.remove(path)
+                continue
+
             if path not in original:
                 original[path] = _read(path)
             find = edit["find"]
@@ -193,18 +273,42 @@ def apply_edits(root, edits):
                 )
             _write(path, current.replace(find, replace))
     except Exception:
-        restore(original)
+        restore(original, created_dirs)
         raise
-    return original
+    return original, created_dirs
 
 
-def restore(original):
-    """戻して★突き合わせる。★★不一致を返す★★（★0 件であること）."""
+def restore(original, created_dirs=()):
+    """戻して★突き合わせる。★★不一致を返す★★（★0 件であること）.
+
+    ★★ 新設したものは★書き戻さず★消す（**D-40**）★★
+    ★**残すと★★未追跡のファイルが 1 つ増える★★**。★★消えたことも突き合わせる★★。
+    """
     bad = []
     for path, text in original.items():
+        if text is ABSENT:
+            if os.path.exists(path):
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+            if os.path.exists(path):
+                bad.append("★消し損ねた: %s" % path)
+            continue
+        parent = os.path.dirname(path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
         _write(path, text)
         if _sha(_read(path)) != _sha(text):
             bad.append(path)
+    # ★作ったディレクトリは★★空のときだけ★★消す（★元から在ったものに触らない）
+    for path in sorted(created_dirs, key=len, reverse=True):
+        try:
+            os.rmdir(path)
+        except OSError:
+            pass
+        if os.path.isdir(path):
+            bad.append("★消し損ねた（ディレクトリ）: %s" % path)
     return bad
 
 
@@ -306,11 +410,11 @@ def _measure(spec, root, command, args):
     rows = []
     for mutation in spec["mutations"]:
         label = mutation["label"]
-        original = apply_edits(root, mutation["edits"])
+        original, created_dirs = apply_edits(root, mutation["edits"])
         try:
             counts = run_once(root, command, args.keep_json)
         finally:
-            bad = restore(original)
+            bad = restore(original, created_dirs)
         # ★★ D-39 の判別法 —— ★★件数で見る。★字面では見ない ★★
         #   ★走った合計が baseline と同じなら★読み込みは成功している。
         note = ""
