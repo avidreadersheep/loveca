@@ -372,8 +372,15 @@ void main() {
       //   ★**`deletedAt` は★★内容ハッシュの 5 フィールドに無く**（**D111-4**）、
       //   ★★決着層の段 2 も内容ハッシュしか見ない★★（**D138-1**）。
       //   → ★**時刻が同値なら★★2 段とも削除を見ない★★。**
-      //   ★**実物では起きにくい**（`softDelete` が `updatedAt` を動かす）が、
-      //   ★★起きないとは書かない★★（**D-28**）。★**いまの挙動を固定する。**
+      //   ★★ 2026-09-02 訂正: ★「実物では起きにくい」と書いてあった ★★
+      //   ★**D-28 が★その言い方そのものを禁じている**（★確率を測っていない）。
+      //   ★★ 起きる条件（★★これだけが書ける★★）★★
+      //   ★**(1) 両側の `updatedAt` が★★同じ秒★★**（★★保存精度は秒★★ / **D115-8** —— ★ミリ秒ではない）／
+      //   ★**(2) 内容ハッシュの 5 フィールドが★一致する**（★`deletedAt` だけが違う形）。
+      //   ★★ 立つ道筋 ★★ —— ★A が保存 → ★B へ同期 → ★★同じ秒のうちに A が削除★★ →
+      //     ★B が同期すると★★B の生きている版が勝つ★★。
+      //   ★★**この対が固定しているのは★いまの挙動である**★★（★手元が勝ち `DeckSyncSent` が返る）。
+      //   → ★**直すと★★この 1 件が落ちる。★それが合図である★★**（★先例は **D-24** / ★待ち行列の **W-43**）。
       final alive = _deck();
       serveHolding(_deck(deletedAt: DateTime.utc(2026, 2, 2)));
       final marks = FakeMarks(baseline: baselineOf(alive));
@@ -382,6 +389,52 @@ void main() {
 
       expect(out, isA<DeckSyncSent>(),
           reason: '★★同値なので★手元が勝つ ＝ ★相手の削除が上書きされる★★');
+    });
+
+    test('★★ 道筋: ★保存 → 同期 → ★★同じ秒のうちに削除★★ → ★もう 1 台が同期する ★★',
+        () async {
+      // ★★ 書いた道筋を★実際に通す（**D-15 (j)** —— ★★断定を書いたら走らせる★★）★★
+      //   ★**段 1** 端末 A が保存する（`updatedAt` ＝ t）。
+      //   ★**段 2** その版が端末 B へ同期される（★B の `updatedAt` も t）。
+      //   ★**段 3** ★★同じ秒のうちに★★ 端末 A が `softDelete` する。
+      //     → ★**`updatedAt` は★★秒に丸められて保管される★★**（**D115-8** の測定 1）ので、
+      //       ★★A と B の `updatedAt` は★同じ値になる★★。
+      //   ★**段 4** 端末 B が同期する。
+      //
+      // ★★ 秒に丸めたうえで★同じ値になることを★この test 自身が作る ★★
+      //   ★**「同じ秒」を★ミリ秒違いの 2 つの時刻から作る**（★★保存精度が秒であることの意味★★）。
+      final edited = DateTime.utc(2026, 2, 1, 3, 4, 5, 120);
+      final deleted = DateTime.utc(2026, 2, 1, 3, 4, 5, 890);
+      DateTime toStored(DateTime t) =>
+          DateTime.fromMillisecondsSinceEpoch(
+              (t.millisecondsSinceEpoch ~/ 1000) * 1000,
+              isUtc: true);
+      expect(toStored(edited), toStored(deleted),
+          reason: '★★秒に丸めると★同じ値になる（★これが前提である）★★');
+
+      final bAlive = _deck(updatedAt: toStored(edited));
+      serveHolding(_deck(updatedAt: toStored(deleted), deletedAt: deleted));
+      final marks = FakeMarks(baseline: baselineOf(bAlive));
+
+      final out = await run(bAlive, marks);
+
+      expect(out, isA<DeckSyncSent>(),
+          reason: '★★B の生きている版が勝ち、★A の削除が上書きされる★★');
+    });
+
+    test('★★ 対: ★秒が 1 つ違えば★削除が勝つ（★★丸めの前なら差が残る★★）★★', () async {
+      // ★★ 上の道筋が「同じ秒」に依っていることの対 ★★
+      //   ★**1 秒ずらすだけで★★段 1 で決まり、★相手の削除が勝つ★★。**
+      final bAlive = _deck(updatedAt: DateTime.utc(2026, 2, 1, 3, 4, 5));
+      serveHolding(_deck(
+          updatedAt: DateTime.utc(2026, 2, 1, 3, 4, 6),
+          deletedAt: DateTime.utc(2026, 2, 1, 3, 4, 6)));
+      final marks = FakeMarks(baseline: baselineOf(bAlive));
+
+      final out = await run(bAlive, marks);
+
+      expect(out, isA<DeckSyncRemoteWins>(),
+          reason: '★★秒が違えば★段 1 で決まる★★');
     });
 
     test('★★ 対: ★削除の状態が同じなら★送らない ★★', () async {
