@@ -74,8 +74,11 @@ void main() {
       // ★★ 2026-09-02 追記: ★同じ機械で測り直し、★★規則どおり最大を採った★★ ★★
       //   ★**上の 2 行は 1 文字も書き換えない**（**D-35** —— ★その分母では真である）。
       //   ★**60000 ms ÷ ★★1949 ms★★ ＝ 30。★30 − 5 ＝ ★★25★★。**
+      // ★★ 2026-09-02 追記: ★★規則そのものを変えた（★分-2 ＝ 最後の 1 回で置き換える）★★ ★★
+      //   ★**上の 4 行は 1 文字も書き換えない**（**D-35** —— ★その規則と分母の下では真である）。
+      //   ★**60000 ms ÷ ★★1529 ms★★ ＝ 39。★39 − 5 ＝ ★★34★★。**
       expect(defaultRateLimits.human.maxRequests, 5);
-      expect(defaultRateLimits.deckSync.maxRequests, 25);
+      expect(defaultRateLimits.deckSync.maxRequests, 34);
       expect(defaultRateLimits.human.window, const Duration(seconds: 60));
       expect(defaultRateLimits.deckSync.window, const Duration(seconds: 60));
     });
@@ -83,11 +86,11 @@ void main() {
     test('★★ 合計は★測った上限を超えない（★★導き方そのものを固定する★★）★★', () {
       // ★★ これが「値が導かれている」ことの対である ★★
       //   ★**片方を上げたら★もう片方を下げないと落ちる。**
-      const measuredCostMs = 1949;
+      const measuredCostMs = 1529;
       const windowMs = 60 * 1000;
       final ceiling = windowMs ~/ measuredCostMs;
 
-      expect(ceiling, 30, reason: '★★2026-09-02 実測 / ★この機械★★');
+      expect(ceiling, 39, reason: '★★2026-09-02 実測 / ★この機械 / ★8 回目★★');
       expect(
         defaultRateLimits.human.maxRequests +
             defaultRateLimits.deckSync.maxRequests,
@@ -467,23 +470,95 @@ void main() {
   // ★★ 分母を動かしたら★★この群が落ちる。★それが正しい ★★
   // ★**落ちたら★数を合わせるのではなく、★★`tool/measure_hash_cost.dart` の出力と突き合わせること★★。**
   // ★**先例は **D-24** / `docs/同期設計メモ.md` §57**（★いまの挙動を固定し、★動かしたら落ちる形）。
-  group('★★ 今日の分母（1949 ms）での値 —— ★★動かしたら落ちる（合図）★★', () {
-    test('★ 分母は 1949 ms', () {
-      expect(measuredPasswordHashCostMs, 1949);
+  group('★★ 今日の分母（1529 ms）での値 —— ★★動かしたら落ちる（合図）★★', () {
+    test('★ 分母は 1529 ms', () {
+      expect(measuredPasswordHashCostMs, 1529);
     });
 
-    test('★ 合計 30 / ★人が押す枠 5 / ★同期の枠 25', () {
-      expect(totalRateLimitBudget, 30);
+    test('★ 合計 39 / ★人が押す枠 5 / ★同期の枠 34', () {
+      expect(totalRateLimitBudget, 39);
       expect(humanRateLimitBudget, 5);
-      expect(syncRateLimitBudget, 25);
+      expect(syncRateLimitBudget, 34);
     });
 
-    test('★★ 1 台が同期できるデッキは 24 個まで（★★25 は 1949 に依る★★）★★', () {
+    test('★★ 1 台が同期できるデッキは 33 個まで（★★34 は 1529 に依る★★）★★', () {
       // ★**1 回の同期 ＝ 1 ＋ デッキの数**（★§10 の **N-27** の事実 2）。
       // ★★**この数は★分母が動けば動く。★入力ではなく★★帰結である★★。**
-      expect(syncRateLimitBudget - 1, 24);
-      // ★同じ住所の 2 台（**D107-2**）—— ★2 × (1 ＋ D) ≤ 33。
-      expect((syncRateLimitBudget ~/ 2) - 1, 11);
+      expect(syncRateLimitBudget - 1, 33);
+      // ★同じ住所の 2 台（**D107-2**）—— ★2 × (1 ＋ D) ≤ 34。
+      expect((syncRateLimitBudget ~/ 2) - 1, 16);
+    });
+  });
+
+  // ★★ 規則そのもの —— ★★分母は「最後の 1 回の測定の最大」である（★分-2）★★
+  //
+  // ★★ なぜ群を分けるか ★★
+  // ★**上の群は★★値★★を見る。★ここは★★値の出どころ★★を見る。**
+  // ★**前の規則（★分-1 ＝ 貯めた全標本の最大）は★★測り直すたびに単調に悪化した★★**
+  //   （★運転指示【0】(2)）。→ ★**規則を変えたことを★★機械が見られる形に置く★★。**
+  //
+  // ★★ 何を守っているか ★★
+  // ★**「標本の列を★差し替えずに★足す」形（＝ 分-1）に戻すと★★この群が落ちる★★。**
+  group('★★ 分母の規則（★分-2 ＝ ★最後の 1 回の測定の最大）★★', () {
+    // ★★ 本番の関数を通す（**D-27** の (甲) —— ★★対を 1 本書いた瞬間に当てる★★）★★
+    //   ★**最初は★ここに `maxOf` を★書き写していた。**
+    //   ★**すると★★道具が平均を採るように変えても★1 件も落ちなかった★★**（★2026-09-02 実測 / ★0 件）。
+    //   → ★**規則を `lib` の [takenHashCostMs] にし、★★道具も試験もそれを呼ぶ★★。**
+
+    test('★★ 分母は★記録された標本の最大である（★★字面ではなく機械で見る★★）★★', () {
+      expect(
+        measuredPasswordHashCostMs,
+        takenHashCostMs(
+          measuredPasswordHashSaveMs,
+          measuredPasswordHashVerifyMs,
+        ),
+      );
+    });
+
+    test('★★ 採る値は★両側の最大のうち★大きいほうである ★★', () {
+      expect(takenHashCostMs(<int>[10, 30], <int>[20, 25]), 30);
+      expect(takenHashCostMs(<int>[10, 20], <int>[25, 40]), 40);
+    });
+
+    test('★★ 対: ★平均でも中央でもない（★★合成の入力で見る★★）★★', () {
+      // ★★ 平均なら 20、★中央なら 20、★★最大は 100★★ ★★
+      final xs = <int>[1, 1, 1, 1, 100];
+      expect(takenHashCostMs(xs, const <int>[]), 100);
+    });
+
+    test('★★ 標本が 1 つも無ければ★投げる（★★測っていない値は採れない★★）★★', () {
+      expect(() => takenHashCostMs(const <int>[], const <int>[]),
+          throwsA(isA<ArgumentError>()));
+    });
+
+    test('★★ 記録されているのは★★1 回ぶんだけ★★である（★貯めていない）★★', () {
+      // ★**道具の既定は 12 標本**（`tool/measure_hash_cost.dart`）。
+      // ★★**この 2 行が★「集合は 1 回である」ことの対である**★★ ——
+      //   ★**貯めれば★件数が 12 を超える。**
+      expect(measuredPasswordHashSaveMs, hasLength(12));
+      expect(measuredPasswordHashVerifyMs, hasLength(12));
+    });
+
+    test('★★ 対: ★前の回の標本を混ぜると★分母と食い違う（★分-1 に戻すと落ちる）★★', () {
+      // ★★ これが「単調に悪化しない」ことの対である ★★
+      //   ★**6 回目の照合する側の最大は 1949 だった**（`src/rate_limit.dart` の追記の表）。
+      //   ★**貯める規則なら★分母は 1949 になる。★★分-2 では 1529 のままである★★。**
+      const previousRun = <int>[1560, 1949];
+      final pooled = takenHashCostMs(
+        <int>[...measuredPasswordHashSaveMs, ...previousRun],
+        measuredPasswordHashVerifyMs,
+      );
+      expect(pooled, 1949, reason: '★★貯めると★上がる（★これが 分-1 である）★★');
+      expect(measuredPasswordHashCostMs, isNot(pooled),
+          reason: '★★いまの分母は★貯めた集合の最大ではない★★');
+    });
+
+    test('★★ 対: ★測り直して★下がった場合も★そのまま採る（★★片道ではない★★）★★', () {
+      // ★★ 分-1 では★これが成り立たなかった ★★
+      //   ★**前の分母は 1949。★いまは 1529 で、★★下がっている★★。**
+      //   ★**分-1（貯めた全標本の最大）なら★1949 のままだった。**
+      expect(measuredPasswordHashCostMs, lessThan(1949));
+      expect(totalRateLimitBudget, greaterThan(60000 ~/ 1949));
     });
   });
 
@@ -677,6 +752,71 @@ void main() {
 
       expect(int.tryParse(m!.group(1)!.trim()), 33,
           reason: '★★外さなければ★doc の 33 に当たる ＝ ★守りが働いている証拠★★');
+    });
+
+    // ★★ 2026-09-02 追記: ★★導出そのものの宣言も見る（★対を測って足した / **D-27**）★★
+    //   ★**引き金**: ★`syncRateLimitBudget` の定義を★★字面 34 に置き換えても★1 件も落ちなかった★★
+    //     （★2026-09-02 実測 / ★0 件）。★**上の 2 件は★★引数★★を見ており、★★定義★★を見ていない。**
+    //   ★**原因は★★対の形★★である** —— ★今日の分母では★導いた値と字面 34 が★★等しい★★。
+    String bodyOfIn(String source, String declaration) {
+      final s = stripDartComments(source);
+      final at = s.indexOf(declaration);
+      expect(at, isNot(-1), reason: '★宣言そのものが見つからない');
+      final close = s.indexOf(';', at);
+      return s.substring(at + declaration.length, close).replaceAll('=', '').trim();
+    }
+
+    String bodyOf(String declaration) => bodyOfIn(
+          File('lib/src/rate_limit.dart').readAsStringSync(),
+          declaration,
+        );
+
+    test('★★ 同期の枠の★定義★は★式である（★数字を直に書いていない）★★', () {
+      final body = bodyOf('const int syncRateLimitBudget');
+      expect(RegExp(r'[0-9]').hasMatch(body), isFalse,
+          reason: '★★字面を書くと★分母が動いても付いてこない★★');
+      expect(body, 'totalRateLimitBudget - humanRateLimitBudget');
+    });
+
+    test('★★ 合計の枠の★定義★も★式である ★★', () {
+      final body = bodyOf('const int totalRateLimitBudget');
+      expect(RegExp(r'[0-9]').hasMatch(body), isFalse);
+      expect(body, 'rateLimitWindowMs ~/ measuredPasswordHashCostMs');
+    });
+
+    test('★★ 対: ★この走査は★数字を実際に見分ける（★陽性対照 / ★合成の入力）★★', () {
+      final lines = <String>[
+        'const int syncRateLimitBudget = 34;',
+      ];
+      final body =
+          bodyOfIn(lines.join(String.fromCharCode(10)), 'const int syncRateLimitBudget');
+      expect(RegExp(r'[0-9]').hasMatch(body), isTrue,
+          reason: '★★字面なら★この走査が捕まえる★★');
+    });
+
+    test('★★ 対: ★doc の中の宣言を★コメント外しが落とす（★★D-30★★ / ★合成の入力）★★', () {
+      // ★★ 引き金: ★★コメント外しを落としても★1 件も落ちなかった★★（★2026-09-02 実測 / ★0 件）★★
+      //   ★**原因は★★対の形★★である** —— ★**今日の `rate_limit.dart` には
+      //     ★★この 2 つの宣言の写しが★doc に 1 つも無い★★**（★走査した）ので、
+      //     ★★コメント外しに★見る相手が無かった★★。
+      //   ★**先例は §63-7 の (J) / §76-4 の (T) / §80-6 の (L)**（★★同じ処置が 4 回目である★★）。
+      final lines = <String>[
+        '/// ★doc の写し: const int syncRateLimitBudget = 34;',
+        'const int syncRateLimitBudget = totalRateLimitBudget - humanRateLimitBudget;',
+      ];
+      final src = lines.join(String.fromCharCode(10));
+
+      // ★★ 外せば★本物の宣言に当たる（★数字が 1 つも無い）★★
+      expect(RegExp(r'[0-9]').hasMatch(bodyOfIn(src, 'const int syncRateLimitBudget')),
+          isFalse);
+
+      // ★★ 外さなければ★doc の写しに当たる ＝ ★守りが働いている証拠 ★★
+      final at = src.indexOf('const int syncRateLimitBudget');
+      final raw = src
+          .substring(at + 'const int syncRateLimitBudget'.length, src.indexOf(';', at))
+          .replaceAll('=', '')
+          .trim();
+      expect(raw, '34');
     });
 
     test('★★ 対: ★この走査は★数字を実際に見分ける（★陽性対照）★★', () {

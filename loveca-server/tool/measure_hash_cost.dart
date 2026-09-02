@@ -38,6 +38,20 @@
 ///   （★★この 1 回だけの最大ではない★★ / ★規則の全文は [measuredPasswordHashCostMs] の doc）。
 /// → ★**下の出力は★★いま書かれている分母とも突き合わせて出す★★**（★どちらが大きいかを★人が見て決められるように）。
 /// ★★**機械が違うなら★★置き換える★★。★またがって最大を採らない**★★（★同上）。
+///
+/// ★★ 2026-09-02 追記: ★★規則が変わった ＝ ★この 1 回の最大が★そのまま「採る値」である★★ ★★
+/// ★★**上の 2 節は 1 文字も書き換えない**★★（**D-35**）—— ★**どちらも★その時点の規則の下では正しい。**
+/// ★**規則は★★分-2（最後の 1 回の測定の最大で★置き換える）★★になった**
+///   （★規則の全文と★軸と★候補 7 つは [measuredPasswordHashCostMs] の 2 つ目の追記）。
+/// → ★★**貯めない。★またがらない。★★この 1 回の最大を★そのまま写す★★。**★★
+/// → ★**下の「いま書かれている分母」は★★参考であって★比べる相手ではない★★**（★大きくても小さくても★置き換える）。
+///
+/// ★★ 一緒に書くもの（★★これを書かない実測は★引用できない★★ / **D-28**）★★
+/// | # | 何 |
+/// |---|---|
+/// | ★**1** | ★**標本の数**（★★最大は N とともに大きくなる★★ / ★下の出力に在る） |
+/// | ★**2** | ★**全標本と★ばらつき**（★★外れ値を★自動で弾かない★★ / ★下の出力に在る） |
+/// | ★★**3**★★ | ★★**測った条件**★★（★直前に何を走らせたか / ★★道具には分からない。★人が書く★★） |
 library;
 
 import 'dart:io';
@@ -86,7 +100,8 @@ void main(List<String> args) {
   _print('保存する側（/accounts）', saveStat);
   _print('照合する側（★名乗るたびに走る）', verifyStat);
 
-  final take = saveStat.max > verifyStat.max ? saveStat.max : verifyStat.max;
+  // ★★ 規則は `lib` に在る（★★道具が独自に計算しない★★ / **D-27** の (甲)）★★
+  final take = takenHashCostMs(save, verify);
   final total = rateLimitWindowMs ~/ take;
   stdout.writeln('');
   stdout.writeln('★★ 採る値 = $take ms ★★'
@@ -109,6 +124,10 @@ void main(List<String> args) {
   stdout.writeln('');
   stdout.writeln('★ いま書かれている分母: $measuredPasswordHashCostMs ms'
       '（★合計 $totalRateLimitBudget / ★同期 $syncRateLimitBudget）');
+  stdout.writeln('  → ★★参考である。★比べる相手ではない★★'
+      '（★規則は「最後の 1 回で置き換える」）。');
+  stdout.writeln('★ ★★測った条件を★報告に書くこと★★'
+      '（★直前に何を走らせたか —— ★この道具には分からない）。');
 }
 
 void _print(String name, _Stat s) {
