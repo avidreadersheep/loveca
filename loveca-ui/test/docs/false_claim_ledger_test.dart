@@ -124,19 +124,48 @@ List<String> claimUnits(String line) {
   return out;
 }
 
-/// ★`needles` を★★1 つ残らず★★含む単位を `行:セル` で返す。
+/// ★`needles` を★★1 つ残らず★★含む単位を★★1 件ずつ返す★★（★位置と字面の対）。
 ///
 /// ★★ 本番も対も★この関数を通す（**D-27** の (甲)）★★
-List<String> claimHits(String text, List<String> needles) {
+/// ★**下の [claimHits] / [claimHitDetails] は★★どちらもこれを通す★★**
+///   （★数え方を 2 か所に持たない / **D-15** の規約 3）。
+List<({String at, String unit})> claimScan(String text, List<String> needles) {
   final lines = const LineSplitter().convert(text);
-  final out = <String>[];
+  final out = <({String at, String unit})>[];
   for (var i = 0; i < lines.length; i++) {
     final units = claimUnits(lines[i]);
     for (var c = 0; c < units.length; c++) {
-      if (needles.every(units[c].contains)) out.add('${i + 1}:$c');
+      if (needles.every(units[c].contains)) {
+        out.add((at: '${i + 1}:$c', unit: units[c]));
+      }
     }
   }
   return out;
+}
+
+/// ★`needles` を★★1 つ残らず★★含む単位を `行:セル` で返す。
+List<String> claimHits(String text, List<String> needles) =>
+    claimScan(text, needles).map((h) => h.at).toList();
+
+/// ★★ 落ちたときに★位置へ★★単位の字面を添える★★（★★直す手間の側の手当て★★）★★
+///
+/// ★★ なぜ足したか —— ★★測った（2026-09-02 / §96-3）★★ ★★
+/// ★**落ちたときの文言は★★写しを 1 つ残らず並べるが、★どれが新しいかを言わない★★。**
+/// ★**直す人は★★全部の位置を自分で突き合わせることになる★★**（★★実測: ★1 件増えたときに 16 か所が並んだ★★）。
+/// → ★**字面を添えれば★★「いま自分が書いた行」を目で拾える★★。**
+///
+/// ★★ どれが新しいかは★依然★言えない。★隠さない ★★
+/// ★**台帳は★★件数しか持たない★★。★位置を持たせると★★上の行が 1 行増えるたびに落ちる★★**
+///   （★型は **D-25** の別の形 —— ★★非 0 が常態になる★★）。
+/// ★**だから「探しやすくする」までである**（★§96-4）。
+String claimHitDetails(String text, List<String> needles, {int maxChars = 48}) {
+  final hits = claimScan(text, needles);
+  final rows = hits.map((h) {
+    final u = h.unit;
+    final head = u.length <= maxChars ? u : '${u.substring(0, maxChars)}…';
+    return '  ${h.at} $head';
+  });
+  return rows.join(String.fromCharCode(10));
 }
 
 /// ★走査する `.md` を★リポジトリから導く（**D-31** の受け）。
@@ -189,6 +218,46 @@ void main() {
     });
   });
 
+  // ★★ 落ちたときの文言 —— ★★直す手間の側（§96-4）★★
+  //
+  // ★★ これは「守り」ではない。★★直す人が読むもの★★である ★★
+  // ★**測って足した** —— ★★1 件増えたときの文言が★16 か所を並べ、★どれが新しいかを言わなかった★★
+  //   （★2026-09-02 実測 / §96-3）。
+  // ★**対を置く理由**: ★★字面を落としても★件数の検査は通ってしまう★★
+  //   （→ ★**手当てが★★黙って空振りする★★** / ★型は **D-20** の列）。
+  group('★★ 落ちたときの文言に★単位の字面が添う ★★', () {
+    const needles = <String>['import が動く'];
+
+    test('★★ 位置だけでなく★字面が出る ★★', () {
+      final out = claimHitDetails('★割ると import が動く。', needles);
+
+      expect(out, contains('1:0'));
+      expect(out, contains('割ると import が動く'));
+    });
+
+    test('★★ 長い単位は★切り詰める（★★16 か所並んでも読める★★）★★', () {
+      final long = '★${'あ' * 200} import が動く';
+
+      final out = claimHitDetails(long, needles, maxChars: 10);
+
+      expect(out.contains('…'), isTrue);
+      expect(out.length, lessThan(60));
+    });
+
+    test('★★ 対: ★写しが 0 件なら★空である ★★', () {
+      expect(claimHitDetails('★ここには無い', needles), isEmpty);
+    });
+
+    test('★★ 数え方は [claimHits] と★1 件も違わない（★★同じ走査を通る★★）★★', () {
+      // ★★ 数え方を 2 か所に持たない（**D-15** の規約 3）★★
+      const row = '| ★α-3 | ★移設（import が動く） | ★当たる（★割ると import が動く） |';
+      final detail = claimHitDetails(row, needles);
+
+      expect(claimHits(row, needles).length, 2);
+      expect(String.fromCharCode(10).allMatches(detail).length, 1);
+    });
+  });
+
   group('★★ 走査する木（**D-31** の受け）★★', () {
     test('★★ 台帳の鍵は★リポジトリの `.md` と★完全一致する ★★', () {
       for (final claim in _claims) {
@@ -228,7 +297,9 @@ void main() {
         claim.perFile.forEach((rel, want) {
           final got = claimHits(_read(rel), claim.needles);
           if (got.length != want) {
-            diffs.add('${claim.id} $rel: 台帳 $want / 実測 ${got.length} / 場所 $got');
+            // ★★ 位置だけでなく★字面も出す（★★直す手間の側 / §96-4★★）★★
+            diffs.add('${claim.id} $rel: 台帳 $want / 実測 ${got.length}'
+                '${String.fromCharCode(10)}${claimHitDetails(_read(rel), claim.needles)}');
           }
         });
       }
