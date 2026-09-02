@@ -93,6 +93,7 @@ const _claims = <FalseClaim>[
       'ルール整合性チェック_v1.06.md': 0,
       'docs/PhaseEngine設計メモ.md': 0,
       'docs/UI技術検証メモ.md': 0,
+      'docs/Android UI 決定.md': 0,  // ★2026-09-03 に足した（★写しは 0 件）
       'docs/UI設計メモ.md': 0,
       'docs/プラットフォームを足す手順.md': 0,
       'docs/作業待ち行列.md': 0,
