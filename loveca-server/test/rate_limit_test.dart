@@ -484,6 +484,14 @@ void main() {
     test('★★ 1 台が同期できるデッキは 33 個まで（★★34 は 1529 に依る★★）★★', () {
       // ★**1 回の同期 ＝ 1 ＋ デッキの数**（★§10 の **N-27** の事実 2）。
       // ★★**この数は★分母が動けば動く。★入力ではなく★★帰結である★★。**
+      //
+      // ★★ 2026-09-02 追記: ★1 回の同期の回数は★★その後 2 度増えた ★★
+      //   ★**上の 2 行も★この test の名前も 1 文字も書き換えない**（**D-35** —— ★★書いた時点では真である★★）。
+      //   ★**いまは★★2 ＋ デッキの数★★**（**D145-4** ＝ 名簿の口）**、
+      //     ★名簿に居なければ★★3 ＋ デッキの数★★**（**D148-1**）。
+      //   → ★★**「同期できるデッキの数」の正は★`test/sync_burst_test.dart` の
+      //     「★代償を★数で固定する」（★★枠 − 3 ＝ 31★★）である**★★（**D-15** の規約 3）。
+      //   ★**ここが見ているのは★★算術（34 − 1 ＝ 33）★★であって★同期の費用ではない。**
       expect(syncRateLimitBudget - 1, 33);
       // ★同じ住所の 2 台（**D107-2**）—— ★2 × (1 ＋ D) ≤ 34。
       expect((syncRateLimitBudget ~/ 2) - 1, 16);
@@ -826,6 +834,115 @@ void main() {
       final chunk = 'const RateLimitPolicy x = RateLimitPolicy.perWindow(maxRequests: 33, window: Duration(milliseconds: 60000));';
       final m = RegExp(r'maxRequests:\s*([^,]+),').firstMatch(chunk);
       expect(int.tryParse(m!.group(1)!.trim()), 33);
+    });
+  });
+
+  // ★★ 値を動かしてよい範囲 —— ★★規則には★下端が要る（★運転指示【0】(2)）★★
+  //
+  // ★★ 引き金 ★★
+  // ★**分-2（★最後の 1 回の測定の最大）は★★測り直すたびに★上にも下にも動く★★。**
+  // ★**相談役の指示** ——「★★上限が下がったとき、★既に成立している同期が断られるか。
+  //   ★断られるなら、★規則が『値を動かしてよい範囲』を持つ必要が在る★★」。
+  // → ★★断られる★★（★`test/sync_burst_test.dart` で★★HTTP 越しに測った / ★§89-2）。
+  //
+  // ★★ 下端は★好みではない。★導出である ★★
+  // ★**[syncRequestCount] で★★デッキ 1 個の初回同期★★が投げる回数がそれである。**
+  // ★**これを下回ると「★上限」ではなく「★★同期の禁止★★」になる**（**N-26** のどの候補でもない）。
+  //
+  // ★★ 範囲の中で下がる分は★止められない。★隠さない ★★
+  // ★**下端より上でも、★★分母が上がれば★デッキの多い利用者は断られる★★。**
+  // ★**消すには★★費用の形を変えるしかない★★**（**N-27** の 論点 (3) ＝ ★一括で取る口）。
+  group('★★ 値を動かしてよい範囲（★運転指示【0】(2)）★★', () {
+    test('★★ 1 回の同期が投げる回数は★デッキの数だけ増える ★★', () {
+      expect(syncRequestCount(deckCount: 0, joining: false), 2);
+      expect(syncRequestCount(deckCount: 5, joining: false), 7);
+      expect(
+          syncRequestCount(deckCount: 5, joining: false) -
+              syncRequestCount(deckCount: 4, joining: false),
+          1);
+    });
+
+    test('★★ 名簿に居ないときは★1 回多い（決定 D148-1）★★', () {
+      for (var d = 0; d < 4; d++) {
+        expect(
+            syncRequestCount(deckCount: d, joining: true) -
+                syncRequestCount(deckCount: d, joining: false),
+            1,
+            reason: '★デッキ $d 個');
+      }
+    });
+
+    test('★★ 下端は★導出である（★★字面を書いていない★★）★★', () {
+      expect(minimumSyncRateLimitBudget,
+          syncRequestCount(deckCount: 1, joining: true));
+    });
+
+    test('★★ 今日の分母では★枠は★下端より上に在る ★★', () {
+      expect(syncRateLimitBudget, greaterThanOrEqualTo(minimumSyncRateLimitBudget),
+          reason: '★★下回ったら★数を合わせるのではなく、★費用の形を変えること★★');
+    });
+
+    test('★★ 下端を下回ると★デッキ 1 個の初回同期が★通らない（★★合成の入力★★）★★', () {
+      // ★★ 「上限」ではなく「禁止」になる ＝ ★下端の意味そのもの ★★
+      final tooSmall = minimumSyncRateLimitBudget - 1;
+      expect(syncRequestCount(deckCount: 1, joining: true),
+          greaterThan(tooSmall));
+    });
+
+    test('★★ 対: ★下端ちょうどなら★デッキ 1 個は通る ★★', () {
+      expect(syncRequestCount(deckCount: 1, joining: true),
+          lessThanOrEqualTo(minimumSyncRateLimitBudget));
+    });
+
+    // ★★ 「丸めていない」を★ここで見ない。★理由を書く（**D-27** の受け）★★
+    //   ★**値で見ると★★対が 0 件になる★★** —— ★今日の枠（34）は★下端（4）より大きいので、
+    //     ★★`max(導出, 下端)` に変えても★値が 1 も動かない★★（★2026-09-02 実測 / ★0 件）。
+    //   → ★**見るのは★★宣言の字面である★★**（★1 つ下の「走査」の群の
+    //     「★同期の枠の★定義★は★式である」が★★丸めた形を捕まえる★★ / ★先例は §63-7）。
+    //   ★**丸めると★★60000 ÷ 分母 という導き方そのものを破る★★**（★`rate_limit.dart` の下端の doc）。
+
+    test('★★ 走査: ★下端の★定義★は★式である（★数字を直に書いていない）★★', () {
+      final source = stripDartComments(
+          File('lib/src/rate_limit.dart').readAsStringSync());
+      const declaration = 'final int minimumSyncRateLimitBudget';
+      final at = source.indexOf(declaration);
+      expect(at, isNot(-1));
+      final body = source
+          .substring(at + declaration.length, source.indexOf(';', at))
+          .replaceAll('=', '')
+          .trim();
+
+      // ★★ 数字が 1 つも無いことは★見ない ★★
+      //   ★**`deckCount: 1` の 1 は★★導出の一部である★★**（★デッキ 1 個）。
+      //   ★**見るのは「★★丸ごとの数字ではないこと★★」である。**
+      expect(int.tryParse(body), isNull,
+          reason: '★★字面 4 を書くと★費用の形が変わっても付いてこない★★');
+      expect(body, 'syncRequestCount(deckCount: 1, joining: true)');
+    });
+
+    test('★★ 対: ★この走査は★字面を実際に見分ける（★陽性対照 / ★合成の入力）★★', () {
+      final lines = <String>[
+        'final int minimumSyncRateLimitBudget = 4;',
+      ];
+      final src = lines.join(String.fromCharCode(10));
+      const declaration = 'final int minimumSyncRateLimitBudget';
+      final at = src.indexOf(declaration);
+      final body = src
+          .substring(at + declaration.length, src.indexOf(';', at))
+          .replaceAll('=', '')
+          .trim();
+
+      expect(int.tryParse(body), 4, reason: '★★字面なら★この走査が捕まえる★★');
+    });
+
+    test('★★ 走査: ★1 回の同期の費用は★`lib` に在る（★★試験の中に写しを作らない★★）★★', () {
+      // ★★ 引き金: ★★以前は `sync_burst_test.dart` の中だけに在った★★ ——
+      //   ★上限の★下端がこの形から導かれるので、★★試験に閉じていると `lib` から見えない★★。
+      //   ★**先例は [takenHashCostMs]**（★同じ理由で `lib` へ移した / **D-27** の (甲)）。
+      final source = stripDartComments(
+          File('lib/src/rate_limit.dart').readAsStringSync());
+
+      expect(source, contains('int syncRequestCount('));
     });
   });
 

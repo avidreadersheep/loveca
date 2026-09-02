@@ -89,6 +89,7 @@ void main() {
   late DeckFileStore decks;
   late HttpServer server;
   late HttpClient client;
+  late Future<void> Function(RateLimitPolicySet limits) startServer;
 
   const user = 'みつき';
   const pass = 'ひみつ';
@@ -107,14 +108,21 @@ void main() {
   ///
   /// ★**名簿 1 ＋ 一覧 1 ＋ デッキごと 1。★★字面を各所に埋め込まない★★**
   ///   （★口が増えたらここだけ直す / ★先例は §63-7 の「導出形」）。
-  int syncCost(int deckCount) => 2 + deckCount;
+  ///
+  /// ★★ 2026-09-02: ★形を `lib` へ移した（★運転指示【0】(2)）★★
+  /// ★**上の 3 行は 1 文字も書き換えない**（**D-35**）—— ★★その時点で誤りではない★★。
+  /// ★**移した理由: ★★上限の★下端がこの形から導かれる★★**ので、
+  ///   ★★試験の中に閉じていると `lib` から見えない★★（★`minimumSyncRateLimitBudget`）。
+  int syncCost(int deckCount) =>
+      syncRequestCount(deckCount: deckCount, joining: false);
 
   /// ★★ 2026-09-02: ★名簿に居ないときは★1 回多い（決定 **D148-1**）★★
   ///
   /// ★**順序が「★問う → ★器を消す → ★記録する」になった**（★§80-4 の手当て）。
   /// ★**定常（★名簿に居る）は [syncCost] のまま。★★居ないときだけ 1 増える★★。**
   /// ★★**上の [syncCost] は 1 文字も書き換えない**★★（**D-35** —— ★★定常では真である★★）。
-  int joiningSyncCost(int deckCount) => syncCost(deckCount) + 1;
+  int joiningSyncCost(int deckCount) =>
+      syncRequestCount(deckCount: deckCount, joining: true);
 
   Future<List<int>> syncOnce(int deckCount, {bool joining = false}) async {
     final out = <int>[];
@@ -147,19 +155,24 @@ void main() {
     final devices = DeviceFileStore(
         Directory('${dir.path}${Platform.pathSeparator}devices'));
 
-    final context = SecurityContext()
-      ..useCertificateChain(_certPath)
-      ..usePrivateKey(_keyPath);
-    server = await serveApi(
-      context: context,
-      store: accounts,
-      decks: decks,
-      devices: devices,
-      accountIterations: 10,
-      // ★★ ここが要点 —— ★★本番の既定値をそのまま使う★★
-      rateLimits: defaultRateLimits,
-      clock: () => now,
-    );
+    // ★★ 上限だけを差し替えて立て直せるようにする（★運転指示【0】(2) の受け）★★
+    //   ★**保管は同じものを使い回す**（★★アカウントは立て直しても残る★★）。
+    startServer = (RateLimitPolicySet limits) async {
+      final context = SecurityContext()
+        ..useCertificateChain(_certPath)
+        ..usePrivateKey(_keyPath);
+      server = await serveApi(
+        context: context,
+        store: accounts,
+        decks: decks,
+        devices: devices,
+        accountIterations: 10,
+        rateLimits: limits,
+        clock: () => now,
+      );
+    };
+    // ★★ ここが要点 —— ★★本番の既定値をそのまま使う★★
+    await startServer(defaultRateLimits);
 
     final clientContext = SecurityContext(withTrustedRoots: false)
       ..setTrustedCertificates(_certPath);
@@ -330,6 +343,86 @@ void main() {
 
       expect(got.take(humanRateLimitBudget).every((s) => s == 404), isTrue);
       expect(got.last, 429);
+    });
+  });
+
+  // ★★ 分母が上がると、★★既に成立していた同期が断られる★★（★運転指示【0】(2)）
+  //
+  // ★★ 何を測るか ★★
+  // ★**分-2（**D146**）は★★測り直すたびに★上にも下にも動く★★。**
+  // ★**1949 → 1529 では★上限が★上がった**（★デッキ 24 → 33）。
+  // → ★**★★次に重い処理の直後で測れば★下がる★★。★そのとき何が起きるかを測る。**
+  //
+  // ★★ 時刻は動かさない ★★
+  // ★**待って測る検査を書かない**（**D-28**）—— ★上限だけを差し替えて★立て直す。
+  group('★★ 分母が上がると★★既に成立していた同期が断られる★★（★運転指示【0】(2)）★★', () {
+    /// ★★ 分母を [times] 倍にした機械で測り直したときの★同期の枠 ★★
+    /// ★**導き方は 1 文字も変えない** —— ★★60000 ÷ 分母 − 人が押す枠★★。
+    int budgetWhenDenominatorTimes(int times) =>
+        rateLimitWindowMs ~/ (measuredPasswordHashCostMs * times) -
+        humanRateLimitBudget;
+
+    RateLimitPolicySet limitsFor(int syncBudget) => RateLimitPolicySet(
+          human: const RateLimitPolicy.perWindow(
+            maxRequests: humanRateLimitBudget,
+            window: Duration(milliseconds: rateLimitWindowMs),
+          ),
+          deckSync: RateLimitPolicy.perWindow(
+            maxRequests: syncBudget,
+            window: const Duration(milliseconds: rateLimitWindowMs),
+          ),
+        );
+
+    test('★★ 前提: ★今日の分母では★その同期は★通る ★★', () async {
+      final got = await syncOnce(syncRateLimitBudget - 3, joining: true);
+
+      expect(got.where((s) => s == 429), isEmpty);
+    });
+
+    test('★★ 分母が 2 倍の機械で測り直すと★★★同じ同期が断られる★★ ★★', () async {
+      // ★★ これが「範囲が要る」ことの実物である ★★
+      final smaller = budgetWhenDenominatorTimes(2);
+      expect(smaller, lessThan(syncRateLimitBudget), reason: '★前提: ★枠が小さくなる');
+      await server.close(force: true);
+      await startServer(limitsFor(smaller));
+
+      final got = await syncOnce(syncRateLimitBudget - 3, joining: true);
+
+      expect(got.where((s) => s == 429), isNotEmpty,
+          reason: '★★昨日まで通っていた同期が★今日は断られる★★');
+    });
+
+    test('★★ 対: ★分母が半分の機械なら★★★もっと多くのデッキが通る★★（★片道ではない）★★', () async {
+      // ★**規則は★下がる向きにも上がる向きにも動く**（**D146** ＝ 分-2）。
+      final bigger = rateLimitWindowMs ~/ (measuredPasswordHashCostMs ~/ 2) -
+          humanRateLimitBudget;
+      expect(bigger, greaterThan(syncRateLimitBudget), reason: '★前提: ★枠が大きくなる');
+      await server.close(force: true);
+      await startServer(limitsFor(bigger));
+
+      final got = await syncOnce(syncRateLimitBudget - 2, joining: true);
+
+      expect(got.where((s) => s == 429), isEmpty,
+          reason: '★★今日の枠では断られる数が★通るようになる★★');
+    });
+
+    test('★★ 下端を下回ると★★デッキ 1 個の初回同期すら通らない★★（★禁止になる）★★', () async {
+      // ★★ ここが「上限」ではなくなる点である（`rate_limit.dart` の下端の doc）★★
+      await server.close(force: true);
+      await startServer(limitsFor(minimumSyncRateLimitBudget - 1));
+
+      final got = await syncOnce(1, joining: true);
+
+      expect(got.last, 429);
+    });
+
+    test('★★ 対: ★下端ちょうどなら★デッキ 1 個は通る ★★', () async {
+      await server.close(force: true);
+      await startServer(limitsFor(minimumSyncRateLimitBudget));
+
+      final got = await syncOnce(1, joining: true);
+
+      expect(got.where((s) => s == 429), isEmpty);
     });
   });
 
