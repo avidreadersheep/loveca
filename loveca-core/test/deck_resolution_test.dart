@@ -179,19 +179,23 @@ void main() {
   });
 
   group('★★ 決めていないことを型で決めない ★★', () {
-    test('★★ 削除（`deletedAt`）を特別扱いしない（決定 D112-1 を開き直さない）★★', () {
+    test('★★ 削除を見ても★マージしない（決定 D112-1 は 1 ミリも動かない）★★', () {
       // ★★ `deletedAt` は内容ハッシュの 5 フィールドに入らない（**D111-4**）★★
       //   → ★**削除だけが起きた側は★内容ハッシュが 1 ビットも変わらない**（**D116-12**）。
-      //   ★**ここで削除を勝たせる / 負けさせるのは★★(f-2) の 粒-1 を開き直すことである★★。**
+      // ★★ 2026-09-02: ★★この 1 件は★段 3 が入って書き換わった（**D147-1**）★★
+      //   ★**旧の期待は `identical`（★手元をそのまま返す）だった。**
+      //   ★**それは★★同-1（自分が勝つ）であり、★収束しない★★**（★下の「対称である」の群）。
+      //   ★★**(f-2) の 粒-1 は★開き直していない**★★ —— ★**マージしていない。
+      //     ★★勝った側の `Deck` を★丸ごと返している★★**（★この 1 件がそれを見る）。
       final deleted =
           _deck(name: 'おなじ', updatedAt: early, deletedAt: DateTime.utc(2026, 6));
       final alive = _deck(name: 'おなじ', updatedAt: early);
 
       final got = resolveDeckConflict(local: deleted, remote: alive);
 
-      expect(got.reason, DeckResolutionReason.identical,
-          reason: '★削除は内容ハッシュに現れない');
-      expect(got.winner.deletedAt, isNotNull, reason: '★手元をそのまま返している');
+      expect(got.reason, DeckResolutionReason.deletionTieBreak);
+      expect(identical(got.winner, alive), isTrue,
+          reason: '★★入力の片方そのものである（★新しく作っていない）★★');
     });
 
     test('★★ `revision` を見ない（決定 D116-8 —— ★消費者を作らない）★★', () {
@@ -244,4 +248,176 @@ void main() {
       expect(got.reason, DeckResolutionReason.contentHashTieBreak);
     });
   });
+
+  // ★★ 段 3 —— ★削除の状態で決める（決定 **D147-1** / **D147-2**）★★
+  //
+  // ★★ なぜ段 3 が要るか —— ★★収束しないからである ★★
+  // ★**`deletedAt` は★★内容ハッシュの 5 フィールドに入らない★★**（**D111-4** / **D116-12**）。
+  // → ★**片方だけが削除されていて★時刻も内容も同値なら、★★段 1 も段 2 も決められない★★。**
+  // → ★**旧はここで `identical` に落ちて★★手元を返していた ＝ 同-1 である★★**
+  //   （★`docs/同期設計メモ.md` §65-5 が★★要求を満たさないとして落とした形★★）。
+  group('★★ 段 3 —— 削除の状態（決定 D147-1）★★', () {
+    final deletedEarly = DateTime.utc(2026, 6, 1);
+    final deletedLate = DateTime.utc(2026, 6, 2);
+
+    test('★★ 生きているほうが勝つ —— ★手元が生きている ★★', () {
+      final local = _deck(name: 'おなじ', updatedAt: early);
+      final remote =
+          _deck(name: 'おなじ', updatedAt: early, deletedAt: deletedEarly);
+
+      final got = resolveDeckConflict(local: local, remote: remote);
+
+      expect(got.side, DeckResolutionWinner.local);
+      expect(got.reason, DeckResolutionReason.deletionTieBreak);
+      expect(got.winner.deletedAt, isNull);
+    });
+
+    test('★★ 対: ★生きているほうが勝つ —— ★相手が生きている（★★向きを問わない★★）★★', () {
+      // ★★ これが「対称である」ことの直の対である ★★
+      //   ★**旧は★どちらの向きでも★手元が勝っていた ＝ 同-1**。
+      final local =
+          _deck(name: 'おなじ', updatedAt: early, deletedAt: deletedEarly);
+      final remote = _deck(name: 'おなじ', updatedAt: early);
+
+      final got = resolveDeckConflict(local: local, remote: remote);
+
+      expect(got.side, DeckResolutionWinner.remote);
+      expect(got.reason, DeckResolutionReason.deletionTieBreak);
+      expect(got.winner.deletedAt, isNull);
+    });
+
+    test('★★ 両方削除なら★`deletedAt` の新しいほう（★★好みである★★）★★', () {
+      final local =
+          _deck(name: 'おなじ', updatedAt: early, deletedAt: deletedLate);
+      final remote =
+          _deck(name: 'おなじ', updatedAt: early, deletedAt: deletedEarly);
+
+      final got = resolveDeckConflict(local: local, remote: remote);
+
+      expect(got.side, DeckResolutionWinner.local);
+      expect(got.reason, DeckResolutionReason.deletionTieBreak);
+    });
+
+    test('★★ 両方削除で★`deletedAt` も同値なら `identical` ★★', () {
+      final local =
+          _deck(name: 'おなじ', updatedAt: early, deletedAt: deletedEarly);
+      final remote =
+          _deck(name: 'おなじ', updatedAt: early, deletedAt: deletedEarly);
+
+      final got = resolveDeckConflict(local: local, remote: remote);
+
+      expect(got.reason, DeckResolutionReason.identical);
+    });
+
+    test('★★ 両方生きていれば `identical`（★段 3 は空振りする）★★', () {
+      final local = _deck(name: 'おなじ', updatedAt: early, lastDeviceId: 'A');
+      final remote = _deck(name: 'おなじ', updatedAt: early, lastDeviceId: 'B');
+
+      final got = resolveDeckConflict(local: local, remote: remote);
+
+      expect(got.reason, DeckResolutionReason.identical);
+    });
+
+    test('★★ 段 2 が決めたら★段 3 へ来ない（★★D138-1 の答えを 1 ミリも変えない★★）★★', () {
+      // ★★ 内容ハッシュが違えば★削除の状態を見ない ★★
+      //   ★**段 3 を段 2 の★前★に置く形は採らなかった**（★それは **D138-1** の訂正になる）。
+      final local = _deck(name: 'あ', updatedAt: early);
+      final remote =
+          _deck(name: 'い', updatedAt: early, deletedAt: deletedEarly);
+      expect(deckContentHash(local), isNot(deckContentHash(remote)),
+          reason: '★★前提: 内容ハッシュが違う★★');
+
+      final got = resolveDeckConflict(local: local, remote: remote);
+
+      expect(got.reason, DeckResolutionReason.contentHashTieBreak);
+      expect(got.winner.name, _largerHashName(local, remote));
+    });
+  });
+
+  // ★★ 対称であること —— ★★これが (甲)（収束する）の中身である ★★
+  //
+  // ★★ 要石である ★★
+  // ★**段ごとの対を全部通しても、★★「入れ替えたら答えが裏返る」形は見えない★★。**
+  // ★**旧の実装は★`deletedAt` だけが違う入力で★★どちらの向きでも手元を返していた★★** ——
+  //   ★それが 同-1（自分が勝つ）であり、★★2 台が永久に食い違う★★。
+  group('★★ 対称である（★入れ替えても★同じ側が勝つ）★★', () {
+    // ★★ 比べた 3 つだけを見る（★`revision` などは★決着に入らない）★★
+    List<Object?> keyOf(Deck d) =>
+        <Object?>[d.updatedAt, deckContentHash(d), d.deletedAt];
+
+    void expectSymmetric(Deck a, Deck b, {required String why}) {
+      final ab = resolveDeckConflict(local: a, remote: b);
+      final ba = resolveDeckConflict(local: b, remote: a);
+      expect(keyOf(ab.winner), keyOf(ba.winner), reason: why);
+      expect(ab.reason, ba.reason, reason: why);
+    }
+
+    test('★★ 片方だけが削除されている（★★旧はここで裏返っていた★★）★★', () {
+      final alive = _deck(name: 'おなじ', updatedAt: early);
+      final deleted = _deck(
+          name: 'おなじ', updatedAt: early, deletedAt: DateTime.utc(2026, 6));
+
+      expectSymmetric(alive, deleted, why: '★★入れ替えても★生きているほうが勝つ★★');
+    });
+
+    test('★ 両方削除で★`deletedAt` が違う', () {
+      final a = _deck(
+          name: 'おなじ', updatedAt: early, deletedAt: DateTime.utc(2026, 6, 1));
+      final b = _deck(
+          name: 'おなじ', updatedAt: early, deletedAt: DateTime.utc(2026, 6, 2));
+
+      expectSymmetric(a, b, why: '★新しいほうが勝つ');
+    });
+
+    test('★ 段 1 でも段 2 でも対称である', () {
+      final byTime = _deck(name: 'あ', updatedAt: late_);
+      final other = _deck(name: 'い', updatedAt: early);
+      expectSymmetric(byTime, other, why: '★段 1');
+
+      final h1 = _deck(name: 'あ', updatedAt: early);
+      final h2 = _deck(name: 'い', updatedAt: early);
+      expectSymmetric(h1, h2, why: '★段 2');
+    });
+  });
+
+  // ★★ 段 3 の比較そのもの（★純粋関数 / 決定 **D147-2**）★★
+  group('★★ `compareDeckDeletion` ★★', () {
+    final t1 = DateTime.utc(2026, 6, 1);
+    final t2 = DateTime.utc(2026, 6, 2);
+
+    test('★ 生きている（null）ほうが勝つ', () {
+      expect(compareDeckDeletion(null, t1), greaterThan(0));
+      expect(compareDeckDeletion(t1, null), lessThan(0));
+    });
+
+    test('★ 両方 null なら決まらない', () {
+      expect(compareDeckDeletion(null, null), 0);
+    });
+
+    test('★ 両方削除なら★新しいほう', () {
+      expect(compareDeckDeletion(t2, t1), greaterThan(0));
+      expect(compareDeckDeletion(t1, t2), lessThan(0));
+      expect(compareDeckDeletion(t1, t1), 0);
+    });
+
+    test('★★ 対称である（★★畳んで 0 にすると★また 同-1 になる★★）★★', () {
+      final inputs = <DateTime?>[null, t1, t2];
+      for (final a in inputs) {
+        for (final b in inputs) {
+          expect(compareDeckDeletion(a, b).sign, -compareDeckDeletion(b, a).sign,
+              reason: '★入力: $a と $b');
+        }
+      }
+    });
+
+    test('★★ 全順序である（★★同値になるのは★同じ値のときだけ★★）★★', () {
+      final inputs = <DateTime?>[null, t1, t2];
+      for (final a in inputs) {
+        for (final b in inputs) {
+          expect(compareDeckDeletion(a, b) == 0, a == b, reason: '★入力: $a と $b');
+        }
+      }
+    });
+  });
 }
+

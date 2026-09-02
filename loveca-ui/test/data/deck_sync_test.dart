@@ -387,8 +387,54 @@ void main() {
 
       final out = await run(alive, marks);
 
+      // ★★ 2026-09-02 追記: ★★直した。★それでも★この 1 件は落ちなかった★★（**D-15 (j)**）★★
+      //   ★**上の 12 行は 1 文字も書き換えない**（**D-35** —— ★★書いた時点で誤りではない★★）。
+      //   ★**「直すと★この 1 件が落ちる」は★★予告であって、★偽だった★★** ——
+      //     ★**段 3 は★★生きているほうを勝たせる★★**（**D147-2**）ので、
+      //     ★★この向き（手元が生きている）では★答えが 1 ビットも変わらない★★。
+      //   ★**合図が立ったのは★★逆向き★★である**（★下の 1 件 —— ★手元が削除・相手が生きている）。
+      //   ★**変わったのは★★2 台が食い違わなくなったこと★★である**（★収束する / §65-5 の 同-1）。
       expect(out, isA<DeckSyncSent>(),
           reason: '★★同値なので★手元が勝つ ＝ ★相手の削除が上書きされる★★');
+    });
+
+    test('★★ 対: ★手元が削除・相手が生きているなら★★相手が勝つ★★（★段 3 / 決定 D147-1）★★',
+        () async {
+      // ★★ ここが★合図である ★★
+      //   ★**旧は★★どちらの向きでも★手元が勝っていた ＝ 同-1★★**（★収束しない）。
+      //   ★**いまは★★生きているほうが勝つ★★**（**D147-2**）ので、
+      //     ★★A（削除した側）が★同期すると★デッキが一覧に戻る★★。
+      //   ★**「削除が消える」ではない** —— ★**もう一度消せばよい**
+      //     （★2 度目は `updatedAt` が新しいので★段 1 で決まる / ★下の対）。
+      final deleted = _deck(deletedAt: DateTime.utc(2026, 2, 2));
+      serveHolding(_deck());
+      final marks = FakeMarks(baseline: baselineOf(deleted));
+
+      final out = await run(deleted, marks);
+
+      expect(out, isA<DeckSyncRemoteWins>(),
+          reason: '★★段 3 —— ★生きているほうが勝つ★★');
+      expect((out as DeckSyncRemoteWins).reason,
+          DeckSyncRemoteReason.resolved);
+      expect(received.where((r) => r['path'] == decksPutPath), isEmpty,
+          reason: '★★相手が勝ったら★1 バイトも送らない★★');
+    });
+
+    test('★★ 対: ★もう一度消せば★段 1 で決まる（★★戻せることの対★★）★★', () async {
+      // ★★ **D147-2** の決め手そのものを固定する ★★
+      //   ★**「生きているほうが勝つ」を採ったのは★★誤ったときに手で戻せるからである★★**
+      //     （★逆向きは★**D117-4** が復元の口を置かないと決めているので★戻せない）。
+      final deletedAgain = _deck(
+          deletedAt: DateTime.utc(2026, 2, 3),
+          updatedAt: DateTime.utc(2026, 2, 3));
+      serveHolding(_deck());
+      final marks = FakeMarks(baseline: baselineOf(_deck()));
+
+      final out = await run(deletedAgain, marks);
+
+      expect(out, isA<DeckSyncSent>(), reason: '★★段 1 で決まる（★時刻が新しい）★★');
+      final sent = lastPushBody()[syncContentKey]! as String;
+      expect(decodeDeckForSync(sent).deletedAt, isNotNull);
     });
 
     test('★★ 道筋: ★保存 → 同期 → ★★同じ秒のうちに削除★★ → ★もう 1 台が同期する ★★',
