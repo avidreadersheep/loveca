@@ -306,8 +306,61 @@ Future<void> _rewindToV4(LovecaDatabase db) async {
 /// ここではない。★**各段が「自分の版が足したもの」を落とす**形を崩さないこと。
 /// ★**[_rewindToV4] は★この段に任せている**（★予告どおりに新設した）。
 Future<void> _rewindToV5(LovecaDatabase db) async {
+  await _rewindToV6(db); // ★v7 が足した分は上の段が落とす
   await _dropSyncIdentitiesTable(db);
   await db.customStatement('PRAGMA user_version = 5');
+}
+
+/// `sync_identities` の **v6 の形**（★`device_id` を持たない）を凍結してある。
+///
+/// ★★ 写しておく相手が在るので★表ごと落とさない ★★
+/// ★**v6 の `sync_identities` は「在る」のが正しい形である**（★v5 → v6 で足した）。
+/// → ★**[_rewindDeckEntriesToV2] と同じ形**（★列を落とすのではなく★★作り直して写す★★）。
+const String _createV6SyncIdentitiesTable = '''
+CREATE TABLE "sync_identities" (
+  "id" INTEGER NOT NULL DEFAULT 0,
+  "user_name" TEXT NOT NULL,
+  PRIMARY KEY ("id"),
+  CHECK (id = 0)
+)''';
+
+/// `sync_identities` から `device_id` を落として v6 の形に戻す。
+///
+/// ★★ `ALTER TABLE ... DROP COLUMN` を使わない ★★
+/// ★[_rewindDeckEntriesToV2] が書いているとおり、DROP COLUMN は
+/// **現在の形から 1 つ引く**書き方なので、次の版が別の列を足すとそれが残る。
+///
+/// ★★ これが無いと移行が黙って空振りする ★★
+/// ★**`m.addColumn` は★列が既に在っても★★例外を出す★★**ので表ごとの `createTable` とは
+/// 落ち方が違うが、★**落とし損ねれば `from < 7` の枝が★★別の意味になる★★**ことは同じである。
+/// → ★**下の「前提: 巻き戻した DB は v6 の形」が★この群の要石である。**
+Future<void> _rewindSyncIdentitiesToV6(LovecaDatabase db) async {
+  await db.customStatement('PRAGMA foreign_keys = OFF');
+  await db
+      .customStatement('ALTER TABLE sync_identities RENAME TO sync_identities_v7');
+  await db.customStatement(_createV6SyncIdentitiesTable);
+  await db.customStatement(
+    'INSERT INTO sync_identities (id, user_name) '
+    'SELECT id, user_name FROM sync_identities_v7',
+  );
+  await db.customStatement('DROP TABLE sync_identities_v7');
+  await db.customStatement('PRAGMA foreign_keys = ON');
+}
+
+/// v7 で作った DB を v6 相当へ巻き戻す（決定 **D145-3** の移行だけを見るため）。
+///
+/// ★`card_search` は v2 の形・`deck_entries` は v3 の形・`deck_edit_ops` /
+/// `deck_sync_marks` / `sync_identities` は在るまま。もっと前から巻き戻すと
+/// `from < 2` 〜 `from < 6` の枝も一緒に走り、**どの枝の効果か分からなくなる**
+/// （[_rewindToV2] 〜 [_rewindToV5] と同じ理由）。
+///
+/// ★★ 落とすのは**この版が足した分だけ**である ★★
+/// v8 が別のものを足したら、それを落とすのは `_rewindToV7`（新設）の役目であって
+/// ここではない。★**各段が「自分の版が足したもの」を落とす**形を崩さないこと。
+/// ★**[_rewindToV5] は★この段に任せている**（★予告どおりに新設した）。
+Future<void> _rewindToV6(LovecaDatabase db) async {
+  await _rewindSyncIdentitiesToV6(db);
+  await db.customStatement('PRAGMA user_version = 6');
 }
 
 Future<int> _userVersion(LovecaDatabase db) async {
@@ -444,7 +497,7 @@ void main() {
       expect(await _cardSearchColumnNames(db), contains(cardSearchRawColumn));
     });
 
-    test('user_version が 6 になる', () async {
+    test('user_version が 7 になる', () async {
       // ★★ これ単独では移行の中身が走った証拠にならない ★★
       // drift は `onUpgrade` が何もしなくても版を上げる。実際、
       // `onUpgrade` の中身を空にして走らせる実験（2026-08-24）では
@@ -456,7 +509,7 @@ void main() {
       //   着地は 3 である（決定 D65 / D99）。
       // ★2026-08-30: `from < 4` が足されたので着地は 4 になった（決定 D110-1）。
       // ★2026-09-02: `from < 6` が足されたので着地は 6 になった（決定 D125-2）。
-      expect(await _userVersion(db), 6);
+      expect(await _userVersion(db), 7);
     });
 
     test('★ deck_edit_ops も生える（3 つの枝が順に走る / 決定 D110-1）', () async {
@@ -624,7 +677,7 @@ void main() {
 
       tearDown(() => db.close());
 
-      test('ord 列が生える / user_version が 6 になる', () async {
+      test('ord 列が生える / user_version が 7 になる', () async {
         final columns = await db
             .customSelect('PRAGMA table_info(deck_entries)')
             .get()
@@ -634,7 +687,7 @@ void main() {
         //   着地は 4 である（決定 D110-1）。**この群が見ているのは `ord` のほう**で、
         //   版はその副産物にすぎない（上の「これ単独では証拠にならない」と同じ）。
         // ★2026-09-02: `from < 6` が足されたので着地は 6 になった（決定 D125-2）。
-        expect(await _userVersion(db), 6);
+        expect(await _userVersion(db), 7);
       });
 
       test('★★ backfill が規則順で ord を書く（決定 D99）★★', () async {
@@ -866,12 +919,12 @@ void main() {
 
       tearDown(() => db.close());
 
-      test('deck_edit_ops が生える / user_version が 6 になる', () async {
+      test('deck_edit_ops が生える / user_version が 7 になる', () async {
         // ★★ 版そのものはこの群の主題ではない ★★
         //   ★**この群が見ているのは `deck_edit_ops` が生えることである。**
         //   ★2026-09-02: `from < 6` が足されたので着地は 6 になった（決定 D125-2）。
         expect(await _tableNames(db), contains('deck_edit_ops'));
-        expect(await _userVersion(db), 6);
+        expect(await _userVersion(db), 7);
       });
 
       test('★★ 列は 4 つだけ（引数の列を作っていない / 決定 D110-1）★★', () async {
@@ -1110,12 +1163,12 @@ void main() {
 
       tearDown(() => db.close());
 
-      test('deck_sync_marks が生える / user_version が 6 になる', () async {
+      test('deck_sync_marks が生える / user_version が 7 になる', () async {
         // ★★ 版そのものはこの群の主題ではない ★★
         //   ★**この群が見ているのは `deck_sync_marks` が生えることである。**
         //   ★2026-09-02: `from < 6` が足されたので着地は 6 になった（決定 D125-2）。
         expect(await _tableNames(db), contains('deck_sync_marks'));
-        expect(await _userVersion(db), 6);
+        expect(await _userVersion(db), 7);
       });
 
       test('★★ 列は 3 つだけ（決定 D114-1 / D115-1）★★', () async {
@@ -1373,9 +1426,9 @@ void main() {
 
       tearDown(() => db.close());
 
-      test('sync_identities が生える / user_version が 6 になる', () async {
+      test('sync_identities が生える / user_version が 7 になる', () async {
         expect(await _tableNames(db), contains('sync_identities'));
-        expect(await _userVersion(db), 6);
+        expect(await _userVersion(db), 7);
       });
 
       test('★★ 列は 2 つだけ（決定 D125-2 ＝ 帰-2）★★', () async {
@@ -1388,7 +1441,7 @@ void main() {
             .customSelect('PRAGMA table_info(sync_identities)')
             .get()
             .then((rows) => [for (final r in rows) r.read<String>('name')]);
-        expect(columns, ['id', 'user_name']);
+        expect(columns, ['id', 'user_name', 'device_id']);
       });
 
       test('★★ 利用者名は NULL にできない（★空の器に半端な行を作らせない）★★',
@@ -1619,7 +1672,7 @@ void main() {
       // 1 回目: 移行が走る。
       final first = LovecaDatabase(openFileExecutor(dbPath));
       await first.customSelect('SELECT 1').get();
-      expect(await _userVersion(first), 6);
+      expect(await _userVersion(first), 7);
       // 移行後に番兵を入れる。次に rebuildAll が走れば消える。
       await _insertSentinel(first);
       await first.close();
@@ -1629,7 +1682,7 @@ void main() {
       addTearDown(second.close);
       await second.customSelect('SELECT 1').get();
 
-      expect(await _userVersion(second), 6);
+      expect(await _userVersion(second), 7);
       expect(
         await _sentinelSurvives(second),
         isTrue,
@@ -1637,4 +1690,221 @@ void main() {
       );
     });
   });
+  /// v7 で作った DB を v6 相当に戻して置く。
+  ///
+  /// ★`sync_identities` に**行を 1 件入れてから**巻き戻す ——
+  /// ★`from < 7` の枝がその行に触れば消えるか変わるので、★**陽性対照になる。**
+  Future<void> buildV6Database() async {
+    final db = LovecaDatabase(openFileExecutor(dbPath));
+    for (final expansion in fixtureExpansions) {
+      await CardDao(db).replaceExpansion(loadCardSet(expansion));
+    }
+    await DeckDao(db).save(deck, ops: const []);
+    await DeckDao(db).save(scrambledDeck, ops: const []);
+    await db.into(db.deckEditOps).insert(
+          DeckEditOpsCompanion.insert(
+            deckId: scrambledDeck.deckId,
+            kind: DeckEditOpKind.setName.key,
+            at: DateTime.utc(2026, 9, 1, 1, 2, 3),
+          ),
+        );
+    await db.into(db.deckSyncMarks).insert(
+          DeckSyncMarksCompanion.insert(
+            deckId: scrambledDeck.deckId,
+            logMark: 11,
+            baselineHash: deckContentHash(scrambledDeck),
+          ),
+        );
+    // ★★ v6 の形で 1 行入れる（★`device_id` はまだ無い）★★
+    await db.customStatement(
+      "INSERT INTO sync_identities (id, user_name) VALUES (0, 'みつき')",
+    );
+    await _rewindToV6(db);
+    await db.close();
+  }
+
+  group('★★ v6 -> v7: 端末の同定の列（決定 D145-3 ＝ 置-1 / §32-6 の 26）★★', () {
+    test('★前提: 保存順は規則順ではない（下の陽性対照の土台）', () {
+      expect(savedOrder, isNot(equals(expectedRuleOrder)));
+    });
+
+    test('★前提: 巻き戻した DB は v6 の形（device_id が無い / user_version 6）',
+        () async {
+      // ★★ この群の要石である（v3 -> v4 〜 v5 -> v6 とまったく同じ理由）★★
+      //   ★**巻き戻しが `device_id` を落とし損ねると `from < 7` は★★例外を出す★★**
+      //     （`m.addColumn` は既存の列に当たると落ちる）ので、
+      //     ★★空振りではなく★別の壊れ方をする★★。→ ★**どちらにせよ群が意味を失う。**
+      await buildV6Database();
+
+      final raw = sqlite3.open(dbPath);
+      addTearDown(raw.close);
+
+      final columns = raw
+          .select('PRAGMA table_info(sync_identities)')
+          .map((r) => r['name'] as String)
+          .toList();
+      expect(columns, ['id', 'user_name']);
+      expect(raw.select('PRAGMA user_version').first['user_version'], 6);
+
+      // ★対: v6 に在るはずの表は残っていること（巻き戻しが行き過ぎていない）。
+      final tables = raw
+          .select("SELECT name FROM sqlite_master WHERE type='table' "
+              "AND name NOT LIKE 'sqlite_%' ORDER BY name")
+          .map((r) => r['name'] as String)
+          .toList();
+      expect(tables, contains('decks'));
+      expect(tables, contains('deck_edit_ops'));
+      expect(tables, contains('deck_sync_marks'));
+      expect(tables, contains('sync_identities'));
+
+      // ★v6 の行が 1 件入っている（下の陽性対照の土台）。
+      expect(
+          raw.select('SELECT COUNT(*) AS c FROM sync_identities').first['c'], 1);
+    });
+
+    group('v6 を最新版で開く', () {
+      late LovecaDatabase db;
+
+      setUp(() async {
+        await buildV6Database();
+        db = LovecaDatabase(openFileExecutor(dbPath));
+        await db.customSelect('SELECT 1').get();
+      });
+
+      tearDown(() => db.close());
+
+      test('device_id が生える / user_version が 7 になる', () async {
+        final columns = await db
+            .customSelect('PRAGMA table_info(sync_identities)')
+            .get()
+            .then((rows) => [for (final r in rows) r.read<String>('name')]);
+        expect(columns, ['id', 'user_name', 'device_id']);
+        expect(await _userVersion(db), 7);
+      });
+
+      test('★★ 列は 3 つだけ（★★決めていないことを型で決めない★★）★★', () async {
+        // ★★ この期待値が増えたら「何かを決めた」はずである。★黙って増やさないこと ★★
+        //   ★**「最後につながった時刻」の列は★無い** —— ★**観測は★★サーバー側でしかできない★★**
+        //     （§30-9 / **D145-1**）。★端末が持つと★★2 か所に同じ量が在る★★。
+        //   ★**「外れているか」の列も無い** —— ★**引き金は★★サーバーが返す★★**（**D145-2** ＝ 引-1）。
+        final columns = await db
+            .customSelect('PRAGMA table_info(sync_identities)')
+            .get()
+            .then((rows) => [for (final r in rows) r.read<String>('name')]);
+        expect(columns, ['id', 'user_name', 'device_id']);
+      });
+
+      test('★★ device_id は NULL にできる（★移行は値を作らない）★★', () async {
+        final info = await db
+            .customSelect('PRAGMA table_info(sync_identities)')
+            .get()
+            .then((rows) => {
+                  for (final r in rows)
+                    r.read<String>('name'): r.read<int>('notnull'),
+                });
+        expect(info['device_id'], 0, reason: '★★移行してきた行は値を持たない★★');
+        expect(info['user_name'], 1, reason: '★利用者名は NULL にできてはならない');
+      });
+
+      test('★★ 移行してきた行は device_id が null である（★★値を作っていない★★）★★',
+          () async {
+        // ★★ **D109** の精神 —— ★移行は「システムが動かした」側である ★★
+        //   ★**ここで値を作ると、★★同じ DB を復元するたびに別の端末になる★★。**
+        final row = await db
+            .customSelect('SELECT user_name, device_id FROM sync_identities')
+            .getSingle();
+        expect(row.read<String>('user_name'), 'みつき', reason: '★利用者名は無傷である');
+        expect(row.data['device_id'], isNull);
+      });
+
+      test('★★ current() は★中途の行を「まだ名乗っていない」に畳む ★★', () async {
+        // ★★ 呼ぶ側に★null の device_id を 1 度も渡さない ★★
+        expect(await SyncIdentityDao(db).current(), isNull);
+      });
+
+      test('★★ 対: ★record すれば★current() が返る（★陽性対照）★★', () async {
+        await SyncIdentityDao(db)
+            .record(userName: 'みつき', deviceId: 'DEV-1');
+
+        expect(await SyncIdentityDao(db).current(),
+            (userName: 'みつき', deviceId: 'DEV-1'));
+      });
+
+      test('★★ 対: ★forget すれば★2 つとも消える（★片方だけ残さない）★★', () async {
+        final dao = SyncIdentityDao(db);
+        await dao.record(userName: 'みつき', deviceId: 'DEV-1');
+
+        await dao.forget();
+
+        expect(await dao.current(), isNull);
+        final rows =
+            await db.customSelect('SELECT * FROM sync_identities').get();
+        expect(rows, isEmpty, reason: '★★行ごと消える ＝ 残-1 と 残-2 が同じ結果になる★★');
+      });
+
+      test('★★ 2 行目は入らない（★CHECK が v7 でも生きている）★★', () async {
+        await expectLater(
+          db.customStatement(
+              "INSERT INTO sync_identities (id, user_name) VALUES (1, 'x')"),
+          throwsA(anything),
+        );
+      });
+
+      test('★★ 決定 D109: updatedAt / revision が動かない（移行はシステム）★★',
+          () async {
+        // ★決定 D109-1:「更新」の日付を動かすかは**変更の主体**で決める。
+        //   移行はシステムが動かした側なので**動かさない**（D109-2 の事例 1）。
+        final restored = await DeckDao(db).byId(scrambledDeck.deckId);
+        expect(restored!.updatedAt, scrambledDeck.updatedAt);
+        expect(restored.revision, scrambledDeck.revision);
+        expect(restored.deletedAt, isNull);
+
+        // ★対: もう 1 つのデッキも残る（1 行だけ助かる実装では通らない）。
+        expect(await DeckDao(db).byId(deck.deckId), isNotNull);
+      });
+
+      test('★★ 移行は編集ログにも器にも触れない（★陽性対照つき）★★', () async {
+        expect(
+            await db
+                .customSelect('SELECT COUNT(*) AS c FROM deck_edit_ops')
+                .getSingle()
+                .then((r) => r.read<int>('c')),
+            1);
+        expect(
+            await db
+                .customSelect('SELECT COUNT(*) AS c FROM deck_sync_marks')
+                .getSingle()
+                .then((r) => r.read<int>('c')),
+            1);
+      });
+
+      test('★★ 並び（ord）が 1 つも動かない（★backfill を呼んでいない）★★', () async {
+        // ★★ 陽性対照つき ★★
+        //   ★`from < 7` の枝が `deck_entries` に触れば、★★規則順へ飛ぶ★★
+        //   （backfill を巻き添えにした場合）。★上の前提テストが
+        //   「保存順 ≠ 規則順」を見張っているので、★この対が効く。
+        final restored = await DeckDao(db).byId(scrambledDeck.deckId);
+        expect([for (final e in restored!.entries) e.printingId],
+            equals(savedOrder));
+        expect([for (final e in restored.entries) e.printingId],
+            isNot(equals(expectedRuleOrder)),
+            reason: '★規則順へ飛んだ = この枝が backfill を巻き添えにしている');
+      });
+
+      test('★★ 2 回目に開いても onUpgrade は走らない ★★', () async {
+        await db.close();
+        final second = LovecaDatabase(openFileExecutor(dbPath));
+        addTearDown(second.close);
+        await second.customSelect('SELECT 1').get();
+
+        expect(await _userVersion(second), 7);
+        final columns = await second
+            .customSelect('PRAGMA table_info(sync_identities)')
+            .get()
+            .then((rows) => [for (final r in rows) r.read<String>('name')]);
+        expect(columns, ['id', 'user_name', 'device_id']);
+      });
+    });
+  });
+
 }

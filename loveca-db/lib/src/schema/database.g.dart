@@ -5974,8 +5974,19 @@ class $SyncIdentitiesTable extends SyncIdentities
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _deviceIdMeta = const VerificationMeta(
+    'deviceId',
+  );
   @override
-  List<GeneratedColumn> get $columns => [id, userName];
+  late final GeneratedColumn<String> deviceId = GeneratedColumn<String>(
+    'device_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, userName, deviceId];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -5999,6 +6010,12 @@ class $SyncIdentitiesTable extends SyncIdentities
     } else if (isInserting) {
       context.missing(_userNameMeta);
     }
+    if (data.containsKey('device_id')) {
+      context.handle(
+        _deviceIdMeta,
+        deviceId.isAcceptableOrUnknown(data['device_id']!, _deviceIdMeta),
+      );
+    }
     return context;
   }
 
@@ -6016,6 +6033,10 @@ class $SyncIdentitiesTable extends SyncIdentities
         DriftSqlType.string,
         data['${effectivePrefix}user_name'],
       )!,
+      deviceId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}device_id'],
+      ),
     );
   }
 
@@ -6036,17 +6057,58 @@ class SyncIdentityRow extends DataClass implements Insertable<SyncIdentityRow> {
   /// ★★**正規化しない**★★ —— ★「同じ」の定義は★★保管の実装が持つ★★（★§46-14 の 2 /
   /// `loveca-server` の `AccountFileStore`）。★**ここで小文字に畳むと★片側だけの規則になる。**
   final String userName;
-  const SyncIdentityRow({required this.id, required this.userName});
+
+  /// ★★ この端末の同定（★★2026-09-02 / 決定 **D145-3** ＝ 置-1★★）★★
+  ///
+  /// ★★ なぜ★利用者名と★同じ行なのか ★★
+  /// ★**決め手は「★★利用者の切り替えと★同じ寿命であること★★」である**（★§77-5 の (甲)）。
+  /// ★**別の寿命だと、★★入り直したあとも★同じ端末として名簿に残る★★** ——
+  ///   ★**それは **D125-1** が消そうとしたものと★★同じ列の量である★★**（★前のアカウントの痕跡）。
+  ///
+  /// ★★ 上の doc が「先に置かない」と書いていた分である（★★当てた★★ / **D-15 (l)**）★★
+  /// ★**あちらは「★★残-2（DB ごと作り直す）の下で★端末の同定が消える ＝ それは決定である★★」と書いた。**
+  /// → ★★**消えることは★この決定が★意図しているものである**★★（★上の (甲)）。
+  /// → ★**そして★★[SyncIdentityDao.record] が 2 つとも書き、★[SyncIdentityDao.forget] が 2 つとも消す★★**ので、
+  ///   ★★**残-1（行の物理削除）と 残-2（DB ごと作り直す）は★同じ結果になる**★★。
+  ///   → ★**D125-3 を★先に決めてしまわない**（★あちらの心配は★この形では起きない）。
+  ///
+  /// ★★ null 可である。★「まだ作っていない」を★空文字にしない ★★
+  /// ★**v6 から移行してきた行は★★この列が null になる★★**（★移行は値を作らない —— ★下）。
+  /// ★**[SyncIdentityDao.current] は★★null の行を「まだ名乗っていない」として畳む★★**ので、
+  ///   ★★呼ぶ側は★中途の状態を 1 度も見ない★★。
+  ///
+  /// ★★ 移行が★値を作らない ★★
+  /// ★**作ると、★★同じ DB を復元するたびに★別の端末になる★★**（★**D109** の精神 ——
+  ///   ★移行は「システムが動かした」側であり、★★新しい同定を生み出す場所ではない★★）。
+  ///
+  /// ★★ 秘密ではない ★★
+  /// ★**名乗りは★利用者名とパスワードである**（**D129-1**）。
+  /// ★**この値は★★名簿の見出しであって★資格情報ではない★★**（★★混ぜない★★ / **§7-7**）。
+  final String? deviceId;
+  const SyncIdentityRow({
+    required this.id,
+    required this.userName,
+    this.deviceId,
+  });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<int>(id);
     map['user_name'] = Variable<String>(userName);
+    if (!nullToAbsent || deviceId != null) {
+      map['device_id'] = Variable<String>(deviceId);
+    }
     return map;
   }
 
   SyncIdentitiesCompanion toCompanion(bool nullToAbsent) {
-    return SyncIdentitiesCompanion(id: Value(id), userName: Value(userName));
+    return SyncIdentitiesCompanion(
+      id: Value(id),
+      userName: Value(userName),
+      deviceId: deviceId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deviceId),
+    );
   }
 
   factory SyncIdentityRow.fromJson(
@@ -6057,6 +6119,7 @@ class SyncIdentityRow extends DataClass implements Insertable<SyncIdentityRow> {
     return SyncIdentityRow(
       id: serializer.fromJson<int>(json['id']),
       userName: serializer.fromJson<String>(json['userName']),
+      deviceId: serializer.fromJson<String?>(json['deviceId']),
     );
   }
   @override
@@ -6065,15 +6128,24 @@ class SyncIdentityRow extends DataClass implements Insertable<SyncIdentityRow> {
     return <String, dynamic>{
       'id': serializer.toJson<int>(id),
       'userName': serializer.toJson<String>(userName),
+      'deviceId': serializer.toJson<String?>(deviceId),
     };
   }
 
-  SyncIdentityRow copyWith({int? id, String? userName}) =>
-      SyncIdentityRow(id: id ?? this.id, userName: userName ?? this.userName);
+  SyncIdentityRow copyWith({
+    int? id,
+    String? userName,
+    Value<String?> deviceId = const Value.absent(),
+  }) => SyncIdentityRow(
+    id: id ?? this.id,
+    userName: userName ?? this.userName,
+    deviceId: deviceId.present ? deviceId.value : this.deviceId,
+  );
   SyncIdentityRow copyWithCompanion(SyncIdentitiesCompanion data) {
     return SyncIdentityRow(
       id: data.id.present ? data.id.value : this.id,
       userName: data.userName.present ? data.userName.value : this.userName,
+      deviceId: data.deviceId.present ? data.deviceId.value : this.deviceId,
     );
   }
 
@@ -6081,46 +6153,58 @@ class SyncIdentityRow extends DataClass implements Insertable<SyncIdentityRow> {
   String toString() {
     return (StringBuffer('SyncIdentityRow(')
           ..write('id: $id, ')
-          ..write('userName: $userName')
+          ..write('userName: $userName, ')
+          ..write('deviceId: $deviceId')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, userName);
+  int get hashCode => Object.hash(id, userName, deviceId);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is SyncIdentityRow &&
           other.id == this.id &&
-          other.userName == this.userName);
+          other.userName == this.userName &&
+          other.deviceId == this.deviceId);
 }
 
 class SyncIdentitiesCompanion extends UpdateCompanion<SyncIdentityRow> {
   final Value<int> id;
   final Value<String> userName;
+  final Value<String?> deviceId;
   const SyncIdentitiesCompanion({
     this.id = const Value.absent(),
     this.userName = const Value.absent(),
+    this.deviceId = const Value.absent(),
   });
   SyncIdentitiesCompanion.insert({
     this.id = const Value.absent(),
     required String userName,
+    this.deviceId = const Value.absent(),
   }) : userName = Value(userName);
   static Insertable<SyncIdentityRow> custom({
     Expression<int>? id,
     Expression<String>? userName,
+    Expression<String>? deviceId,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (userName != null) 'user_name': userName,
+      if (deviceId != null) 'device_id': deviceId,
     });
   }
 
-  SyncIdentitiesCompanion copyWith({Value<int>? id, Value<String>? userName}) {
+  SyncIdentitiesCompanion copyWith({
+    Value<int>? id,
+    Value<String>? userName,
+    Value<String?>? deviceId,
+  }) {
     return SyncIdentitiesCompanion(
       id: id ?? this.id,
       userName: userName ?? this.userName,
+      deviceId: deviceId ?? this.deviceId,
     );
   }
 
@@ -6133,6 +6217,9 @@ class SyncIdentitiesCompanion extends UpdateCompanion<SyncIdentityRow> {
     if (userName.present) {
       map['user_name'] = Variable<String>(userName.value);
     }
+    if (deviceId.present) {
+      map['device_id'] = Variable<String>(deviceId.value);
+    }
     return map;
   }
 
@@ -6140,7 +6227,8 @@ class SyncIdentitiesCompanion extends UpdateCompanion<SyncIdentityRow> {
   String toString() {
     return (StringBuffer('SyncIdentitiesCompanion(')
           ..write('id: $id, ')
-          ..write('userName: $userName')
+          ..write('userName: $userName, ')
+          ..write('deviceId: $deviceId')
           ..write(')'))
         .toString();
   }
@@ -12373,9 +12461,17 @@ typedef $$DeckSyncMarksTableProcessedTableManager =
       PrefetchHooks Function()
     >;
 typedef $$SyncIdentitiesTableCreateCompanionBuilder =
-    SyncIdentitiesCompanion Function({Value<int> id, required String userName});
+    SyncIdentitiesCompanion Function({
+      Value<int> id,
+      required String userName,
+      Value<String?> deviceId,
+    });
 typedef $$SyncIdentitiesTableUpdateCompanionBuilder =
-    SyncIdentitiesCompanion Function({Value<int> id, Value<String> userName});
+    SyncIdentitiesCompanion Function({
+      Value<int> id,
+      Value<String> userName,
+      Value<String?> deviceId,
+    });
 
 class $$SyncIdentitiesTableFilterComposer
     extends Composer<_$LovecaDatabase, $SyncIdentitiesTable> {
@@ -12393,6 +12489,11 @@ class $$SyncIdentitiesTableFilterComposer
 
   ColumnFilters<String> get userName => $composableBuilder(
     column: $table.userName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get deviceId => $composableBuilder(
+    column: $table.deviceId,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -12415,6 +12516,11 @@ class $$SyncIdentitiesTableOrderingComposer
     column: $table.userName,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get deviceId => $composableBuilder(
+    column: $table.deviceId,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$SyncIdentitiesTableAnnotationComposer
@@ -12431,6 +12537,9 @@ class $$SyncIdentitiesTableAnnotationComposer
 
   GeneratedColumn<String> get userName =>
       $composableBuilder(column: $table.userName, builder: (column) => column);
+
+  GeneratedColumn<String> get deviceId =>
+      $composableBuilder(column: $table.deviceId, builder: (column) => column);
 }
 
 class $$SyncIdentitiesTableTableManager
@@ -12472,12 +12581,22 @@ class $$SyncIdentitiesTableTableManager
               ({
                 Value<int> id = const Value.absent(),
                 Value<String> userName = const Value.absent(),
-              }) => SyncIdentitiesCompanion(id: id, userName: userName),
+                Value<String?> deviceId = const Value.absent(),
+              }) => SyncIdentitiesCompanion(
+                id: id,
+                userName: userName,
+                deviceId: deviceId,
+              ),
           createCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
                 required String userName,
-              }) => SyncIdentitiesCompanion.insert(id: id, userName: userName),
+                Value<String?> deviceId = const Value.absent(),
+              }) => SyncIdentitiesCompanion.insert(
+                id: id,
+                userName: userName,
+                deviceId: deviceId,
+              ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
               .toList(),

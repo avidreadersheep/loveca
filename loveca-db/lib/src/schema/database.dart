@@ -50,11 +50,12 @@ class LovecaDatabase extends _$LovecaDatabase {
   /// ★4: 編集ログの表 `deck_edit_ops` を足した（決定 **D110-1**）。
   /// ★5: 前回同期時点の器 `deck_sync_marks` を足した（決定 **D114-1** / **N-10**）。
   /// ★6: 同定の量の器 `sync_identities` を足した（決定 **D125-2** ＝ 帰-2 / §32-6 の **19**）。
+  /// ★7: `sync_identities` に★端末の同定 `device_id` を足した（決定 **D145-3** / §32-6 の **26**）。
   ///
   /// 上げるときは必ず [migration] の `onUpgrade` に対応する手順を足すこと。
   /// 版だけ上げて手順を足さないと、既存の端末が古い形のまま動き続ける。
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -151,6 +152,36 @@ class LovecaDatabase extends _$LovecaDatabase {
             // ★`m.createAll()` ではない —— それは**既存の表も作り直そうとする**。
             //   足した 1 つだけを名指しする（`from < 4` / `from < 5` と同じ）。
             await m.createTable(syncIdentities);
+          }
+          if (from < 7 && from >= 6) {
+            // ★★ v6 -> v7: 端末の同定の列を足す（決定 **D145-3** ＝ 置-1 / §32-6 の **26**）★★
+            //
+            // ★上の 3 つの枝と★格が違う。**表ではなく列を足す**（`from < 3` と同じ形）。
+            //   `decks` / `deck_entries` / `deck_edit_ops` / `deck_sync_marks` に 1 文字も触れない。
+            //
+            // ★★ 値を 1 つも作らない ★★
+            //   ★**列は null 可である。★★移行は同定を生み出さない★★**（`SyncIdentities.deviceId` の doc）——
+            //   ★作ると、**同じ DB を復元するたびに別の端末になる**（**D109** の精神）。
+            //   ★**`DEFAULT ''` も入れない** —— ★★空文字を印にしない★★（★同 doc / 先例は **D114-3**）。
+            //
+            // ★★ 「触らない」は「安全」の意味ではない ★★
+            //   `schemaVersion` は上がるので、**既存インストールの DB は必ずここを通る。**
+            //   通る以上、無傷であることは**測って確かめる**
+            //   （`test/migration_test.dart` の v6 -> v7 の群）。
+            //
+            // ★★ 条件が★上の 3 つと違う。★★`from >= 6` が要る★★（2026-09-02 / ★測って分かった）★★
+            //   ★**`from < 6` の枝は `m.createTable(syncIdentities)` を呼ぶ。**
+            //   ★**drift の `createTable` は★★いまの形★★を作る**ので、★★`device_id` は既に在る★★。
+            //   → ★**そこへ `addColumn` を重ねると★★`duplicate column name` で落ちる★★**
+            //     （★実測: ★v1 から開く群が★★61 件落ちた★★）。
+            //   ★★**上の 3 つの枝には★この問題が無い**★★ —— ★**表を足すだけで、★★列を重ねない★★**。
+            //   ★**`from < 3`（`ord`）にも無い** —— ★**`deck_entries` を作るのは `onCreate` だけで、
+            //     ★★どの上げ道でも★v1 の形で在る★★**（★実読）。
+            //   → ★★**「表を作る枝」と「列を足す枝」は★同じ形で書けない。**★★
+            //
+            // ★`ALTER TABLE ... ADD COLUMN` は null 可なら既定値が要らない。
+            //   ★**`DROP COLUMN` は使わない**（★巻き戻しは表ごと作り直す / 運転指示【5】）。
+            await m.addColumn(syncIdentities, syncIdentities.deviceId);
           }
         },
         beforeOpen: (details) async {
