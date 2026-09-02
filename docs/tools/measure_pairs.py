@@ -39,11 +39,22 @@ spec.json の形（★UTF-8）——
 ★★ 絶対にしないこと ★★
 ★**git checkout を打たない**（D-40 —— ★未追跡の新規ファイルが巻き添えになる）。
 ★戻すのは★★この道具が自分で読んだ元の中身だけ★★である。
+
+★★ 同じリポジトリに対して★2 つ同時に走らせない（★柵で塞いである）★★
+★**この道具は★★作業ツリーを書き換える★★**。★2 つ同時に走ると ——
+  (1) ★片方の「戻す」が★★もう片方の仕込みを元の中身として書き戻す★★
+      （★型は §64 の不具合と★同じ列である。★★あちらは 1 プロセスの中、★こちらはプロセスの外★★）／
+  (2) ★★同じパッケージの `flutter test` を 2 つ同時に走らせると★ツールごと落ちる★★
+      （★`build/native_assets/windows/sqlite3.dll` の写しで衝突する / ★2026-09-02 実測 / ★★再現する★★ / D-34）。
+→ ★**リポジトリごとの★★排他の印★★を取ってから走る。★取れなければ★★測らずに止める★★**（★終了コード 3）。
+★★**古い印を★自分で消さない**★★ —— ★**生きているかを判定する手段が無い**（D-28 —— ★推測で埋めない）。
+  ★**消すのは人である。★印の場所と中身を出す。**
 """
 
 from __future__ import annotations
 
 import argparse
+import datetime
 import hashlib
 import io
 import json
@@ -197,6 +208,55 @@ def restore(original):
     return bad
 
 
+def lock_path(repo):
+    """★リポジトリごとの★排他の印の場所.
+
+    ★★ リポジトリの中に置かない ★★
+    ★**置くと★★未追跡のファイルが 1 つ増える★★**（D-40 が警戒している状態そのものを作る）。
+    ★**リポジトリの絶対パスから導くので、★別のチェックアウトとは★別の印になる。**
+    """
+    key = hashlib.sha256(os.path.abspath(repo).encode("utf-8")).hexdigest()[:16]
+    return os.path.join(tempfile.gettempdir(), "measure_pairs_%s.lock" % key)
+
+
+def acquire_lock(repo):
+    """★取れたら印のパスを返す。★取れなければ [None, 既に在る印の中身] を返す.
+
+    ★★ O_EXCL である ★★ —— ★「在るか見てから作る」と★★そのあいだに割り込める★★
+    （★塞ぎたいものと★同じ形になる / ★先例は `loveca-server` の「確かめてから書くまでを 1 つの読み書きに収めた」）。
+    """
+    path = lock_path(repo)
+    try:
+        fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except OSError:
+        try:
+            return None, _read(path)
+        except (OSError, ValueError):
+            return None, "(★印は在るが読めない)"
+    with os.fdopen(fd, "w") as f:
+        # ★★ 逆斜線を 1 つも書かない（D-38 —— ★道具の経路で★改行の印が本物の改行に化ける）★★
+        f.write(
+            chr(10).join(
+                [
+                    "pid=%d" % os.getpid(),
+                    "repo=%s" % os.path.abspath(repo),
+                    "started=%s" % datetime.datetime.now().isoformat(),
+                    "",
+                ]
+            )
+        )
+    return path, None
+
+
+def release_lock(path):
+    if not path:
+        return
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+
+
 def main():
     # ★★ 端末の符号化で落ちないようにする（★★測定の途中で例外を出さない★★）★★
     #   ★Windows の既定は cp932 で、★—— や ★ を出すだけで UnicodeEncodeError になる。
@@ -218,6 +278,24 @@ def main():
     root = os.path.join(repo, spec["cwd"])
     command = spec["command"]
 
+    # ★★ 柵 —— ★同じリポジトリに 2 つ同時に走らせない（★上の doc）★★
+    lock, held = acquire_lock(repo)
+    if lock is None:
+        print("★★ 既に走っている。★測らずに止める ★★")
+        print("★ 印: %s" % lock_path(repo))
+        print("★ 中身:")
+        for line in (held or "").splitlines():
+            print("    %s" % line)
+        print("★★ 走っていないと分かっているなら★この印を人が消すこと"
+              "（★★道具は消さない —— ★生きているかを判定する手段が無い★★）★★")
+        return 3
+    try:
+        return _measure(spec, root, command, args)
+    finally:
+        release_lock(lock)
+
+
+def _measure(spec, root, command, args):
     print("★ baseline を測る: %s (%s)" % (command, spec["cwd"]))
     base = run_once(root, command, args.keep_json)
     print("  baseline: %r" % base)
