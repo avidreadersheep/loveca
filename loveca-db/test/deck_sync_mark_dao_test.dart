@@ -230,6 +230,54 @@ void main() {
     });
   });
 
+  group('★★ 全部の行を消す（★§32-6 の 27 / 決定 D145-2 の受け）★★', () {
+    test('★★ 全部消える（★★どのデッキが動いたか端末には分からない★★）★★', () async {
+      final dao = DeckSyncMarkDao(db);
+      await dao.record(deckId: deckId, logMark: 1, baselineHash: hash);
+      await dao.record(deckId: otherDeckId, logMark: 2, baselineHash: hash);
+
+      await dao.forgetAll();
+
+      expect(await db.select(db.deckSyncMarks).get(), isEmpty);
+      expect(await dao.baselineFor(deckId), isNull);
+      expect(await dao.baselineFor(otherDeckId), isNull);
+    });
+
+    test('★★ ログには触れない（★★未送信の編集を失わせない★★）★★', () async {
+      final dao = DeckSyncMarkDao(db);
+      await addOp(deckId);
+      await addOp(otherDeckId);
+      await dao.record(deckId: deckId, logMark: 1, baselineHash: hash);
+
+      await dao.forgetAll();
+
+      expect(await db.select(db.deckEditOps).get(), hasLength(2));
+    });
+
+    test('★★ `decks` にも触れない（**D114-4** の 3）★★', () async {
+      final dao = DeckSyncMarkDao(db);
+      await dao.record(deckId: deckId, logMark: 1, baselineHash: hash);
+      final before = await db.select(db.decks).get();
+
+      await dao.forgetAll();
+
+      final after = await db.select(db.decks).get();
+      expect(after.length, before.length);
+      for (var i = 0; i < after.length; i++) {
+        expect(after[i].revision, before[i].revision);
+        expect(after[i].updatedAt, before[i].updatedAt);
+      }
+    });
+
+    test('★★ 行が 0 件でも★落ちない（★★初めての端末★★）★★', () async {
+      final dao = DeckSyncMarkDao(db);
+
+      await dao.forgetAll();
+
+      expect(await db.select(db.deckSyncMarks).get(), isEmpty);
+    });
+  });
+
   group('★★ 決めていないことを型で決めない ★★', () {
     test('★★ 目印そのものを外へ出さない（★有無に畳む）★★', () async {
       // ★★ **D140-1** の値の意味を★呼ぶ側へ漏らさない ★★

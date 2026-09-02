@@ -185,7 +185,7 @@ Future<SyncOutcome<List<String>>> fetchRemoteDeckIds({
   required String userName,
   required String password,
 }) async {
-  return _post<List<String>>(
+  return postSyncRequest<List<String>>(
     client: client,
     server: server,
     path: decksListPath,
@@ -217,7 +217,7 @@ Future<SyncOutcome<RemoteDeck>> fetchRemoteDeck({
   required String password,
   required String deckId,
 }) async {
-  return _post<RemoteDeck>(
+  return postSyncRequest<RemoteDeck>(
     client: client,
     server: server,
     path: decksFetchPath,
@@ -275,7 +275,7 @@ Future<SyncOutcome<RemoteDeck>> pushRemoteDeck({
   required String content,
   required String? expectMark,
 }) async {
-  return _post<RemoteDeck>(
+  return postSyncRequest<RemoteDeck>(
     client: client,
     server: server,
     path: decksPutPath,
@@ -303,7 +303,12 @@ Future<SyncOutcome<RemoteDeck>> pushRemoteDeck({
 /// ★**1 つ取る口の 404 は「★そのデッキが無い」**（★答えである）。
 /// ★★**一覧の口に 404 は無い**★★ —— ★**空の一覧は 200 で返る**（★サーバー側の doc）。
 /// → ★**一覧で 404 が返ったら★★それは「知らないパス」であり、★期待どおりでない★★。**
-Future<SyncOutcome<T>> _post<T>({
+/// 同期の口を 1 つ投げる（★★答えの分け方は★ここ 1 本が持つ★★）。
+///
+/// ★★ ほかの同期の口も★この 1 本を通る ★★
+/// ★**`device_client.dart` が★この関数を呼ぶ**（★§32-6 の **26** の 3 番目）。
+/// ★★**別に書くと、★★401 / 429 / 壊れた応答の畳み方が★黙って食い違う★★**（**D-15** の規約 3）。
+Future<SyncOutcome<T>> postSyncRequest<T>({
   required HttpClient client,
   required Uri server,
   required String path,
