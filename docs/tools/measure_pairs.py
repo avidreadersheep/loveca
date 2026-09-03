@@ -64,6 +64,25 @@ spec.json の形（★UTF-8）——
 ★**仕込みが★★ファイルの編集で表せないもの★★**（★例: ★環境変数を変える / ★別の機械で走らせる / ★時計を進める）。
 ★★**今日そういう測定は 1 つも使っていない**★★（★上の 4 つに当てた）。★**出てきたら★★その日に線を引き直すこと★★。**
 
+★★ 測定のあいだに作業ツリーへ増えた変更を数える（★2026-09-03 / 運転指示【0】(2)）★★
+
+★★**引き金**★★ —— ★測定は 2〜4 分かかり、★そのあいだ作業ツリーが仕込みで埋まる。
+★**staging を待っているあいだに doc を書き、★★`git add -A` が両方を拾った★★**
+（★2026-09-03 / ★`docs/相談役への報告/2026-09-03-04.md` §1-1 —— ★1 コミット = 1 論点を破った）。
+→ ★★**測定の待ち時間が★commit の粒度を崩す。★これは毎回起こりうる。**★★
+
+★**「気をつける」で済ませない**（D-2 —— ★★手で守る作法は忘れられる★★）。
+→ ★**道具が★★走り始めと走り終わりの `git status --porcelain` を撮り、★差を出す★★。**
+
+★★**判定するだけである。★止めない**★★（★先例は `loveca-ui/tool/affected_tests.dart`）——
+★**測定のあいだに doc を書くこと自体は正しい**（★待ち時間を捨てない）。
+★★**偽になるのは「それを同じ commit に混ぜること」だけである。**★★
+
+★★**覆わないもの**★★ ——
+★**測定より★前★から在った変更は出ない**（★★before に入っているので差にならない★★）／
+★**道具が外から止められたら 1 行も出ない**（★D-43 —— ★`finally` は強制終了で走らない）／
+★**git が無ければ数えられない**（★その旨を出す。★★測定は止めない★★）。
+
 ★★ 絶対にしないこと ★★
 ★**git checkout を打たない**（D-40 —— ★未追跡の新規ファイルが巻き添えになる）。
 ★戻すのは★★この道具が自分で読んだ元の中身だけ★★である。
@@ -352,6 +371,52 @@ def acquire_lock(repo):
     return path, None
 
 
+def git_status(repo):
+    """`git status --porcelain` を {パス: 状態} で返す.
+
+    ★★ git が無い / repo でない場合は None を返す（★測定は止めない）★★
+    """
+    try:
+        out = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+    except (OSError, ValueError):
+        return None
+    if out.returncode != 0:
+        return None
+    status = {}
+    for line in (out.stdout or "").splitlines():
+        if len(line) < 4:
+            continue
+        # ★★ 形は "XY<空白>パス"。★改名は "旧 -> 新" になるので★右側を採る ★★
+        code, path = line[:2], line[3:]
+        if " -> " in path:
+            path = path.split(" -> ", 1)[1]
+        status[path.strip('"')] = code
+    return status
+
+
+def changes_since(before, after):
+    """測定のあいだに増えた / 変わった変更を返す.
+
+    ★★ 純粋関数にしてある —— ★対をこの口に当てられる ★★
+    ★**片方でも None なら「数えられない」の意味で None を返す。**
+    ★**空の辞書（＝ 走る前が clean）と★None を混ぜないこと。**
+    """
+    if before is None or after is None:
+        return None
+    return sorted(
+        (path, code)
+        for path, code in after.items()
+        if before.get(path) != code
+    )
+
+
 def release_lock(path):
     if not path:
         return
@@ -394,12 +459,37 @@ def main():
               "（★★道具は消さない —— ★生きているかを判定する手段が無い★★）★★")
         return 3
     try:
-        return _measure(spec, root, command, args)
+        return _measure(spec, root, command, args, repo)
     finally:
         release_lock(lock)
 
 
-def _measure(spec, root, command, args):
+def _drift_lines(drift):
+    """測定のあいだに増えた変更を★表の行にする（★純粋関数）."""
+    lines = []
+    lines.append("")
+    lines.append("★★ 測定のあいだに作業ツリーへ増えた変更 ★★")
+    lines.append("")
+    if drift is None:
+        lines.append("★ git で数えられなかった（★git が無い / repo でない）。")
+        return lines
+    if not drift:
+        lines.append("★ 0 件。")
+        return lines
+    lines.append("| ★状態 | ★パス |")
+    lines.append("|---|---|")
+    for path, code in drift:
+        lines.append("| `%s` | `%s` |" % (code, path))
+    lines.append("")
+    lines.append(
+        "★★ これは★測った論点ではない。★★同じ commit に混ぜないこと★★"
+        "（★1 コミット = 1 論点 / ★`git add -A` を打たず★ファイルを名指しで add する）。"
+    )
+    return lines
+
+
+def _measure(spec, root, command, args, repo=None):
+    before = git_status(repo) if repo else None
     print("★ baseline を測る: %s (%s)" % (command, spec["cwd"]))
     base = run_once(root, command, args.keep_json)
     print("  baseline: %r" % base)
@@ -444,6 +534,11 @@ def _measure(spec, root, command, args):
         "★baseline: 通った %d 件 ／ ★読み込みの失敗 %d 件"
         "（★★字面ではなく件数で見た★★ / D-39）。" % (base.passed, base.load_failed)
     )
+    # ★★ 測定のあいだに増えた変更を★表の末尾に置く（★上の doc / 運転指示【0】(2)）★★
+    drift = changes_since(before, git_status(repo) if repo else None)
+    lines.extend(_drift_lines(drift))
+    for line in _drift_lines(drift):
+        print(line)
     table = "\n".join(lines)
     if args.out:
         _write(args.out, table + "\n")
