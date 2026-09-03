@@ -169,17 +169,39 @@ void main() {
     expect(_deck(entries).entries.length, entries.length);
   });
 
-  test('canAdd が 4 枚到達で false になる', () {
-    final deck = _deck([
-      const DeckEntry(printingId: 'PL!N-bp1-001-R', count: 3),
-    ]);
-    expect(validator.canAdd(deck, 'PL!N-bp1-001-R+'), isTrue);
+  group('★★ canAdd は 4 枚制限で止めない（`Android UI 決定` §1-3）★★', () {
+    // ★★2026-09-03: ★止める側から★通す側へ変えた★★ ——
+    //   ★以前は「canAdd が 4 枚到達で false になる」だった。
+    //   ★**総合ルール 6.1.1.2 は 1 文字も変わっていない** —— ★[validate] が今も出す。
+    //   ★変わったのは「入れさせないか / 入れさせて警告するか」だけである。
 
-    final full = _deck([
-      const DeckEntry(printingId: 'PL!N-bp1-001-R', count: 4),
-    ]);
-    expect(validator.canAdd(full, 'PL!N-bp1-001-R+'), isFalse,
-        reason: 'パラレル違いでも同一 cardNumber なので追加できない');
+    test('4 枚入っていても通す', () {
+      final full = _deck([
+        const DeckEntry(printingId: 'PL!N-bp1-001-R', count: 4),
+      ]);
+      expect(validator.canAdd(full, 'PL!N-bp1-001-R+'), isTrue,
+          reason: '★以前はここが false だった');
+    });
+
+    test('★対: 警告は出続ける（6.1.1.2）', () {
+      final over = _deck([
+        const DeckEntry(printingId: 'PL!N-bp1-001-R', count: 4),
+        const DeckEntry(printingId: 'PL!N-bp1-001-R+', count: 1),
+      ]);
+      expect(validator.validate(over).issues.map((i) => i.code),
+          contains(DeckIssueCode.tooManyCopies));
+    });
+
+    test('★対: 4 枚未満でも通る（★「常に true」と区別しない値ではない）', () {
+      final deck = _deck([
+        const DeckEntry(printingId: 'PL!N-bp1-001-R', count: 3),
+      ]);
+      expect(validator.canAdd(deck, 'PL!N-bp1-001-R+'), isTrue);
+    });
+
+    test('★対: マスタに無い刷りは★今も止める（決定 D35）', () {
+      expect(validator.canAdd(_deck(const []), 'NOT-A-REAL-PRINTING'), isFalse);
+    });
   });
 
   test('共有形式は cardNumber + 枚数に落ちる (STEP4 M44)', () {

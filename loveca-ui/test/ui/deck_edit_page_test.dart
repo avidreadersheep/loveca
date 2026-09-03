@@ -344,10 +344,14 @@ void main() {
     });
   });
 
-  group('★★ 4 枚制限はメインデッキだけ（総合ルール 6.1.1.2）★★', () {
+  group('★★ 4 枚制限では止めない。★止まるのはエネルギー 12 枚だけ（`Android UI 決定` §1-3）★★', () {
     // ★★ 出る側と出ない側を対で固定する ★★
     //   止まる側だけ見ると「常に止める実装」でも通ってしまう。
-    testWidgets('メンバーは 4 枚で「+」が無効になる', (tester) async {
+    //
+    // ★★ 2026-09-03: メンバーの 4 枚で「+」が無効になる、を★★覆した★★ ★★
+    //   ★総合ルール 6.1.1.2 は 1 文字も変わっていない —— ★検証パネルが今も出す
+    //   （★下の検証パネルの群がそれを見ている）。
+    testWidgets('★メンバーは 4 枚でも「+」が有効（★以前は無効だった）', (tester) async {
       await _open(
         tester,
         deck: _deck(entries: const [DeckEntry(printingId: 'M-1-N', count: 4)]),
@@ -360,7 +364,23 @@ void main() {
           matching: find.widgetWithIcon(IconButton, Icons.add),
         ),
       );
-      expect(add.onPressed, isNull);
+      expect(add.onPressed, isNotNull);
+    });
+
+    testWidgets('★対: メンバーは 4 枚でも★ライブでも有効（種別で分けていない）',
+        (tester) async {
+      await _open(
+        tester,
+        deck: _deck(entries: const [DeckEntry(printingId: 'L-1-N', count: 4)]),
+      );
+
+      final add = tester.widget<IconButton>(
+        find.descendant(
+          of: _deckRow('L-1-N'),
+          matching: find.widgetWithIcon(IconButton, Icons.add),
+        ),
+      );
+      expect(add.onPressed, isNotNull);
     });
 
     testWidgets('★エネルギーは 4 枚でも「+」が有効（6.1.1.2 はメインデッキのみ）',
@@ -396,8 +416,10 @@ void main() {
       expect(add.onPressed, isNull);
     });
 
-    testWidgets('★★ パラレル違いも合算される（同じ cardNumber）★★', (tester) async {
-      // M-1-N を 4 枚持っていると、別刷りの M-1-P も入れられない。
+    testWidgets('★★ パラレル違いも★止めない（★以前は合算して止めていた）★★', (tester) async {
+      // ★M-1-N を 4 枚持っていても、★別刷りの M-1-P が入る。
+      //   ★★合算そのものは 1 ビットも変わっていない★★ ——
+      //   ★`DeckValidator.validate` は今も 5 枚として `tooManyCopies` を出す。
       await _open(
         tester,
         deck: _deck(entries: const [DeckEntry(printingId: 'M-1-N', count: 4)]),
@@ -409,8 +431,8 @@ void main() {
           matching: find.byType(IconButton),
         ),
       );
-      expect(add.onPressed, isNull);
-      // 別のカードは入れられる（出ない側）。
+      expect(add.onPressed, isNotNull, reason: '★以前はここが null だった');
+      // 別のカードも入れられる（★対 —— ★「常に無効」でないこと）。
       final other = tester.widget<IconButton>(
         find.descendant(
           of: _catalogCell('M-2-N'),
@@ -420,8 +442,10 @@ void main() {
       expect(other.onPressed, isNotNull);
     });
 
-    testWidgets('★ドラッグで超えようとしたら理由を出す（黙って何も起きない、にしない）',
-        (tester) async {
+    testWidgets('★ドラッグで 5 枚目を落としても★理由を出さない（★入る）', (tester) async {
+      // ★★2026-09-03: 覆した★★ ——
+      //   ★以前は「同じカードナンバーは 4 枚までです」の SnackBar が出た。
+      //   ★いまは**入るので、断る理由が存在しない**（★申し送り §1-3）。
       await _open(
         tester,
         deck: _deck(entries: const [DeckEntry(printingId: 'M-1-N', count: 4)]),
@@ -433,10 +457,24 @@ void main() {
         tester.getCenter(_deckRow('M-1-N')),
       );
 
-      expect(
-        find.text('同じカードナンバーは 4 枚までです（別の絵柄も合算されます）。'),
-        findsOneWidget,
+      expect(find.textContaining('4 枚までです'), findsNothing);
+      // ★★対: 入ったこと自体を見る（★「黙って何も起きない」と区別する）★★
+      expect(_deckRow('M-1-P'), findsOneWidget);
+    });
+
+    testWidgets('★対: エネルギーは 12 枚でドラッグを断る（★理由を出す）', (tester) async {
+      await _open(
+        tester,
+        deck: _deck(entries: const [DeckEntry(printingId: 'E-1-N', count: 12)]),
       );
+
+      await _dragTo(
+        tester,
+        tester.getCenter(_catalogCell('E-1-N')),
+        tester.getCenter(_deckRow('E-1-N')),
+      );
+
+      expect(find.text('エネルギーデッキは 12 枚までです。'), findsOneWidget);
     });
   });
 

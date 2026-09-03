@@ -334,15 +334,38 @@ void main() {
     // ★カードマスタに無い刷り（決定 D35）。
     expect(store.addCard('NOT-A-REAL-PRINTING'),
         AddCardRefusal.unknownPrinting);
-    // ★4 枚制限（6.1.1.2）。★4 枚入れてから 5 枚目を断らせる。
+    // ★★ 2026-09-03: 断る相手をエネルギー 12 枚（6.1.1.3）に替えた ★★
+    //   ★4 枚制限（6.1.1.2）は★★もう断らない★★（★申し送り §1-3 / ★下の対）。
+    for (var i = 0; i < 12; i++) {
+      expect(store.addCard('E-1-N'), isNull);
+    }
+    expect(store.addCard('E-1-N'), AddCardRefusal.energyDeckFull);
+
+    expect(await store.save(), isTrue);
+    // ★通った 12 回だけが残る（★断られた 2 回は残らない）。
+    expect(await logKinds(), List.filled(12, DeckEditOpKind.addCard.key));
+  });
+
+  test('★★ 対: 4 枚を超えても断られず、★ログに残る（★申し送り §1-3）★★', () async {
+    // ★★この対は★2026-09-03 に新設した★★ ——
+    //   ★**上の群は「断られた addCard は記録しない」を見ており、
+    //     ★★断る相手が入れ替わったことは 1 ビットも見ていない★★。**
+    final (repository, deck) = await deckWith(const []);
+    final store = storeOn(repository, deck);
+
+    // ★4 枚入れてから 5 枚目を★★別の刷りで★★入れる（6.1.1.2 は合算する）。
     for (var i = 0; i < 4; i++) {
       expect(store.addCard('M-1-N'), isNull);
     }
-    expect(store.addCard('M-1-P'), AddCardRefusal.tooManyCopies);
+    expect(store.addCard('M-1-P'), isNull, reason: '★以前はここで断られた');
 
     expect(await store.save(), isTrue);
-    // ★通った 4 回だけが残る（★断られた 2 回は残らない）。
-    expect(await logKinds(), List.filled(4, DeckEditOpKind.addCard.key));
+    expect(await logKinds(), List.filled(5, DeckEditOpKind.addCard.key));
+
+    // ★★警告そのものは `DeckValidator` が出し続ける（6.1.1.2 は動いていない）★★
+    final codes =
+        repository.validate(store.value.saved).issues.map((i) => i.code);
+    expect(codes, contains(DeckIssueCode.tooManyCopies));
   });
 
   test('★★ 対: 記録点を通らない書き込みは 1 件も残さない ★★', () async {

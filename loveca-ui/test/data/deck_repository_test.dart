@@ -388,7 +388,10 @@ void main() {
       expect(stored.entries, isEmpty);
     });
 
-    test('★4 枚制限はメインデッキだけ（6.1.1.2）——エネルギーには効かない', () async {
+    test('★★止まるのはエネルギー 12 枚だけ（`Android UI 決定` §1-3）★★', () async {
+      // ★★2026-09-03: 4 枚制限（6.1.1.2）で止めなくなった★★ ——
+      //   ★以前はここが「4 枚制限はメインデッキだけ」で、
+      //   ★★メインは false / エネルギーは true★★ を対で見ていた。
       final deck = await repositoryOn(db).create(name: 'X');
       final repository = repositoryOn(db);
 
@@ -400,14 +403,20 @@ void main() {
       }
 
       // ★出る側と出ない側を対で見る。
-      expect(repository.canAddToDraft(deck, main, 'M-1-N'), isFalse);
+      expect(repository.canAddToDraft(deck, main, 'M-1-N'), isTrue,
+          reason: '★以前はここが false だった');
       expect(repository.canAddToDraft(deck, energy, 'E-1-N'), isTrue);
 
-      // エネルギーは 12 枚（6.1.1.3）で止まる。
+      // ★エネルギーは 12 枚（6.1.1.3）で★今も止まる（★出ない側）。
       for (var i = 0; i < 8; i++) {
         energy = energy.addCopy('E-1-N');
       }
       expect(repository.canAddToDraft(deck, energy, 'E-1-N'), isFalse);
+
+      // ★★対: 検証は 6.1.1.2 を今も出す（★止めないことと出さないことは別である）★★
+      main = main.addCopy('M-1-N');
+      expect(repository.validateDraft(deck, main).issues.map((i) => i.code),
+          contains(DeckIssueCode.tooManyCopies));
     });
   });
 

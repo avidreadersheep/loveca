@@ -20,6 +20,10 @@ import '../entities/deck.dart';
 enum DeckIssueCode {
   /// 総合ルール 6.1.1.2: 同一カードナンバーは 4 枚まで
   /// ★メインデッキのみ。エネルギーデッキには適用されない。
+  ///
+  /// ★★ 2026-09-03: [DeckValidator.canAdd] は★これでは止めなくなった ★★
+  /// `docs/Android UI 決定.md` §1-3（★入れさせて**警告に変える** / ★Windows も）。
+  /// ★**この issue そのものは 1 文字も変わっていない。★出続ける。**
   tooManyCopies,
 
   /// 総合ルール 6.1.1.1: メンバー 48 枚ちょうど
@@ -224,6 +228,10 @@ class DeckValidator {
   }
 
   /// 追加可能かどうかを事前判定する (UI で「+」を無効化するため)。
+  ///
+  /// ★★ 2026-09-03: 止めるのは 2 つだけになった ★★
+  /// ★**(1) マスタに無い刷り**（決定 D35）／ ★**(2) エネルギーデッキ 12 枚**（6.1.1.3）。
+  /// ★**4 枚制限（6.1.1.2）では止めない**（`docs/Android UI 決定.md` §1-3 / ★下）。
   bool canAdd(Deck deck, String printingId) {
     final printing = printings[printingId];
     if (printing == null) return false;
@@ -243,14 +251,20 @@ class DeckValidator {
       return energyTotal < config.energyDeckSize;
     }
 
-    var current = 0;
-    for (final entry in deck.entries) {
-      final p = printings[entry.printingId];
-      if (p != null && p.cardNumber == printing.cardNumber) {
-        current += entry.count;
-      }
-    }
-    return current < config.maxCopiesPerCardNumber;
+    // ★★ 2026-09-03: 4 枚制限では止めない（`docs/Android UI 決定.md` §1-3）★★
+    //
+    // ★総合ルール 6.1.1.2（メインデッキは同一カードナンバー 4 枚まで）は
+    //   **1 文字も変わっていない**。★[validate] は今も `tooManyCopies` を出す。
+    //
+    // ★★ 変わったのは「入れさせないか / 入れさせて警告するか」だけである ★★
+    //   ★利用者が「押せる数を制限せず、超えたら警告」を選んだ（★申し送り §1-3）。
+    //   ★向きは **決定 D69**（共有形式インポートは弾かず丸めず入れて警告させる）と同じで、
+    //   ★★D69 は手で押す経路を 1 文字も述べていない★★ので**訂正ではない**（**§7-7**）。
+    //
+    // ★★ エネルギーの 12 枚（6.1.1.3）は★上で止めたままである ★★
+    //   ★申し送り §1-3 は 4 枚制限しか述べておらず、
+    //   ★§3-8 は「エネルギーは最大 12 枚のフォーム」と書いている。
+    return true;
   }
 
   /// 同一 cardNumber の合計枚数 (絵柄内訳 UI で使う)。

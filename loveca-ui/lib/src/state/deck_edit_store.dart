@@ -104,11 +104,12 @@ class DeckEditState {
 /// ドラッグで落としたときは「+」と違ってボタンの活性で止められないので、
 /// **受け取ったうえで理由を返す。**
 enum AddCardRefusal {
-  /// 総合ルール 6.1.1.2: メインデッキは同一カードナンバー 4 枚まで
-  /// （★パラレル違いも合算される）。
-  tooManyCopies,
-
   /// 総合ルール 6.1.1.3: エネルギーデッキは 12 枚。
+  ///
+  /// ★★ 2026-09-03: `tooManyCopies` を消した ★★
+  /// `docs/Android UI 決定.md` §1-3 —— ★4 枚制限（6.1.1.2）で**止めなくなった**ので、
+  /// ★★この値を返す経路が 1 本も残らなかった★★（**D-20** —— ★消費者の居ない値を置かない）。
+  /// ★**警告は `DeckValidator.validate` の `tooManyCopies` が出す**（★そちらは 1 文字も動いていない）。
   energyDeckFull,
 
   /// カードマスタに無い刷り（決定 D35）。
@@ -285,10 +286,10 @@ class DeckEditStore extends Store<DeckEditState> {
       return AddCardRefusal.unknownPrinting;
     }
     if (!canAdd(printingId)) {
-      // ★理由を区別する。「4 枚まで」と「エネルギー 12 枚」は対処が違う。
-      return _repository.cardTypeOf(printingId) == CardType.energy
-          ? AddCardRefusal.energyDeckFull
-          : AddCardRefusal.tooManyCopies;
+      // ★★ 2026-09-03: ここへ来るのはエネルギーだけである ★★
+      //   ★4 枚制限（6.1.1.2）は `canAdd` が止めなくなった（★申し送り §1-3）。
+      //   ★**メンバー / ライブは★何枚でも入り、★検証パネルが警告を出す。**
+      return AddCardRefusal.energyDeckFull;
     }
 
     final existed = value.draft.countOf(printingId) > 0;

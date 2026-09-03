@@ -494,6 +494,10 @@ class _EntryRow extends StatelessWidget {
 }
 
 /// 「− 枚数 +」。★`+` の活性は `DeckValidator.canAdd`（決定 D28 / D55）。
+///
+/// ★★ 2026-09-03: `canAdd` が 4 枚制限で止めなくなった（★申し送り §1-3）★★
+/// ★**この widget は 1 行も変わっていない** —— ★活性は今も `canAdd` から来る。
+/// ★止まるのは**エネルギー 12 枚**（6.1.1.3）だけになった。
 class _CountControls extends StatelessWidget {
   const _CountControls({required this.store, required this.entry});
 
@@ -664,10 +668,9 @@ void addCardWithFeedback(
   if (refusal == null) return;
 
   final message = switch (refusal) {
-    // 総合ルール 6.1.1.2。★パラレル違いも合算される（CLAUDE.md §5-(4)）。
-    AddCardRefusal.tooManyCopies =>
-      '同じカードナンバーは 4 枚までです（別の絵柄も合算されます）。',
     // 総合ルール 6.1.1.3。
+    // ★★ 6.1.1.2（4 枚まで）はここに来ない（2026-09-03 / ★申し送り §1-3）★★
+    //   ★入れさせて、★検証パネルが `tooManyCopies` の警告を出す。
     AddCardRefusal.energyDeckFull => 'エネルギーデッキは 12 枚までです。',
     AddCardRefusal.unknownPrinting => 'このカードのデータが取得できていません。',
   };
