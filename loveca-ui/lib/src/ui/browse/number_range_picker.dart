@@ -25,8 +25,13 @@ library;
 import 'package:flutter/material.dart';
 import 'package:loveca_core/loveca_core.dart' as core;
 
-/// 範囲。★★`null` は「未指定」である★★（§3-7 の絵の「未指定」）。
-typedef NumberRange = ({int? min, int? max});
+import '../../data/card_list_row.dart' show NumberRange;
+
+/// 範囲の型は★★データ層が持つ★★（**D-15** の規約 3 —— ★★同じ型を 2 か所に持たない★★）。
+///
+/// ★**2026-09-04 に移した** —— ★★絞り込み（`CardListFilter`）も同じ型を要る★★が、
+/// ★★あちらは Flutter に依存しない★★ので、★依存の少ない側に置いた。
+export '../../data/card_list_row.dart' show NumberRange;
 
 /// フォームの答え。
 ///

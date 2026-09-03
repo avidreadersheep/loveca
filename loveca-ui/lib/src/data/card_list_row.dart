@@ -58,6 +58,35 @@ class CardListRow {
   final int? cost;
 }
 
+/// 数値の範囲。★★`null` は「未指定」である★★（§3-7 の絵）。
+///
+/// ★★ ここに置く理由（**D-15** の規約 3 —— ★★同じ型を 2 か所に持たない★★）★★
+/// ★**フォーム（`ui/browse/number_range_picker.dart`）と★絞り込み（[CardListFilter]）の
+/// ★★両方が要る★★**が、★★フォームの側は Flutter に依存する★★。
+/// → ★**依存の少ない側（★このデータ層）に置き、★フォームが引く。**
+typedef NumberRange = ({int? min, int? max});
+
+/// [range] が [value] を通すか。
+///
+/// ★★ 値が無い行は★★範囲が指定されているときだけ落ちる★★ ★★
+/// ★**例: ★スコアの範囲を指定したら★★スコアを持たないメンバーは落ちる★★**
+/// （★★これは §3-6 の帰結であって★この関数の判断ではない★★ —— ★軸を外せばまた出る）。
+bool numberRangeAllows(NumberRange range, int? value) {
+  if (range.min == null && range.max == null) return true;
+  if (value == null) return false;
+  if (range.min != null && value < range.min!) return false;
+  if (range.max != null && value > range.max!) return false;
+  return true;
+}
+
+/// 範囲が 1 つも指定されていないか。
+bool numberRangeIsEmpty(NumberRange range) =>
+    range.min == null && range.max == null;
+
+/// 色ごとの範囲が 1 つも指定されていないか。
+bool heartRangesAreEmpty(Map<HeartColor, NumberRange> ranges) =>
+    ranges.values.every(numberRangeIsEmpty);
+
 /// 絞り込み条件。★メモリ上で絞る（決定 D48）。SQL を再実行しない。
 ///
 /// ★★ 2026-09-03: 種別依存の軸（コスト）を常に効かせるようにした ★★
@@ -71,6 +100,15 @@ class CardListFilter {
     this.cardType,
     this.maxCost,
     this.showParallel = true,
+    this.groupName,
+    this.unitName,
+    this.blade = const (min: null, max: null),
+    this.score = const (min: null, max: null),
+    this.heartTotal = const (min: null, max: null),
+    this.hearts = const {},
+    this.requiredHeartTotal = const (min: null, max: null),
+    this.requiredHearts = const {},
+    this.bladeHearts = const {},
   });
 
   final String? expansion;
@@ -94,8 +132,67 @@ class CardListFilter {
   /// cardNumber ごとに 1 枚へ畳まない（CLAUDE.md §5-(4)）。
   final bool showParallel;
 
+  // ---------------------------------------------------------------------------
+  // ★★ 段 B —— ★`Card` から引く軸（§3-6 / ★U21 の論点 1）★★
+  //
+  // ★★ 投影（[CardListRow]）に 1 つも入っていない ★★
+  //   ★**[CardListRow] が持つのは★★表示と絞り込みに要る 11 欄だけ★★**（決定 **D48**）。
+  //   ★**下の 9 軸は★★どれも `Card` の欄である★★**（★2026-09-04 実読）。
+  //   → ★**引くのは★★呼ぶ側が渡す `Map<String, Card>` である★★**
+  //     （★★道 3 —— ★決定の正は `docs/Android UI 決定.md` §27★★）。
+  // ---------------------------------------------------------------------------
+
+  /// 登場作品（総合ルール 2.4 のグループ名称）。★★1 つでも一致すれば通す★★。
+  final String? groupName;
+
+  /// ユニット（総合ルール 2.5）。★同上。
+  final String? unitName;
+
+  /// ブレード（総合ルール 2.8）。★★メンバーにしか値が無い★★。
+  final NumberRange blade;
+
+  /// スコア（総合ルール 2.10）。★★ライブにしか値が無い★★。
+  final NumberRange score;
+
+  /// 所持ハートの合計（総合ルール 2.9）。
+  final NumberRange heartTotal;
+
+  /// 所持ハートの色ごと。★★指定した色だけを見る★★（★指定していない色は通す）。
+  final Map<HeartColor, NumberRange> hearts;
+
+  /// 必要ハートの合計（総合ルール 2.11）。
+  final NumberRange requiredHeartTotal;
+
+  /// 必要ハートの色ごと。
+  final Map<HeartColor, NumberRange> requiredHearts;
+
+  /// ブレードハートの色（総合ルール 2.7）。
+  ///
+  /// ★★ 色だけである。★ドロー / スコアのアイコンでは絞らない ★★
+  /// ★**§3-6 が明示している。**★**総合ルール 8.3.14 に合算するのは★★色だけ★★で、
+  /// ★ドローは 8.3.12.1、★スコアは 8.4.2.1 と★★処理する時点が違う★★**（`CLAUDE.md` §6）。
+  final Map<HeartColor, NumberRange> bladeHearts;
+
+  /// ★★ 段 B の軸が 1 つでも立っているか ★★
+  ///
+  /// ★**立っていなければ★★`Card` を 1 度も引かない★★**（★Windows の経路が 1 ビットも変わらない）。
+  bool get needsCard =>
+      groupName != null ||
+      unitName != null ||
+      !numberRangeIsEmpty(blade) ||
+      !numberRangeIsEmpty(score) ||
+      !numberRangeIsEmpty(heartTotal) ||
+      !heartRangesAreEmpty(hearts) ||
+      !numberRangeIsEmpty(requiredHeartTotal) ||
+      !heartRangesAreEmpty(requiredHearts) ||
+      !heartRangesAreEmpty(bladeHearts);
+
   bool get isEmpty =>
-      expansion == null && cardType == null && maxCost == null && showParallel;
+      expansion == null &&
+      cardType == null &&
+      maxCost == null &&
+      showParallel &&
+      !needsCard;
 
   /// [maxCost] が実際に適用されるか。
   ///
@@ -108,18 +205,49 @@ class CardListFilter {
     CardType? cardType,
     int? maxCost,
     bool? showParallel,
+    String? groupName,
+    String? unitName,
+    NumberRange? blade,
+    NumberRange? score,
+    NumberRange? heartTotal,
+    Map<HeartColor, NumberRange>? hearts,
+    NumberRange? requiredHeartTotal,
+    Map<HeartColor, NumberRange>? requiredHearts,
+    Map<HeartColor, NumberRange>? bladeHearts,
     bool clearExpansion = false,
     bool clearCardType = false,
     bool clearMaxCost = false,
+    bool clearGroupName = false,
+    bool clearUnitName = false,
   }) =>
       CardListFilter(
         expansion: clearExpansion ? null : (expansion ?? this.expansion),
         cardType: clearCardType ? null : (cardType ?? this.cardType),
         maxCost: clearMaxCost ? null : (maxCost ?? this.maxCost),
         showParallel: showParallel ?? this.showParallel,
+        groupName: clearGroupName ? null : (groupName ?? this.groupName),
+        unitName: clearUnitName ? null : (unitName ?? this.unitName),
+        blade: blade ?? this.blade,
+        score: score ?? this.score,
+        heartTotal: heartTotal ?? this.heartTotal,
+        hearts: hearts ?? this.hearts,
+        requiredHeartTotal: requiredHeartTotal ?? this.requiredHeartTotal,
+        requiredHearts: requiredHearts ?? this.requiredHearts,
+        bladeHearts: bladeHearts ?? this.bladeHearts,
       );
 
-  bool matches(CardListRow row) {
+  /// ★★ 1 行を通すか ★★
+  ///
+  /// ★★ [card] が要るのは★段 B の軸が立っているときだけである ★★
+  /// ★**立っていて [card] が無ければ★★通さない★★** —— ★これは★★決めた既定値である★★。
+  /// ★**理由**: ★★「桃のハートを 3 個以上持つ」を★中身を知らない行が満たすとは言えない★★。
+  /// ★**通すと★★条件を満たさない行が混ざる ＝ 絞り込みの意味が消える★★。**
+  /// ★★**差し替え点はこの 1 行である。**★★
+  ///
+  /// ★★ 決定 **D35**（黙って削除しない）には当たらない ★★
+  /// ★**あれは★★取り込みと保存★★の話である**（★マスタから消えたカードを★デッキから消さない）。
+  /// ★**絞り込みは★★条件を満たす行を選ぶことであり、★軸を外せばその行はまた出る★★。**
+  bool matches(CardListRow row, {Card? card}) {
     if (!showParallel && row.isParallel) return false;
     if (expansion != null && row.expansion != expansion) return false;
     if (cardType != null && row.cardType != cardType) return false;
@@ -127,9 +255,48 @@ class CardListFilter {
       final cost = row.cost;
       if (cost == null || cost > maxCost!) return false;
     }
+    if (!needsCard) return true;
+    if (card == null) return false;
+    if (groupName != null && !card.groupNames.contains(groupName)) return false;
+    if (unitName != null && !card.unitNames.contains(unitName)) return false;
+    if (!numberRangeAllows(blade, card.bladeCount)) return false;
+    if (!numberRangeAllows(score, card.score)) return false;
+    if (!numberRangeAllows(heartTotal, card.heartTotal)) return false;
+    if (!numberRangeAllows(requiredHeartTotal, card.requiredHeartTotal)) {
+      return false;
+    }
+    if (!_heartsAllow(hearts, card.hearts)) return false;
+    if (!_heartsAllow(requiredHearts, card.requiredHearts)) return false;
+    if (!_heartsAllow(bladeHearts, card.bladeHearts)) return false;
     return true;
   }
 
-  List<CardListRow> apply(List<CardListRow> rows) =>
-      isEmpty ? rows : rows.where(matches).toList(growable: false);
+  /// 色ごとの範囲を当てる。
+  ///
+  /// ★★ 持っていない色は 0 として見る ★★
+  /// ★**`hearts` は★★持っている色だけを鍵に持つ★★**（★2026-09-04 実読）ので、
+  /// ★`null` のまま渡すと★★「0 個以上」まで落ちる★★。
+  static bool _heartsAllow(
+    Map<HeartColor, NumberRange> ranges,
+    Map<HeartColor, int> actual,
+  ) {
+    for (final entry in ranges.entries) {
+      if (numberRangeIsEmpty(entry.value)) continue;
+      if (!numberRangeAllows(entry.value, actual[entry.key] ?? 0)) return false;
+    }
+    return true;
+  }
+
+  /// ★★ [cards] は★段 B の軸が立っているときだけ引かれる ★★
+  ///
+  /// ★**Windows は 1 つも立てないので★★渡さなくてよい★★**（★経路が 1 ビットも変わらない）。
+  List<CardListRow> apply(
+    List<CardListRow> rows, {
+    Map<String, Card> cards = const {},
+  }) =>
+      isEmpty
+          ? rows
+          : rows
+              .where((row) => matches(row, card: cards[row.cardNumber]))
+              .toList(growable: false);
 }

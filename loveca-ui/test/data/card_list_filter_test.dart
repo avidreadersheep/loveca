@@ -169,4 +169,233 @@ void main() {
       expect(next.expansion, 'BP01');
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // ★★ 段 B —— ★`Card` から引く軸（§3-6 / ★U21 の論点 1 ＝ ★道 3）★★
+  //
+  // ★★ 決定の正は `docs/Android UI 決定.md` §27 である ★★
+  //   ★**投影の形も SQL も 1 バイト変えない。★`rows` を回しながら
+  //   ★★`cards[row.cardNumber]` を引いて判定する★★**（★実測 0.16〜1.4 ms / ★§27-3）。
+  // ---------------------------------------------------------------------------
+
+  group('★★ 段 B —— カードから引く軸（§3-6）★★', () {
+    Card card({
+      String cardNumber = 'X-1',
+      CardType cardType = CardType.member,
+      List<String> groupNames = const [],
+      List<String> unitNames = const [],
+      int? bladeCount,
+      int? score,
+      Map<HeartColor, int> hearts = const {},
+      Map<HeartColor, int> requiredHearts = const {},
+      Map<HeartColor, int> bladeHearts = const {},
+      int heartTotal = 0,
+      int requiredHeartTotal = 0,
+    }) =>
+        Card(
+          cardNumber: cardNumber,
+          name: 'カード',
+          cardType: cardType,
+          groupNames: groupNames,
+          unitNames: unitNames,
+          bladeCount: bladeCount,
+          score: score,
+          hearts: hearts,
+          requiredHearts: requiredHearts,
+          bladeHearts: bladeHearts,
+          heartTotal: heartTotal,
+          requiredHeartTotal: requiredHeartTotal,
+        );
+
+    test('★★ 前提: ★段 B が 1 つも立っていなければ needsCard は false ★★', () {
+      expect(const CardListFilter().needsCard, isFalse);
+      expect(
+          const CardListFilter(expansion: 'BP01', maxCost: 2).needsCard, isFalse);
+    });
+
+    test('★★ 9 つの軸は★1 つずつ needsCard を立てる ★★', () {
+      const on = (min: 1, max: null);
+      const filters = <CardListFilter>[
+        CardListFilter(groupName: 'Liella!'),
+        CardListFilter(unitName: '5yncri5e!'),
+        CardListFilter(blade: on),
+        CardListFilter(score: on),
+        CardListFilter(heartTotal: on),
+        CardListFilter(hearts: {HeartColor.pink: on}),
+        CardListFilter(requiredHeartTotal: on),
+        CardListFilter(requiredHearts: {HeartColor.blue: on}),
+        CardListFilter(bladeHearts: {HeartColor.red: on}),
+      ];
+      expect(filters, hasLength(9));
+      for (final f in filters) {
+        expect(f.needsCard, isTrue, reason: '★立たない軸が在る');
+      }
+    });
+
+    test('★★ 段 B が立っていて★カードが無ければ★通さない（★決めた既定値）★★', () {
+      const filter = CardListFilter(groupName: 'Liella!');
+      expect(filter.matches(_row(printingId: 'a')), isFalse);
+    });
+
+    test('★★ 対: ★段 B が立っていなければ★カードを渡さなくても通る ★★', () {
+      const filter = CardListFilter(expansion: 'BP01');
+      expect(filter.matches(_row(printingId: 'a')), isTrue);
+    });
+
+    test('★ 登場作品は★1 つでも一致すれば通す', () {
+      const filter = CardListFilter(groupName: 'Liella!');
+      expect(
+          filter.matches(_row(printingId: 'a'),
+              card: card(groupNames: const ['hasunosora', 'Liella!'])),
+          isTrue);
+      expect(
+          filter.matches(_row(printingId: 'a'),
+              card: card(groupNames: const ['Aqours'])),
+          isFalse);
+    });
+
+    test('★ ユニットも同じ形', () {
+      const filter = CardListFilter(unitName: '5yncri5e!');
+      expect(
+          filter.matches(_row(printingId: 'a'),
+              card: card(unitNames: const ['5yncri5e!'])),
+          isTrue);
+      expect(
+          filter.matches(_row(printingId: 'a'),
+              card: card(unitNames: const [])),
+          isFalse);
+      // ★★ 別のユニットも落ちる（★「空かどうか」では区別できない）★★
+      //   ★**2026-09-04 に測った** —— ★★この対が無いと
+      //   ★`contains` を `isEmpty` に変えても 0 件だった★★（**D-27** の (a)）。
+      expect(
+          filter.matches(_row(printingId: 'a'),
+              card: card(unitNames: const ['QU4RTZ'])),
+          isFalse);
+    });
+
+    test('★★ 合計ハートと★合計必要ハートは★別の欄である ★★', () {
+      // ★★ 総合ルール 2.9（所持）と 2.11（必要）—— ★取り違えると★別のカードが出る ★★
+      //   ★**2026-09-04 に測った** —— ★★この対が無いと
+      //   ★`heartTotal` を `requiredHeartTotal` に取り違えても 0 件だった★★。
+      final c = card(heartTotal: 5, requiredHeartTotal: 0);
+      expect(
+          const CardListFilter(heartTotal: (min: 5, max: 5))
+              .matches(_row(printingId: 'a'), card: c),
+          isTrue);
+      expect(
+          const CardListFilter(requiredHeartTotal: (min: 5, max: 5))
+              .matches(_row(printingId: 'a'), card: c),
+          isFalse);
+    });
+
+    test('★★ 値を持たない行は★範囲を指定したときだけ落ちる ★★', () {
+      // ★★ スコアはライブにしか値が無い（総合ルール 2.10）★★
+      const withRange = CardListFilter(score: (min: 1, max: null));
+      expect(withRange.matches(_row(printingId: 'a'), card: card()), isFalse);
+      expect(withRange.matches(_row(printingId: 'a'), card: card(score: 2)),
+          isTrue);
+      // ★対: ★範囲を外せば★また出る（★★消したのではない★★）
+      const off = CardListFilter(expansion: 'BP01');
+      expect(off.matches(_row(printingId: 'a'), card: card()), isTrue);
+    });
+
+    test('★ 範囲は★下端も上端も効く', () {
+      const filter = CardListFilter(blade: (min: 2, max: 4));
+      expect(filter.matches(_row(printingId: 'a'), card: card(bladeCount: 1)),
+          isFalse);
+      expect(filter.matches(_row(printingId: 'a'), card: card(bladeCount: 2)),
+          isTrue);
+      expect(filter.matches(_row(printingId: 'a'), card: card(bladeCount: 4)),
+          isTrue);
+      expect(filter.matches(_row(printingId: 'a'), card: card(bladeCount: 5)),
+          isFalse);
+    });
+
+    test('★★ 持っていない色は★0 として見る（★null で落とさない）★★', () {
+      const atLeastZero =
+          CardListFilter(hearts: {HeartColor.pink: (min: 0, max: 2)});
+      expect(atLeastZero.matches(_row(printingId: 'a'), card: card()), isTrue);
+      const atLeastOne =
+          CardListFilter(hearts: {HeartColor.pink: (min: 1, max: null)});
+      expect(atLeastOne.matches(_row(printingId: 'a'), card: card()), isFalse);
+    });
+
+    test('★★ 指定していない色は★見ない ★★', () {
+      const filter =
+          CardListFilter(hearts: {HeartColor.pink: (min: 1, max: null)});
+      expect(
+          filter.matches(_row(printingId: 'a'),
+              card: card(
+                  hearts: const {HeartColor.pink: 1, HeartColor.blue: 9})),
+          isTrue);
+    });
+
+    test('★★ 3 つのハートは★別々の欄である（★取り違えない）★★', () {
+      final c = card(
+        hearts: const {HeartColor.pink: 3},
+        requiredHearts: const {HeartColor.blue: 3},
+        bladeHearts: const {HeartColor.red: 3},
+      );
+      const one = (min: 3, max: 3);
+      expect(
+          const CardListFilter(hearts: {HeartColor.pink: one})
+              .matches(_row(printingId: 'a'), card: c),
+          isTrue);
+      expect(
+          const CardListFilter(requiredHearts: {HeartColor.pink: one})
+              .matches(_row(printingId: 'a'), card: c),
+          isFalse);
+      expect(
+          const CardListFilter(bladeHearts: {HeartColor.blue: one})
+              .matches(_row(printingId: 'a'), card: c),
+          isFalse);
+    });
+
+    test('★★ ブレードハートは★色だけを見る（★ドロー / スコアのアイコンでは絞らない）★★',
+        () {
+      // ★★ 総合ルール 8.3.14 に合算するのは色だけである（`CLAUDE.md` §6）★★
+      const c = Card(
+        cardNumber: 'X-1',
+        name: 'カード',
+        cardType: CardType.live,
+        bladeHeartEffects: {BladeHeartEffect.draw: 4},
+      );
+      const filter =
+          CardListFilter(bladeHearts: {HeartColor.red: (min: 1, max: null)});
+      expect(filter.matches(_row(printingId: 'a'), card: c), isFalse);
+    });
+
+    test('★★ apply は★行ごとに★対応するカードを引く ★★', () {
+      final rows = <CardListRow>[
+        _row(printingId: 'a', cardNumber: 'A'),
+        _row(printingId: 'b', cardNumber: 'B'),
+      ];
+      final cards = <String, Card>{
+        'A': card(cardNumber: 'A', groupNames: const ['Liella!']),
+        'B': card(cardNumber: 'B', groupNames: const ['Aqours']),
+      };
+      const filter = CardListFilter(groupName: 'Liella!');
+      final out = filter.apply(rows, cards: cards);
+      expect(out.map((r) => r.printingId), <String>['a']);
+    });
+
+    test('★★ apply は★カードを渡さなくても呼べる（★Windows の経路）★★', () {
+      final rows = <CardListRow>[_row(printingId: 'a', cost: 1)];
+      const filter = CardListFilter(maxCost: 2);
+      expect(filter.apply(rows).map((r) => r.printingId), <String>['a']);
+    });
+
+    test('★ copyWith は★段 B の軸も運ぶ / clear で外せる', () {
+      const base = CardListFilter(groupName: 'Liella!', unitName: 'u');
+      expect(base.copyWith(unitName: 'v').groupName, 'Liella!');
+      expect(base.copyWith(clearGroupName: true).groupName, isNull);
+      expect(base.copyWith(clearGroupName: true).unitName, 'u');
+      expect(base.copyWith(blade: (min: 1, max: null)).blade.min, 1);
+    });
+
+    test('★★ isEmpty は★段 B も見る ★★', () {
+      expect(const CardListFilter().isEmpty, isTrue);
+      expect(const CardListFilter(groupName: 'Liella!').isEmpty, isFalse);
+    });
+  });
 }
