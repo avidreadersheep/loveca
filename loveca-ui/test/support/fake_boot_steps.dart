@@ -54,11 +54,13 @@ class FakeBootSteps implements BootSteps {
         master = master ?? FakeMasterRepository(),
         settingsStore = settingsStore ?? FakeAppSettingsStore(settings);
 
-  final BootStageId? failAt;
-  final Object? error;
+  // ★★ 再取り込み（`BootController.reload`）を試すために★書き換えられる ★★
+  //   ★1 回目と 2 回目で違う答えを返せないと、★★差し替わったことが見えない★★。
+  BootStageId? failAt;
+  Object? error;
   final bool distMissing;
   final List<String> searchedPaths;
-  final Map<String, Card> cards;
+  Map<String, Card> cards;
 
   /// ★dist はあるが取り込まれない経路（`appTooOld` / `upToDate`）を試すため。
   final UpdateDecision decision;
@@ -68,7 +70,7 @@ class FakeBootSteps implements BootSteps {
   final Object? settingsRecoveredFrom;
 
   /// ★取り込めなかった商品ファイル（決定 D39）。
-  final List<String> failedPaths;
+  List<String> failedPaths;
 
   /// ★未対応のファイル（同上）。
   final List<String> unhandledPaths;
@@ -78,7 +80,7 @@ class FakeBootSteps implements BootSteps {
   final bool? dataVersionAdvanced;
 
   /// M2。★drift ではなく組み立て済みのリポジトリを配る（決定 D55）。
-  final FakeDeckRepository decks;
+  FakeDeckRepository decks;
 
   /// M3。★同上。
   final FakeCardCatalogRepository cardCatalog;
@@ -109,8 +111,15 @@ class FakeBootSteps implements BootSteps {
   @override
   Future<void> openDatabase() async => _maybeFail(BootStageId.database);
 
+  /// ★何回取り込んだか（★再取り込みの試験が見る）。
+  int importCalls = 0;
+
+  /// ★何回カタログを組んだか（★同上）。
+  int catalogCalls = 0;
+
   @override
   Future<MasterImportOutcome> importMaster() async {
+    importCalls++;
     _maybeFail(BootStageId.import);
     return MasterImportOutcome(
       distMissing: distMissing,
@@ -142,6 +151,7 @@ class FakeBootSteps implements BootSteps {
 
   @override
   Future<MasterCatalog> loadCatalog(MasterImportOutcome importOutcome) async {
+    catalogCalls++;
     _maybeFail(BootStageId.catalog);
     // ★本番と同じ判断: カタログが空なら理由を添えて止める（設計メモ §4-6(4)）。
     if (cards.isEmpty) throw emptyCatalogFailure(importOutcome);

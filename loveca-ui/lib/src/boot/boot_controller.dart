@@ -45,6 +45,43 @@ final class BootFailed extends BootState {
   final List<String> searchedPaths;
 }
 
+/// 取り込みをもう一度走らせた結果（`docs/Android UI 決定.md` §1-5）。
+///
+/// ★★ `BootState` に混ぜない ★★
+/// ★**起動の状態と★再取り込みの結果は★★主語が違う★★** ——
+/// 前者は「アプリが立ち上がったか」、後者は「押した操作が通ったか」。
+/// ★混ぜると★★再取り込みに失敗しただけでアプリが失敗画面へ倒れる★★。
+sealed class MasterReloadResult {
+  const MasterReloadResult();
+}
+
+/// 差し替えた。
+final class MasterReloadDone extends MasterReloadResult {
+  const MasterReloadDone({required this.outcome, required this.notices});
+
+  final MasterImportOutcome outcome;
+
+  /// ★★ 起動と同じ規則で集めた（決定 D39 / D60: 黙って捨てない）★★
+  final List<BootNotice> notices;
+}
+
+/// 走らせたが失敗した。★**古いカタログのまま動き続ける。**
+final class MasterReloadFailed extends MasterReloadResult {
+  const MasterReloadFailed({required this.error, required this.stackTrace});
+
+  final Object error;
+  final StackTrace stackTrace;
+}
+
+/// 走らせなかった。
+///
+/// ★★ 失敗と分けている ★★
+/// ★**「起動が終わっていない」「もう 1 本走っている」は★★取り込みの失敗ではない★★。**
+/// ★畳むと「データが壊れている」と読める文面が出る。
+final class MasterReloadRefused extends MasterReloadResult {
+  const MasterReloadRefused();
+}
+
 final class BootReady extends BootState {
   const BootReady({
     required this.environment,
@@ -152,6 +189,83 @@ class BootController extends Store<BootState> {
       _printFailure(failed);
     }
   }
+
+  /// 取り込みをもう一度走らせ、カタログを差し替える（`docs/Android UI 決定.md` §1-5）。
+  ///
+  /// ★★ 決定 D56 を覆した部分と、★覆していない部分を分ける ★★
+  ///
+  /// | | |
+  /// |---|---|
+  /// | ★**覆した** | ★**取り込みが★★起動ゲート以外でも走る★★** |
+  /// | ★★**覆していない**★★ | ★**D56 が挙げた害そのもの** —— ★★`MasterCatalog` と
+  ///   `DeckValidator` が古くなることは★1 ミリも消えていない★★ |
+  ///
+  /// ★★ 受け入れた穴（★申し送り §2 の穴 2）★★
+  /// ★**この口は★★`AppEnvironment` を丸ごと作り直して差し替える★★**ので、
+  /// ★`AppScope` より下は新しいカタログを見る。
+  /// ★★**ただし★既に開いている `DeckEditStore` は★古いリポジトリを掴んだままである**★★
+  /// （★構築時に受け取っているため）。★★利用者が承知のうえで受け入れた★★。
+  ///
+  /// ★★ 進捗はここで出さない ★★
+  /// ★**`BootRunning` へ落とさない** —— ★★落とすと画面の木ごと捨てられる★★
+  /// （`BootGate` が読み込み画面へ切り替わる）。★進捗は**呼ぶ側**が出す。
+  ///
+  /// ★★ 失敗しても `BootFailed` にしない ★★
+  /// ★**起動は既に成功している。**★★アプリ全体を失敗画面へ倒すのは過剰である★★。
+  /// → ★**答えを返す。★呼ぶ側が見せる**（★§32-6 の 25 と同じ形）。
+  ///
+  /// ★★ `BootTimings` は差し替えない ★★
+  /// ★あれは**起動の内訳**であり、★★再取り込みは起動ではない★★。
+  Future<MasterReloadResult> reload() async {
+    final current = value;
+    if (current is! BootReady) {
+      // ★★ 起動が終わる前に呼ばれた ★★
+      //   ★DB も dist も揃っていない段が在りうるので、★★走らせない★★。
+      return const MasterReloadRefused();
+    }
+    if (_reloading) {
+      // ★★ 2 つ同時に走らせない ★★
+      //   ★取り込みは DB を書く。★同じ DB へ 2 本走らせる理由が無い。
+      return const MasterReloadRefused();
+    }
+    _reloading = true;
+    try {
+      final notices = <BootNotice>[];
+      _collectSearchLimitNotices(_steps.searchLimit, notices);
+      final outcome = await _steps.importMaster();
+      _collectImportNotices(outcome, notices);
+      final catalog = await _steps.loadCatalog(outcome);
+
+      state = BootReady(
+        environment: AppEnvironment(
+          catalog: catalog,
+          imageSource: _steps.imageSourceFor(outcome),
+          decks: _steps.decksFor(catalog),
+          cardCatalog: _steps.cardCatalogFor(),
+          cardDetail: CardDetailView(catalog),
+          searchLimit: _steps.searchLimit,
+          clock: clock,
+          master: _steps.masterFor(),
+          settingsStore: _steps.settingsStoreFor(),
+          importOutcome: outcome,
+          appVersion: outcome.appVersion,
+          paths: _steps.paths,
+        ),
+        notices: notices,
+        // ★★ 起動の内訳はそのまま持ち越す（★上の doc）★★
+        timings: current.timings,
+      );
+      return MasterReloadDone(outcome: outcome, notices: notices);
+    } on Object catch (error, stackTrace) {
+      // ★★ 直前の `BootReady` を 1 ビットも触らない ★★
+      //   ★失敗しても**アプリは動き続ける**（★古いカタログのままである）。
+      return MasterReloadFailed(error: error, stackTrace: stackTrace);
+    } finally {
+      _reloading = false;
+    }
+  }
+
+  bool _reloading = false;
 
   /// 検索上限の上書き（決定 D64）。
   ///
