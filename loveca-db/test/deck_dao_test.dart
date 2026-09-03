@@ -503,23 +503,34 @@ void main() {
       expect(issues.single.actual, 5);
     });
 
-    test('canAdd がエネルギーとメインで違う判定になる', () async {
+    test('★★canAdd が止めるのはエネルギー 12 枚だけである★★', () async {
+      // ★★2026-09-03: 4 枚制限（6.1.1.2）で止めなくなった★★
+      //   （`docs/Android UI 決定.md` §1-3 —— ★入れさせて**警告に変える**）。
+      //   ★以前はここが「エネルギーとメインで違う判定になる」で、
+      //   ★★メインは false / エネルギーは true★★ を対で見ていた。
+      //   ★**総合ルール 6.1.1.2 は 1 文字も変わっていない** —— ★上の群が
+      //   ★`validate` の `tooManyCopies` を★今も見ている。
       final t = await byType();
       final member = t[CardType.member]!.first;
       final energy = t[CardType.energy]!.first;
 
       final memberFull =
           deckOf([DeckEntry(printingId: member.printingId, count: 4)]);
-      expect(await decks.canAdd(memberFull, member.printingId), isFalse);
+      expect(await decks.canAdd(memberFull, member.printingId), isTrue,
+          reason: '★以前はここが false だった');
 
       final energyFour =
           deckOf([DeckEntry(printingId: energy.printingId, count: 4)]);
       // ★エネルギーに 4 枚制限は無い。12 枚上限にだけかかる。
       expect(await decks.canAdd(energyFour, energy.printingId), isTrue);
 
+      // ★★対: エネルギー 12 枚は★今も止まる（★「常に true」ではない）★★
       final energyFull =
           deckOf([DeckEntry(printingId: energy.printingId, count: 12)]);
       expect(await decks.canAdd(energyFull, energy.printingId), isFalse);
+
+      // ★★対: マスタに無い刷りも★今も止まる（決定 D35）★★
+      expect(await decks.canAdd(memberFull, 'NOT-A-REAL-PRINTING'), isFalse);
     });
   });
 
