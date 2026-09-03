@@ -20,6 +20,7 @@ import 'package:loveca_ui/src/data/master_catalog.dart';
 import 'package:loveca_ui/src/data/search_limit.dart';
 import 'package:loveca_ui/src/state/card_browse_store.dart';
 import 'package:loveca_ui/src/ui/browse/card_browse_page.dart';
+import 'package:loveca_ui/src/ui/browse/card_type_tabs.dart';
 import 'package:loveca_ui/src/ui/browse/filter_panel.dart';
 
 import '../support/fake_card_catalog_repository.dart';
@@ -364,6 +365,40 @@ void main() {
       await pumpPanel(tester, CardType.member);
 
       expect(find.text('コスト（以下）'), findsOneWidget);
+    });
+  });
+
+  group('★★ カテゴリタブがページに出ている（`Android UI 決定` §1-2）★★', () {
+    // ★★配線の対★★ —— ★`CardTypeTabs` そのものは
+    //   `test/ui/card_type_tabs_test.dart` が見ている。
+    //   ★ここで見るのは**ページに載っていること**だけである。
+    testWidgets('1 ペインでも 2 ペインでも出る', (tester) async {
+      for (final width in [700.0, 1280.0]) {
+        tester.view.devicePixelRatio = 1.0;
+        tester.view.physicalSize = Size(width, 900);
+        addTearDown(tester.view.reset);
+        await _open(tester, FakeCardCatalogRepository());
+
+        expect(find.byType(CardTypeTabs), findsOneWidget,
+            reason: '幅 $width');
+        expect(find.byKey(const ValueKey('cardTypeTab:member')),
+            findsOneWidget);
+      }
+    });
+
+    testWidgets('★叩くと一覧が絞られる（★配線が生きている）', (tester) async {
+      tester.view.devicePixelRatio = 1.0;
+      tester.view.physicalSize = const Size(1280, 900);
+      addTearDown(tester.view.reset);
+      await _open(tester, FakeCardCatalogRepository());
+
+      // ★_rows は 2 行ともメンバーなので、★ライブを選ぶと 0 件になる。
+      expect(find.text('条件に合うカードがありません'), findsNothing);
+
+      await tester.tap(find.byKey(const ValueKey('cardTypeTab:live')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('条件に合うカードがありません'), findsOneWidget);
     });
   });
 }

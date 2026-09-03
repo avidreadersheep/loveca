@@ -2280,9 +2280,23 @@ M-B2 と M-B3 で「増やさないはず」が**2 回とも実際には動い�
 |---|---|---|
 | フリーワード | FTS5 trigram。2 文字以下は `cards.search_blob` への `LIKE`（**D40**）。上限 2000（**D50**） | 索引しているのは 5 列（`card_number` / `name` / `effect` / `group_names` / `unit_names`） |
 | 商品 | `printings.expansion` の `DISTINCT` | ★**商品名ではなく展開 ID**。`products.name` を読む DAO が無い |
-| 種別 | `cards.card_type` | 単一選択 |
+| 種別 | `cards.card_type` | 単一選択 |★★（2026-09-03: ★パネルから外し、★★カテゴリタブへ移した★★ / ★下）★★
 | コスト | `cards.cost` | ★**「0〜5 の N 以下」だけ**・**種別がメンバーのときだけ**（§4-2 の案 (a)） |
 | パラレル表示 | `printings.is_parallel` | ON/OFF |
+
+★★**2026-09-03: ★種別を★絞り込みパネルから外した。★上の表は 1 文字も書き換えない**★★（**D-35**）——
+★**移した先は `loveca-ui/lib/src/ui/browse/card_type_tabs.dart`**（★カテゴリタブ / `docs/Android UI 決定.md` §1-2 / ★★Windows も★★）。
+
+| # | ★動いたか |
+|---|---|
+| ★**`CardListFilter.cardType`** | ★★**1 ビットも動いていない**★★ —— ★判定も単一選択も同じ |
+| ★**どの widget が出し入れするか** | ★**動いた** —— ★`FilterPanel` → `CardTypeTabs` |
+| ★**パネルに残る軸** | ★**商品 / コスト / パラレル の 3 つ**（★★対で固定した★★） |
+| ★**Windows での置き場** | ★★**申し送りが述べていない**★★ → ★**既定値として検索欄の直下に置いた**（★★差し替え点は `card_browse_pane.dart` の 1 行★★） |
+
+★★**移す前は★種別の欄に★対が 1 つも無かった**★★（★2026-09-03 実測 —— ★★`Dropdown` を丸ごと消しても 1220 件が全部通った★★ / **D-20** / **D-27**）。
+→ ★**移した先には★★最初から対を置いた★★**（`test/ui/card_type_tabs_test.dart`）。
+
 
 #### ★ スキーマにあるのに UI からも DAO からも引けない軸
 

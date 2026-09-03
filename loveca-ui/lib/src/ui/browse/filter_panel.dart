@@ -1,5 +1,9 @@
 /// 一覧の絞り込みパネル（決定 D48 / `docs/UI設計メモ.md` §4-2）.
 ///
+/// ★★ 2026-09-03: 種別をここから外した（→ `CardTypeTabs`）★★
+/// `docs/Android UI 決定.md` §1-2（★★Windows も★★）。
+/// ★**このパネルに残るのは 商品 / コスト / パラレル の 3 つである。**
+///
 /// ★★ 2026-09-03: コスト絞り込みを**常に**出す ★★
 /// `docs/Android UI 決定.md` §1-4（★**§4-2 の案 (a) を覆す** / ★Windows も）。
 ///
@@ -13,7 +17,6 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:loveca_core/loveca_core.dart';
 
 import '../../state/card_browse_store.dart';
 
@@ -59,31 +62,10 @@ class FilterPanel extends StatelessWidget {
                 ],
                 onChanged: store.setExpansion,
               ),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<CardType?>(
-                initialValue: state.filter.cardType,
-                decoration: const InputDecoration(
-                  labelText: '種別',
-                  border: OutlineInputBorder(),
-                  isDense: true,
-                ),
-                items: const [
-                  DropdownMenuItem<CardType?>(child: Text('すべて')),
-                  DropdownMenuItem<CardType?>(
-                    value: CardType.member,
-                    child: Text('メンバー'),
-                  ),
-                  DropdownMenuItem<CardType?>(
-                    value: CardType.live,
-                    child: Text('ライブ'),
-                  ),
-                  DropdownMenuItem<CardType?>(
-                    value: CardType.energy,
-                    child: Text('エネルギー'),
-                  ),
-                ],
-                onChanged: store.setCardType,
-              ),
+              // ★★ 2026-09-03: 種別をここから外した（`docs/Android UI 決定.md` §1-2）★★
+              //   ★移した先は `CardTypeTabs`（カテゴリタブ / ★Windows も）。
+              //   ★★`CardListFilter.cardType` は 1 ビットも変わっていない★★ ——
+              //   ★変わったのは**どの widget が出し入れするか**だけである。
               const SizedBox(height: 16),
               // ★★ 種別に依らず常に出す（`docs/Android UI 決定.md` §1-4）★★
               DropdownButtonFormField<int?>(

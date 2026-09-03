@@ -20,6 +20,7 @@ import '../../state/card_browse_store.dart';
 import '../common/loadable_view.dart';
 import '../layout/pane_scaffold.dart';
 import 'card_grid.dart';
+import 'card_type_tabs.dart';
 import 'search_result_header.dart';
 
 class CardBrowsePane extends StatefulWidget {
@@ -116,6 +117,14 @@ class _CardBrowsePaneState extends State<CardBrowsePane> {
                   ],
                 ),
               ),
+              // ★★ カテゴリタブ（`docs/Android UI 決定.md` §1-2 / §3-5）★★
+              //   ★**置き場は Windows では決まっていない**（★申し送りは
+              //   「Windows にも同じタブを置き、絞り込みから種別を外す」までしか述べていない）。
+              //   → ★**既定値として検索欄の直下に置いた**（★運転指示【2】(b)(c)）。
+              //   ★★差し替え点はこの 1 行である★★。
+              //   ★Android では**一覧の下**に来る（§3-3）—— ★同じ widget を器だけ替える。
+              CardTypeTabs(store: widget.store),
+              const SizedBox(height: 8),
               SearchResultHeader(state: state),
             ],
           ),
