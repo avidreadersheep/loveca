@@ -347,7 +347,11 @@ void main() {
         File(p.join('lib', 'src', 'ui', 'deck', 'deck_count_band.dart'))
             .readAsStringSync(),
       );
-      expect(src.contains('deckCountPickerValues(max)'), isTrue);
+      // ★★ 2026-09-04 追記: ★「呼び出しが在る」だけでは★足りない（★運転指示【0】(7) の 1）★★
+      //   ★**測ったら★★呼びつつ隣で自分でも回す形が★通った★★**
+      //   （2026-09-04 実測 / ★仕込み (P) が 0 件 —— ★`List.generate` で組み直す形）。
+      //   → ★**回す先そのものを見る**（★呼び出しの有無ではなく★★for の相手★★）。
+      expect(src.contains('for (final i in deckCountPickerValues(max))'), isTrue);
       // ★★ 上限を回す式は★★宣言の 1 か所だけである★★ ★★
       //   ★**widget が自分で回すと★★2 か所になる★★**（★それが (N) の仕込みである）。
       //   ★**`isFalse` では見られない** —— ★★宣言そのものがこの字面を持つ★★。
@@ -356,6 +360,12 @@ void main() {
       //   ★**doc には `i <= max + 1` と書いた説明が在る**（★上の doc の実測の行）。
       //   ★★**外したあとの本文には 1 つも無い**★★。
       expect(src.contains('max + 1'), isFalse);
+      // ★★ 覆わないもの（★言い切る）★★
+      //   ★**字面での走査は★★どれも回避できる★★**（★例: `deckCountPickerValues(max).toList()`）。
+      //   ★**見ているのは★★この 1 つの書き方だけである★★**。
+      //   ★**強くしたのは「呼べば通る」から「★★この形で回していれば通る★★」までで、
+      //     ★★「値が本当にそこから来ている」ことは★1 ビットも見ていない★★**（**D-28**）。
+      //   → ★**振る舞いに出ない守りに対して★★これが上限である★★**（★詳細は `docs/tools/measure_pairs.py`）。
     });
 
     testWidgets('★対: フォームで同じ枚数を選んでも何も起きない', (tester) async {
