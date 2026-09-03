@@ -238,17 +238,18 @@ class CardBrowseStore extends Store<CardBrowseState> {
             : value.filter.copyWith(expansion: expansion),
       );
 
-  /// ★種別を変えるとコスト絞り込みの可否が変わる（`CardListFilter.appliesCost`）。
-  /// メンバー以外にしたときはコストを外す。**残したまま無効化すると、
-  /// 画面に出ていない条件が状態にだけ残る。**
-  void setCardType(CardType? cardType) {
-    final base = cardType == null
-        ? value.filter.copyWith(clearCardType: true)
-        : value.filter.copyWith(cardType: cardType);
-    _apply(
-      cardType == CardType.member ? base : base.copyWith(clearMaxCost: true),
-    );
-  }
+  /// ★★ 2026-09-03: 種別を変えてもコストを外さない ★★
+  /// `docs/Android UI 決定.md` §1-4（★**§4-2 の案 (a) を覆す**）。
+  ///
+  /// ★以前は「メンバー以外にしたときはコストを外す。**残したまま無効化すると、
+  /// 画面に出ていない条件が状態にだけ残る**」だった。
+  /// ★★ その理由は消えた ★★ —— ★コスト欄は**常に画面に出る**ので、
+  /// 「画面に出ていない条件が状態にだけ残る」状態そのものが作れない。
+  void setCardType(CardType? cardType) => _apply(
+        cardType == null
+            ? value.filter.copyWith(clearCardType: true)
+            : value.filter.copyWith(cardType: cardType),
+      );
 
   void setMaxCost(int? maxCost) => _apply(
         maxCost == null

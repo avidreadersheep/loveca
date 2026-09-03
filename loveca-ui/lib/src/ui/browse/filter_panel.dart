@@ -1,9 +1,15 @@
 /// 一覧の絞り込みパネル（決定 D48 / `docs/UI設計メモ.md` §4-2）.
 ///
-/// ★★ コスト絞り込みは種別がメンバーのときだけ出す ★★
-/// `cost` はメンバーにしか値が無い（`normalize.py:362-363`）。
-/// 種別を問わず出すと「コスト 2 以下」でライブとエネルギーが全部消え、
-/// 利用者にはその理由が分からない（§4-2 の案 (a)）。
+/// ★★ 2026-09-03: コスト絞り込みを**常に**出す ★★
+/// `docs/Android UI 決定.md` §1-4（★**§4-2 の案 (a) を覆す** / ★Windows も）。
+///
+/// ★以前はこう書いてあった ——
+/// 「`cost` はメンバーにしか値が無い（`normalize.py:362-363`）。
+///   種別を問わず出すと「コスト 2 以下」でライブとエネルギーが全部消え、
+///   利用者にはその理由が分からない（§4-2 の案 (a））」。
+///
+/// ★★ その害は 1 ミリも消えていない。★利用者が承知のうえで選んだ ★★
+/// （★申し送り §2 の穴 1）。★**警告も注記も出さない**。
 library;
 
 import 'package:flutter/material.dart';
@@ -79,25 +85,23 @@ class FilterPanel extends StatelessWidget {
                 onChanged: store.setCardType,
               ),
               const SizedBox(height: 16),
-              // ★★ メンバーのときだけ出す ★★
-              if (state.filter.cardType == CardType.member) ...[
-                DropdownButtonFormField<int?>(
-                  initialValue: state.filter.maxCost,
-                  decoration: const InputDecoration(
-                    labelText: 'コスト（以下）',
-                    border: OutlineInputBorder(),
-                    isDense: true,
-                    helperText: 'コストはメンバーだけが持つ',
-                  ),
-                  items: [
-                    const DropdownMenuItem<int?>(child: Text('指定なし')),
-                    for (final c in _costOptions)
-                      DropdownMenuItem<int?>(value: c, child: Text('$c 以下')),
-                  ],
-                  onChanged: store.setMaxCost,
+              // ★★ 種別に依らず常に出す（`docs/Android UI 決定.md` §1-4）★★
+              DropdownButtonFormField<int?>(
+                initialValue: state.filter.maxCost,
+                decoration: const InputDecoration(
+                  labelText: 'コスト（以下）',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                  helperText: 'コストはメンバーだけが持つ',
                 ),
-                const SizedBox(height: 16),
-              ],
+                items: [
+                  const DropdownMenuItem<int?>(child: Text('指定なし')),
+                  for (final c in _costOptions)
+                    DropdownMenuItem<int?>(value: c, child: Text('$c 以下')),
+                ],
+                onChanged: store.setMaxCost,
+              ),
+              const SizedBox(height: 16),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('パラレルを表示'),

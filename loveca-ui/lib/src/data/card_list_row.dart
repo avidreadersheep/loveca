@@ -60,6 +60,9 @@ class CardListRow {
 
 /// 絞り込み条件。★メモリ上で絞る（決定 D48）。SQL を再実行しない。
 ///
+/// ★★ 2026-09-03: 種別依存の軸（コスト）を常に効かせるようにした ★★
+/// `docs/Android UI 決定.md` §1-4（★**§4-2 の案 (a) を覆す** / ★Windows も）。
+///
 /// 実測で 100〜200 倍速い（`docs/UI技術検証メモ.md` §3-6）。
 /// 全 2,527 行はすでにメモリにあるので、絞り込みで DB へ行く理由がない。
 class CardListFilter {
@@ -73,12 +76,18 @@ class CardListFilter {
   final String? expansion;
   final CardType? cardType;
 
-  /// ★★ [cardType] が [CardType.member] のときだけ効く ★★
+  /// ★★ 2026-09-03: 種別に依らず常に効く（`docs/Android UI 決定.md` §1-4）★★
+  ///
+  /// ★以前は [cardType] が [CardType.member] のときだけ効いた（§4-2 の案 (a)）。
   /// `cost` はメンバーにしか値が無いため、素朴に絞ると
   /// **ライブとエネルギーが全部消える。**
   /// `docs/UI技術検証メモ.md` §3-6 の「コスト 2 以下 = 208 件」は
   /// **メンバーだけの件数**だった。
-  /// UI もコスト絞り込みを出すのはメンバー選択時だけにする（§4-2 の案 (a)）。
+  ///
+  /// ★★ 上の害は 1 ミリも消えていない。★受け入れた ★★
+  /// 利用者が「常に出す」を選び、消えることを承知した（★§2 の穴 1）。
+  /// → ★**警告も注記も出さない**（★申し送りは出すと書いていない）。
+  /// ★**§4-2 の表と `docs/UI技術検証メモ.md` §3-6 の字面は 1 文字も書き換えない**（**D-35**）。
   final int? maxCost;
 
   /// ★false のとき `isParallel == false` の刷りを「すべて」残す。
@@ -88,8 +97,11 @@ class CardListFilter {
   bool get isEmpty =>
       expansion == null && cardType == null && maxCost == null && showParallel;
 
-  /// [maxCost] が実際に適用されるか。UI の出し分けもこれを見る。
-  bool get appliesCost => maxCost != null && cardType == CardType.member;
+  /// [maxCost] が実際に適用されるか。
+  ///
+  /// ★★ 2026-09-03: 種別を見なくなった（`docs/Android UI 決定.md` §1-4）★★
+  /// ★**UI の出し分けはもうこれを見ない** —— ★コスト欄は常に出る。
+  bool get appliesCost => maxCost != null;
 
   CardListFilter copyWith({
     String? expansion,

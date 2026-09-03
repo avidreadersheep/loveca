@@ -18,7 +18,9 @@ import 'package:loveca_db/loveca_db.dart';
 import 'package:loveca_ui/src/data/card_list_row.dart';
 import 'package:loveca_ui/src/data/master_catalog.dart';
 import 'package:loveca_ui/src/data/search_limit.dart';
+import 'package:loveca_ui/src/state/card_browse_store.dart';
 import 'package:loveca_ui/src/ui/browse/card_browse_page.dart';
+import 'package:loveca_ui/src/ui/browse/filter_panel.dart';
 
 import '../support/fake_card_catalog_repository.dart';
 import '../support/fake_deck_repository.dart';
@@ -309,6 +311,59 @@ void main() {
       expect(find.byTooltip('絞り込み'), findsNothing);
       // 代わりに FilterPanel の見出しが横に出ている。
       expect(find.text('絞り込み'), findsOneWidget);
+    });
+  });
+
+  group('★★ コスト欄は種別に依らず常に出る（`Android UI 決定` §1-4）★★', () {
+    // ★★この群は★2026-09-03 に新設した★★ ——
+    //   ★**それまで「メンバーのときだけ出す」条件に★対が 1 つも無かった**
+    //   （★実測: ★★あの 1 行を外しても★1199 件が全部通った★★ / **D-20** / **D-27**）。
+    //   ★**出る側だけでは足りない** —— ★★どの種別でも消えないことを対で固定する★★。
+    //
+    // ★★`FilterPanel` を直に立てる★★ —— ★ページ越しに `Dropdown` を叩くと
+    //   ★★当たり判定を外しても通ってしまう★★（`warnIfMissed`）。
+    //   ★見たいのは**種別の値に対する出し分け**なので、★値を直に渡す。
+    Future<void> pumpPanel(WidgetTester tester, CardType? cardType) async {
+      final store = CardBrowseStore(
+        rows: _rows,
+        catalog: FakeCardCatalogRepository(),
+        searchLimit: SearchLimitSetting.standard,
+        filter: CardListFilter(cardType: cardType),
+      );
+      addTearDown(store.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(width: 400, child: FilterPanel(store: store)),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('種別が「すべて」でも出る', (tester) async {
+      await pumpPanel(tester, null);
+
+      // ★★以前はここで見つからなかった★★（★種別の既定は null）。
+      expect(find.text('コスト（以下）'), findsOneWidget);
+    });
+
+    testWidgets('★対: 種別がライブでも出る', (tester) async {
+      await pumpPanel(tester, CardType.live);
+
+      expect(find.text('コスト（以下）'), findsOneWidget);
+    });
+
+    testWidgets('★対: 種別がエネルギーでも出る', (tester) async {
+      await pumpPanel(tester, CardType.energy);
+
+      expect(find.text('コスト（以下）'), findsOneWidget);
+    });
+
+    testWidgets('種別がメンバーでも 1 つのままである', (tester) async {
+      await pumpPanel(tester, CardType.member);
+
+      expect(find.text('コスト（以下）'), findsOneWidget);
     });
   });
 }

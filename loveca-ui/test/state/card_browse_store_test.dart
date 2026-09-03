@@ -297,6 +297,60 @@ void main() {
     expect(store.value.degradations, isEmpty);
   });
 
+  group('★★ 種別を変えてもコストを外さない（`Android UI 決定` §1-4）★★', () {
+    // ★★この群は★2026-09-03 に新設した★★ ——
+    //   ★**それまで `setCardType` が `maxCost` を外すことに★対が 1 つも無かった**
+    //   （★実測: ★★この 1 行を書き換えても★1199 件が全部通った★★ / **D-20** / **D-27**）。
+
+    test('メンバー以外にしてもコストが残る', () {
+      final store = _store(FakeCardCatalogRepository());
+      addTearDown(store.dispose);
+
+      store.setMaxCost(1);
+      store.setCardType(CardType.live);
+
+      // ★★以前はここで null に落ちていた★★。
+      expect(store.value.filter.maxCost, 1);
+      expect(store.value.filter.cardType, CardType.live);
+      expect(store.value.filter.appliesCost, isTrue);
+    });
+
+    test('種別を外してもコストが残る', () {
+      final store = _store(FakeCardCatalogRepository());
+      addTearDown(store.dispose);
+
+      store.setMaxCost(2);
+      store.setCardType(CardType.member);
+      store.setCardType(null);
+
+      expect(store.value.filter.cardType, isNull);
+      expect(store.value.filter.maxCost, 2);
+    });
+
+    test('★対: コストそのものは外せる', () {
+      final store = _store(FakeCardCatalogRepository());
+      addTearDown(store.dispose);
+
+      store.setMaxCost(1);
+      store.setMaxCost(null);
+
+      expect(store.value.filter.maxCost, isNull);
+    });
+
+    test('★対: `clearFilter` は両方外す', () {
+      final store = _store(FakeCardCatalogRepository());
+      addTearDown(store.dispose);
+
+      store.setMaxCost(1);
+      store.setCardType(CardType.live);
+      store.clearFilter();
+
+      expect(store.value.filter.maxCost, isNull);
+      expect(store.value.filter.cardType, isNull);
+      expect(store.value.filter.isEmpty, isTrue);
+    });
+  });
+
   testWidgets('★連続入力でも検索は 1 回だけ走る（決定 D44）', (tester) async {
     final repository = FakeCardCatalogRepository();
     final store = _store(repository);
