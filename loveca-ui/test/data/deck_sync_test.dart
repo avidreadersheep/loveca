@@ -20,6 +20,10 @@ import 'package:loveca_ui/src/data/deck_sync_client.dart';
 
 import '../support/fake_deck_repository.dart';
 import '../support/strip_comments.dart';
+// ★★ `DeckSyncMarks` は★両方の library に在る（★あちらは★表のクラス）★★ —— ★口のほうを採る。
+import 'package:loveca_db/loveca_db.dart' hide DeckSyncMarks;
+import 'package:loveca_ui/src/data/app_database.dart';
+import 'package:path/path.dart' as p;
 
 const _fixtureDir = '../loveca-server/test/fixtures/tls';
 const _certPath = '$_fixtureDir/localhost-TEST-ONLY.cert.pem';
@@ -48,6 +52,39 @@ class FakeMarks implements DeckSyncMarks {
     required String baselineHash,
   }) async {
     recorded.add((deckId: deckId, logMark: logMark, baselineHash: baselineHash));
+  }
+
+  /// ★捨てた回数（★★呼ばれたことを見る対が在る★★）。
+  final List<String> discarded = [];
+
+  @override
+  Future<void> discardSentOps(String deckId) async {
+    discarded.add(deckId);
+  }
+}
+
+
+/// ★[record] と [discardSentOps] の★★順序を見るためだけのフェイク★★。
+class _OrderedMarks extends FakeMarks {
+  _OrderedMarks(this.order, {super.mark});
+
+  final List<String> order;
+
+  @override
+  Future<void> record({
+    required String deckId,
+    required int logMark,
+    required String baselineHash,
+  }) async {
+    order.add('record');
+    await super.record(
+        deckId: deckId, logMark: logMark, baselineHash: baselineHash);
+  }
+
+  @override
+  Future<void> discardSentOps(String deckId) async {
+    order.add('discard');
+    await super.discardSentOps(deckId);
   }
 }
 
@@ -881,6 +918,173 @@ void main() {
 
       expect(writer.saves.single.deck.name, 'あいて');
       expect(marks.recorded, hasLength(1));
+    });
+  });
+
+  group('★★ 送り終えた分を捨てる（★§32-6 の **28** / 決定 **D150-1** ＝ 捨-B）★★', () {
+    test('★★ 送ったあとに★捨てる口を呼ぶ ★★', () async {
+      serveEmpty();
+      final marks = FakeMarks(mark: 5);
+      handler = (request) async {
+        if (request.uri.path == decksFetchPath) {
+          await reply(request, 404, {'ok': false});
+          return;
+        }
+        await reply(request, 201, {'ok': true, syncMarkKey: 'M-NEW'});
+      };
+
+      await run(_deck(), marks);
+
+      expect(marks.discarded, [_deck().deckId]);
+    });
+
+    test('★★ 順序 —— ★書いてから捨てる（★★逆だと古い目印で捨てる★★）★★', () async {
+      serveEmpty();
+      final order = <String>[];
+      final marks = _OrderedMarks(order, mark: 5);
+      handler = (request) async {
+        if (request.uri.path == decksFetchPath) {
+          await reply(request, 404, {'ok': false});
+          return;
+        }
+        await reply(request, 201, {'ok': true, syncMarkKey: 'M-NEW'});
+      };
+
+      await run(_deck(), marks);
+
+      expect(order, ['record', 'discard']);
+    });
+
+    test('★★ 送れなかったら★捨てない（★★器にも書かない★★）★★', () async {
+      serveEmpty();
+      final marks = FakeMarks(mark: 5);
+      handler = (request) async {
+        if (request.uri.path == decksFetchPath) {
+          await reply(request, 404, {'ok': false});
+          return;
+        }
+        // ★★ 預ける口が★断る（★412）★★
+        await reply(request, 412, {'ok': false});
+      };
+
+      await run(_deck(), marks);
+
+      expect(marks.recorded, isEmpty);
+      expect(marks.discarded, isEmpty,
+          reason: '★★送っていないのに捨てると★未送信の編集が消える★★');
+    });
+
+    test('★★ 受信でも★捨てる（★目印が最新へ進むので）★★', () async {
+      final writer = FakeWriter();
+      final marks = FakeMarks(mark: 3);
+      final remote = _deck(name: 'あいて', updatedAt: DateTime.utc(2026, 3, 1));
+
+      await applyRemoteDeck(
+        DeckSyncRemoteWins(
+          remote: remote,
+          mark: 'M-REMOTE',
+          reason: DeckSyncRemoteReason.remoteOnly,
+        ),
+        writer: writer,
+        marks: marks,
+        at: DateTime.utc(2026, 9, 4),
+      );
+
+      expect(marks.discarded, [remote.deckId]);
+    });
+
+    test('★★ 対: ★何も送らなかったら★捨てない ★★', () async {
+      // ★★ 両側が基準から動いていない ＝ DeckSyncSkipped（★器に 1 行も書かない）★★
+      final deck = _deck();
+      final marks = FakeMarks(
+        mark: 5,
+        baseline: (hasOpsSinceMark: false, contentHash: deckContentHash(deck)),
+      );
+      handler = (request) async {
+        if (request.uri.path == decksListPath) {
+          await reply(request, 200, {'ok': true, 'deckIds': [deck.deckId]});
+          return;
+        }
+        await reply(request, 200, {
+          'ok': true,
+          'content': encodeDeckForSync(deck),
+          syncMarkKey: 'M-REMOTE',
+        });
+      };
+
+      final out = await run(deck, marks);
+
+      expect(out, isA<DeckSyncSkipped>());
+      expect(marks.recorded, isEmpty);
+      expect(marks.discarded, isEmpty);
+    });
+  });
+
+  group('★★ 実 DB —— ★★橋渡しが★DAO を実際に呼ぶ（**D-27** の (乙)）★★', () {
+    // ★★ 測ったら★この橋渡しに★対が 1 つも無かった ★★
+    //   ★**`DeckSyncMarkDaoMarks` は★★`lib` から 1 度も呼ばれず、★試験も 1 つも無かった★★**
+    //   （2026-09-04 実測 / ★仕込み (K) が **0 件** / ★型は **D-20**）。
+    //   → ★**4 つのメソッドとも★★実 DB を通して当てる★★**（★先例は `device_client_test.dart`）。
+    late Directory tmp;
+    late LovecaDatabase db;
+
+    setUp(() async {
+      tmp = Directory.systemTemp.createTempSync('loveca_sync_marks_bridge');
+      db = await openAppDatabase(File(p.join(tmp.path, 'loveca.db')));
+    });
+
+    tearDown(() async {
+      await db.close();
+      tmp.deleteSync(recursive: true);
+    });
+
+    Future<int> addOp(String deckId) => db.into(db.deckEditOps).insert(
+          DeckEditOpsCompanion.insert(
+            deckId: deckId,
+            kind: DeckEditOpKind.setName.key,
+            at: DateTime.utc(2026, 9, 4),
+          ),
+        );
+
+    Future<List<int>> opIds(String deckId) async =>
+        (await (db.select(db.deckEditOps)
+                  ..where((o) => o.deckId.equals(deckId)))
+                .get())
+            .map((o) => o.id)
+            .toList();
+
+    test('★★ 4 つのメソッドが★DAO を通る（★★書く → 読む → 捨てる★★）★★', () async {
+      final marks = DeckSyncMarkDaoMarks(DeckSyncMarkDao(db));
+      const deckId = 'bridge-deck';
+
+      // ★★ 行が無いあいだは null（**D114-3**）★★
+      expect(await marks.baselineFor(deckId), isNull);
+
+      final a = await addOp(deckId);
+      final b = await addOp(deckId);
+      expect(await marks.latestLogMark(deckId), b);
+
+      await marks.record(
+          deckId: deckId, logMark: a, baselineHash: 'sha256:xx');
+      final baseline = await marks.baselineFor(deckId);
+      expect(baseline!.contentHash, 'sha256:xx');
+      expect(baseline.hasOpsSinceMark, isTrue);
+
+      // ★★ ここが (K) の受け —— ★捨てる口が★DAO を実際に呼ぶ ★★
+      await marks.discardSentOps(deckId);
+      expect(await opIds(deckId), [b],
+          reason: '★★a だけが消え、★目印より後ろの b は残る★★');
+    });
+
+    test('★★ 対: ★器の行が無ければ★1 行も消えない（**D114-3**）★★', () async {
+      final marks = DeckSyncMarkDaoMarks(DeckSyncMarkDao(db));
+      const deckId = 'bridge-never-synced';
+      await addOp(deckId);
+      await addOp(deckId);
+
+      await marks.discardSentOps(deckId);
+
+      expect(await opIds(deckId), hasLength(2));
     });
   });
 

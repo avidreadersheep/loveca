@@ -111,6 +111,12 @@ abstract interface class DeckSyncMarks {
     required int logMark,
     required String baselineHash,
   });
+
+  /// ★[deckId] の★★目印以下の編集ログを捨てる★★（★§32-6 の **28** / **D150-1** ＝ 捨-B）。
+  ///
+  /// ★★ 器の行が無ければ 1 件も捨てない（**D114-3**）★★
+  /// ★**判定は★★DAO の側に在る★★**（★この層は条件を足さない / [DeckSyncMarkDaoMarks] の doc）。
+  Future<void> discardSentOps(String deckId);
 }
 
 /// 1 つのデッキを同期した結果。
@@ -310,7 +316,8 @@ Future<DeckSyncOutcome> _decide({
       }
       if (judged.droppedLocalOpsByContent) {
         // ★★ 差し引きゼロの編集 —— ★目印だけ進める（★次回また見ない）★★
-        await marks.record(
+        await _recordAndDiscard(
+          marks,
           deckId: local.deckId,
           logMark: logMark,
           baselineHash: deckContentHash(local),
@@ -369,7 +376,8 @@ Future<DeckSyncOutcome> _push({
 
   switch (pushed) {
     case SyncOk<RemoteDeck>(:final value):
-      await marks.record(
+      await _recordAndDiscard(
+        marks,
         deckId: deck.deckId,
         logMark: logMark,
         baselineHash: deckContentHash(deck),
@@ -431,11 +439,44 @@ Future<void> applyRemoteDeck(
   await writer.saveReceived(outcome.remote, ops: ops);
 
   final logMark = await marks.latestLogMark(outcome.remote.deckId);
-  await marks.record(
+  await _recordAndDiscard(
+    marks,
     deckId: outcome.remote.deckId,
     logMark: logMark,
     baselineHash: deckContentHash(outcome.remote),
   );
+}
+
+/// ★器に書き、★★続けて★送り終えた分を捨てる★★（★§32-6 の **28** / **D150-1** ＝ 捨-B）。
+///
+/// ## ★★ なぜ 1 つにまとめたか ★★
+///
+/// ★**器に書く所は★★この層に 3 か所在る★★**（★目印だけ進める / ★送った / ★受け取った）。
+/// ★**3 か所とも★★同じ規則で捨てる★★**（★捨-B は「★送り終えた分だけ」で、
+///   ★★『送り終えた』の定義は★目印そのものである★★ / **D140-1**）。
+/// → ★**別々に書くと★★1 か所だけ捨て忘れても★誰も気づかない★★**（**D-15** の規約 3）。
+///
+/// ## ★★ 順序が意味を持つ —— ★書いてから捨てる ★★
+///
+/// ★**先に捨てると★★古い目印で捨てることになり、★捨てる量が減る★★**（★害は無いが★規則と食い違う）。
+/// ★**逆に、★書いたあとで捨てそこねても★★次の同期が同じ分を捨てる★★**（★冪等 / ★DAO の doc）。
+///
+/// ## ★★ `record` の契約を 1 文字も変えていない ★★
+///
+/// ★**`DeckSyncMarks.record` は★★今日も器の 1 行しか書かない★★**（**D114-4** の 3）。
+/// ★**捨てるのは★★別の口である★★**（★対で固定した）。
+Future<void> _recordAndDiscard(
+  DeckSyncMarks marks, {
+  required String deckId,
+  required int logMark,
+  required String baselineHash,
+}) async {
+  await marks.record(
+    deckId: deckId,
+    logMark: logMark,
+    baselineHash: baselineHash,
+  );
+  await marks.discardSentOps(deckId);
 }
 
 /// ★★ `loveca_db` の DAO を [DeckSyncMarks] に嵌める（★★橋渡しだけ★★）★★
@@ -465,4 +506,12 @@ class DeckSyncMarkDaoMarks implements DeckSyncMarks {
         logMark: logMark,
         baselineHash: baselineHash,
       );
+
+  @override
+  Future<void> discardSentOps(String deckId) async {
+    // ★★ 捨てた件数は★受け取らない ★★
+    //   ★**この層は★★橋渡しだけである★★**（★上の doc）。
+    //   ★**件数を使う所が★今日 1 つも無い**（**D-20** —— ★★消費者が居ない値を通さない★★）。
+    await _dao.discardOpsUpToMark(deckId);
+  }
 }

@@ -325,4 +325,110 @@ void main() {
       expect(await db.select(db.syncIdentities).get(), hasLength(1));
     });
   });
+  group('★★ 送り終えた編集ログを捨てる（★§32-6 の 28 / 決定 D150-1 ＝ 捨-B）★★', () {
+    late DeckSyncMarkDao dao;
+
+    setUp(() => dao = DeckSyncMarkDao(db));
+
+    test('★★ 目印以下だけを捨てる。★後ろは 1 行も触らない ★★', () async {
+      final a = await addOp(deckId);
+      final b = await addOp(deckId);
+      final c = await addOp(deckId);
+      await dao.record(deckId: deckId, logMark: b, baselineHash: hash);
+
+      expect(await dao.discardOpsUpToMark(deckId), 2);
+
+      final left = await (db.select(db.deckEditOps)
+            ..where((o) => o.deckId.equals(deckId)))
+          .get();
+      expect(left.map((o) => o.id), [c]);
+      // ★★ 対: ★a も b も消えている（★「1 件だけ消した」と区別できる形）★★
+      expect(left.map((o) => o.id), isNot(contains(a)));
+      expect(left.map((o) => o.id), isNot(contains(b)));
+    });
+
+    test('★★ 器の行が無ければ★1 件も捨てない（決定 D114-3）★★', () async {
+      await addOp(deckId);
+      await addOp(deckId);
+      // ★★ record を 1 度も呼ばない ＝ まだ一度も同期していない ★★
+      expect(await dao.discardOpsUpToMark(deckId), 0);
+      expect(
+        await (db.select(db.deckEditOps)
+              ..where((o) => o.deckId.equals(deckId)))
+            .get(),
+        hasLength(2),
+      );
+    });
+
+    test('★★ 別のデッキのログは 1 行も触らない ★★', () async {
+      await addOp(otherDeckId);
+      final mine = await addOp(deckId);
+      await dao.record(deckId: deckId, logMark: mine, baselineHash: hash);
+
+      expect(await dao.discardOpsUpToMark(deckId), 1);
+      expect(
+        await (db.select(db.deckEditOps)
+              ..where((o) => o.deckId.equals(otherDeckId)))
+            .get(),
+        hasLength(1),
+      );
+    });
+
+    test('★★ 冪等である（★2 度目は 0 件）★★', () async {
+      final a = await addOp(deckId);
+      await dao.record(deckId: deckId, logMark: a, baselineHash: hash);
+      expect(await dao.discardOpsUpToMark(deckId), 1);
+      expect(await dao.discardOpsUpToMark(deckId), 0);
+    });
+
+    test('★★ 目印を動かさない（★次の同期が同じ答えを出す）★★', () async {
+      final a = await addOp(deckId);
+      await dao.record(deckId: deckId, logMark: a, baselineHash: hash);
+      await dao.discardOpsUpToMark(deckId);
+
+      final baseline = await dao.baselineFor(deckId);
+      expect(baseline, isNotNull);
+      expect(baseline!.contentHash, hash);
+      // ★★ 捨てたあとも「未送信は無い」である（★捨てたことで在ることにならない）★★
+      expect(baseline.hasOpsSinceMark, isFalse);
+    });
+
+    test('★★ `decks` を 1 度も触らない（D114-4 の 3）★★', () async {
+      await db.into(db.decks).insert(
+            DecksCompanion.insert(
+              deckId: deckId,
+              name: '★',
+              createdAt: DateTime.utc(2026, 9, 1),
+              updatedAt: DateTime.utc(2026, 9, 1),
+              revision: const Value(3),
+            ),
+          );
+      final a = await addOp(deckId);
+      await dao.record(deckId: deckId, logMark: a, baselineHash: hash);
+      await dao.discardOpsUpToMark(deckId);
+
+      final row = await (db.select(db.decks)
+            ..where((d) => d.deckId.equals(deckId)))
+          .getSingle();
+      expect(row.revision, 3);
+      // ★★ DB は地方時で往復するので★瞬間で比べる ★★
+      expect(row.updatedAt.isAtSameMomentAs(DateTime.utc(2026, 9, 1)), isTrue);
+    });
+
+    test('★★ 未送信だけが残る状態を作れる（★捨-B の「失うものはない」の中身）★★', () async {
+      final a = await addOp(deckId);
+      await dao.record(deckId: deckId, logMark: a, baselineHash: hash);
+      final b = await addOp(deckId);
+
+      expect(await dao.discardOpsUpToMark(deckId), 1);
+      final baseline = await dao.baselineFor(deckId);
+      // ★★ b は残り、★「未送信が在る」と読める ★★
+      expect(baseline!.hasOpsSinceMark, isTrue);
+      final left = await (db.select(db.deckEditOps)
+            ..where((o) => o.deckId.equals(deckId)))
+          .get();
+      expect(left.map((o) => o.id), [b]);
+    });
+  });
+
 }
