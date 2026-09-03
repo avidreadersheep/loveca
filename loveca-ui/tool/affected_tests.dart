@@ -251,4 +251,157 @@ void main(List<String> args) {
   if (skipped.isNotEmpty) {
     stdout.writeln('走らせなくてよい: ${skipped.join(' / ')}');
   }
+
+  // ★★ 規則 (3) が効いたときは★理由も出す（★2026-09-04 に足した）★★
+  // ★★**「doc だけだから関係ない」を★その場で目に見えて偽にするためである。**★★
+  final dirs = {for (final p in packages) p.dir};
+  final ownerless =
+      changed.where((c) => ownerOf(toPosix(c).trim(), dirs) == null);
+  if (ownerless.isNotEmpty) {
+    for (final line in ruleThreeLines(
+      ownerlessCount: ownerless.length,
+      readers: docReadingTests(repoRoot, packages),
+    )) {
+      stdout.writeln(line);
+    }
+  }
+}
+
+/// ★規則 (3) が効いたときに出す行。
+///
+/// ★★ なぜ関数に切り出すか（**D-27** の (乙)）★★
+/// ★**出力だけを消しても★★対が 1 件も落ちなかった★★**（2026-09-04 実測 —— ★仕込み (G) が 0 件）。
+/// → ★**画面へ書く所と★★何を書くかを分け、★後者に対を置く★★。**
+/// ★**先例は `deckCountPickerValues` / `visibleDeckIssues`**（★同じ処置）。
+List<String> ruleThreeLines({
+  required int ownerlessCount,
+  required List<String> readers,
+}) =>
+    <String>[
+      '',
+      '★ どのパッケージにも属さない変更が $ownerlessCount 件在る。'
+          '★文書を読む試験は ${readers.length} 件:',
+      for (final r in readers) '    $r',
+      '  ★ 走らせるのは★パッケージ単位である（★上の行）。'
+          '★★`test/docs/` に閉じていない★★ので★そこだけを走らせても足りない。',
+    ];
+
+// ─────────────────────────────────────────────────────────────────────────
+// ★★ 2026-09-04 追記: ★「doc だけなら走らせなくてよい」を★3 度踏んだ受け ★★
+//
+// ★★ 引き金 ★★
+// ★2026-09-03 の第 15 セッションで★★doc だけの 3 commit を走らせずに出し、
+// ★`measurement_date_test.dart` が 3 commit のあいだ赤だった★★（**D-15 (j-甲-1)**）。
+// ★★**規則 (3) は★その日より前から★正しく「`loveca-ui` を走らせろ」と答えている**★★
+// （2026-09-04 実測）。→ ★**足りないのは★★答えではなく★理由である★★。**
+//
+// ★★ 何を足したか ★★
+// ★**規則 (3) が効いたとき、★★どの試験が文書を読むのかを★リポジトリから導いて名前で出す。**★★
+// ★**「doc だけだから関係ない」が★★その場で目に見えて偽になる★★のが狙いである。**
+//
+// ★★ 覆わないもの（★言い切る）★★
+// ★**1)** ★★走らせたかどうかは★依然★観測できない★★（**D-28**。★この道具の doc と同じ）。
+// ★**2)** ★★分類は★過大に取る★★ —— ★★`affected_tests_test.dart` 自身は★合成の字面を持つだけで
+//   ★文書を 1 バイトも読まないが、★★読む側として数えられる★★（★出す一覧が 1 件多いだけで害が無い）。
+// ★**3)** ★★ここで挙げた字面のどれにも当たらない読み方は★見えない★★（**D-31**）——
+//   ★受けは★下の走査テストの「★★`test/docs/` に閉じていないこと★★」の対である。
+//
+// ★★ 走らせる命令は★1 ミリも狭めない ★★
+// ★**測ったら★★`test/docs/` は★文書を読む試験の全部ではなかった★★**
+// （2026-09-04 実測 —— ★`test/board/abolished_term_test.dart` が `docs/決定事項一覧.md` を読む）。
+// → ★★**「`flutter test test/docs` だけでよい」は★偽である。★命令はパッケージ単位のままにする。**★★
+// ─────────────────────────────────────────────────────────────────────────
+
+/// ★区切りを POSIX に揃える。★★逆斜線を字面で書かない★★（**D-38**）。
+///
+/// ★**この道具の経路では★★2 つ続けた逆斜線が 1 つに畳まれる★★**（★2026-09-04 に 5 度目を踏んだ）。
+/// → ★**符号位置で組み立てる**（★先例は `docs/tools/measure_pairs.py` / `game_state_wire_ready_test.dart`）。
+String toPosix(String path) => path.split(String.fromCharCode(92)).join('/');
+
+/// ★Dart のソースから★コメントを外す。
+///
+/// ★★ なぜ要るか（**D-30**）★★
+/// ★**文書を読むことを★★説明した doc コメント★★は、★読む試験と同じ字面を必ず含む。**
+/// ★**外さないと★★説明しただけの試験まで「読む」と数える★★。**
+String stripDartComments(String source) {
+  final out = StringBuffer();
+  var i = 0;
+  var inString = false;
+  String? quote;
+  while (i < source.length) {
+    final c = source[i];
+    final next = i + 1 < source.length ? source[i + 1] : '';
+    if (inString) {
+      if (c == r'\') {
+        out.write(c);
+        if (next.isNotEmpty) out.write(next);
+        i += 2;
+        continue;
+      }
+      if (c == quote) {
+        inString = false;
+        quote = null;
+      }
+      out.write(c);
+      i++;
+      continue;
+    }
+    if (c == '/' && next == '/') {
+      while (i < source.length && source[i] != '\n') {
+        i++;
+      }
+      continue;
+    }
+    if (c == '/' && next == '*') {
+      i += 2;
+      while (i < source.length &&
+          !(source[i] == '*' && i + 1 < source.length && source[i + 1] == '/')) {
+        i++;
+      }
+      i += 2;
+      continue;
+    }
+    if (c == "'" || c == '"') {
+      inString = true;
+      quote = c;
+    }
+    out.write(c);
+    i++;
+  }
+  return out.toString();
+}
+
+/// ★このソースは★★リポジトリの文書を読むか★★。
+///
+/// ★★ 判定は 2 つの積である。★片方だけでは足りない ★★
+/// ★**(甲) 文書の字面を持つ**（`.md` で終わる文字列リテラル）。
+/// ★**(乙) 自分のパッケージの外へ出る**（`..` を含む文字列リテラル）。
+///
+/// ★★ なぜ積か ★★
+/// ★**(甲) だけだと★★自分のパッケージの中の fixture の `README.md` まで拾う★★**
+///   （★`loveca-server/test/tls_fixture_test.dart` が実在する / ★2026-09-04 実測）。
+/// ★**(乙) だけだと★★隣のパッケージのソースを走査するだけの試験まで拾う★★**
+///   （★`package_boundary_test.dart` / `legacy_design_number_test.dart`）。
+bool readsRepositoryDocs(String source) {
+  final body = stripDartComments(source);
+  final hasDoc = RegExp(r"""\.md['"]""").hasMatch(body);
+  final escapes = RegExp(r"""['"]\.\.['"/]""").hasMatch(body);
+  return hasDoc && escapes;
+}
+
+/// ★[packages] の `test/` 以下で★★リポジトリの文書を読む試験★★。★リポジトリ相対 / POSIX。
+List<String> docReadingTests(String repoRoot, List<PackageSpec> packages) {
+  final out = <String>[];
+  for (final p in packages) {
+    final dir = Directory('$repoRoot/${p.dir}/test');
+    if (!dir.existsSync()) continue;
+    for (final entity in dir.listSync(recursive: true)) {
+      if (entity is! File || !entity.path.endsWith('.dart')) continue;
+      if (!readsRepositoryDocs(entity.readAsStringSync())) continue;
+      final rel = toPosix(entity.path).split('/${p.dir}/').last;
+      out.add('${p.dir}/$rel');
+    }
+  }
+  out.sort();
+  return out;
 }

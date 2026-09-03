@@ -164,4 +164,99 @@ void main() {
       expect(dependents['loveca-server'], isEmpty);
     });
   });
+
+  group('★★ 文書を読む試験を★リポジトリから導く（★2026-09-04 / ★規則 3 の理由）★★', () {
+    test('★★ 分類器が当たること（★これが無いと下の答えは何も証明しない / D-10）★★', () {
+      // ★**(甲) ＋ (乙) の積である。★片方だけでは足りない。**
+      expect(
+        readsRepositoryDocs("final f = File(p.join('..', 'docs', 'a.md'));"),
+        isTrue,
+      );
+      // ★**(甲) だけ** —— ★自分のパッケージの中の fixture（★`tls_fixture_test.dart` が実在する）。
+      expect(
+        readsRepositoryDocs("final f = File('test/fixtures/README.md');"),
+        isFalse,
+      );
+      // ★**(乙) だけ** —— ★隣のパッケージのソースを走査するだけ。
+      expect(
+        readsRepositoryDocs("final d = Directory('../loveca-core/lib');"),
+        isFalse,
+      );
+    });
+
+    test('★★ コメントの中の字面は数えない（D-30）★★', () {
+      // ★★**説明した doc は★説明対象と同じ字面を必ず含む**★★。
+      // ★★逆斜線を字面で書かない★★（**D-38** —— ★この回で 5 度目を踏んだ）。
+      final onlyComment = <String>[
+        "/// ★`docs/決定事項一覧.md` を読む試験の話。",
+        "// final f = File(p.join('..', 'docs', 'x.md'));",
+        "void main() {}",
+      ].join(String.fromCharCode(10));
+      expect(readsRepositoryDocs(onlyComment), isFalse);
+      // ★★ 陽性対照: ★コメントを外さなければ当たる（★上の 0 件が「見えていない」でないこと）★★
+      expect(
+        RegExp("[.]md[']").hasMatch(onlyComment),
+        isTrue,
+      );
+    });
+
+    test('★ ブロックコメントも外れる。★文字列は残る', () {
+      expect(stripDartComments('a /* x.md */ b'), 'a  b');
+      expect(stripDartComments("var a = 'x // y'; // z"), "var a = 'x // y'; ");
+    });
+
+    test('★★ 導いた一覧は空ではない（D-10）★★', () {
+      final readers = docReadingTests(_repoRoot, discoverPackages(_repoRoot));
+      expect(readers, isNotEmpty);
+      // ★**実物が 1 件在ることを名指しで固定する**（★これが無いと「空でない」だけになる）。
+      expect(readers, contains('loveca-ui/test/docs/measurement_date_test.dart'));
+    });
+
+    test('★★ `test/docs/` に閉じていない（★2026-09-04 の測定そのもの）★★', () {
+      final readers = docReadingTests(_repoRoot, discoverPackages(_repoRoot));
+      final outside =
+          readers.where((r) => !r.contains('/test/docs/')).toList();
+      // ★★**これが 0 件になったら「`flutter test test/docs` だけでよい」が真になる。**★★
+      // ★**今日は偽である** —— ★`test/board/abolished_term_test.dart` が
+      // ★`docs/決定事項一覧.md` を読む（★D88-1 の語を取り出す）。
+      expect(outside, isNotEmpty,
+          reason: '★狭めてよくなったら★この試験を消すのではなく★道具の命令を狭めること');
+    });
+
+    test('★★ 出す行に対を置く（★D-27 の (乙) の受け）★★', () {
+      // ★★**出力だけを消しても★対が 1 件も落ちなかった**★★（2026-09-04 実測 / ★仕込み (G)）。
+      // → ★**画面へ書く所と★何を書くかを分けた。★ここは後者を見る。**
+      final lines = ruleThreeLines(
+        ownerlessCount: 2,
+        readers: <String>['a/test/x_test.dart', 'a/test/docs/y_test.dart'],
+      );
+      // ★**読む試験の名前が★1 つ残らず出ること**（★これが出ないと理由にならない）。
+      expect(lines, contains('    a/test/x_test.dart'));
+      expect(lines, contains('    a/test/docs/y_test.dart'));
+      // ★**件数も出ること**（★名前だけだと「何件在るか」が読めない）。
+      expect(lines.any((l) => l.contains('2 件在る')), isTrue);
+      expect(lines.any((l) => l.contains('2 件:')), isTrue);
+      // ★★**狭めてはならないことも★字面で出す**★★（★これが消えると★次の人が狭める）。
+      // ★★**`any` で見ない**★★ —— ★一覧の側にも `test/docs/` を含む行が在るので、
+      // ★★`any` だと★注意書きを消しても★一覧の行が当たってしまう★★（2026-09-04 実測 / ★仕込み (J) が 0 件）。
+      expect(lines.last, contains('test/docs/'));
+      expect(lines.last, contains('足りない'));
+    });
+
+    test('★ 一覧が空でも★行そのものは出る（★対）', () {
+      final lines = ruleThreeLines(ownerlessCount: 1, readers: const <String>[]);
+      expect(lines.any((l) => l.contains('0 件:')), isTrue);
+    });
+
+    test('★★ 規則 3 の答えは★読む試験を 1 つ残らず覆う★★', () {
+      final packages = discoverPackages(_repoRoot);
+      final readers = docReadingTests(_repoRoot, packages);
+      final owners = {
+        for (final r in readers) r.split('/').first,
+      };
+      // ★**doc だけの変更に対する答えが、★読む試験の持ち主を★全部含むこと。**
+      expect(_affected(['docs/同期設計メモ.md']).containsAll(owners), isTrue);
+      expect(owners, isNotEmpty);
+    });
+  });
 }
