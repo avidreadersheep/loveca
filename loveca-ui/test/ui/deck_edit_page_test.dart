@@ -21,6 +21,7 @@ import 'package:loveca_ui/src/ui/common/card_thumb.dart';
 import 'package:loveca_ui/src/data/app_settings.dart';
 import 'package:loveca_ui/src/ui/deck/deck_edit_page.dart';
 import 'package:loveca_ui/src/ui/deck/deck_pane.dart';
+import 'package:loveca_ui/src/ui/deck/deck_validation_panel.dart';
 
 import '../support/fake_deck_repository.dart';
 import '../support/pump_app.dart';
@@ -486,8 +487,10 @@ void main() {
       // 総合ルール 6.1.1.1 / 6.1.1.3。★期待値は RuleConfig から来ている。
       expect(find.text('メンバー 0 / 48'), findsOneWidget);
       expect(find.text('ライブ 0 / 12'), findsOneWidget);
+      // ★★数はそのまま出る。★消したのは「未達」の勘定だけである（★申し送り §1-1）★★
       expect(find.text('エネルギー 0 / 12'), findsOneWidget);
-      expect(find.text('未達 3 件'), findsOneWidget);
+      // ★★2026-09-03: 3 → 2 になった★★（★エネルギー 0 枚を勘定しない）。
+      expect(find.text('未達 2 件'), findsOneWidget);
     });
 
     testWidgets('★UI は自分で数え直していない（DeckValidator の数え方がそのまま出る）',
@@ -498,10 +501,164 @@ void main() {
       );
 
       expect(find.text('メンバー 5 / 48'), findsOneWidget);
-      // 4 枚超過 + メンバー数不一致 + ライブ + エネルギー = 4 件。
-      expect(find.text('未達 4 件'), findsOneWidget);
+      // ★4 枚超過 + メンバー数不一致 + ライブ = 3 件
+      //   （★★エネルギー 0 枚は勘定しない / 2026-09-03★★）。
+      expect(find.text('未達 3 件'), findsOneWidget);
       expect(find.textContaining('メインデッキの上限4枚'), findsOneWidget);
     });
+
+    testWidgets('★★ エネルギー 1 枚なら★今も未達に数える（★申し送り §1-1）★★',
+        (tester) async {
+      // ★★0 だけを外していることの対★★ ——
+      //   ★1〜11 枚は盤面でも補われない（`EnergyFillSkip.notNeeded`）ので、
+      //   ★★警告が要るのはこちらである★★。
+      await _open(
+        tester,
+        deck: _deck(entries: const [DeckEntry(printingId: 'E-1-N', count: 1)]),
+      );
+
+      expect(find.text('エネルギー 1 / 12'), findsOneWidget);
+      // ★メンバー + ライブ + エネルギー = 3 件。
+      expect(find.text('未達 3 件'), findsOneWidget);
+      expect(find.text('構築条件を満たしていません'), findsOneWidget);
+    });
+
+    testWidgets('★★ エネルギー 0 / 12 の行は★未達の見た目にならない ★★', (tester) async {
+      // ★★この対は★2026-09-03 に新設した★★ ——
+      //   ★**`_CountLine` の色には★対が 1 つも無かった**
+      //   （★実測: ★★`warn` を無視する仕込みで★1218 件が全部通った★★ / **D-27** の (a)）。
+      //   ★見出しが「満たしています」なのにこの 1 行だけ未達の色だと
+      //   ★★2 つが食い違って読める★★。
+      await _openWithSettings(
+        tester,
+        deck: _deck(entries: const [
+          DeckEntry(printingId: 'M-1-N', count: 4),
+          DeckEntry(printingId: 'L-1-N', count: 4),
+        ]),
+      );
+
+      TextStyle? styleOf(String text) =>
+          tester.widget<Text>(find.text(text)).style;
+
+      // ★満たしている 2 行と★同じ見た目である。
+      expect(styleOf('エネルギー 0 / 12')?.fontWeight, FontWeight.w600);
+      expect(styleOf('エネルギー 0 / 12')?.color, styleOf('メンバー 4 / 4')?.color);
+    });
+
+    testWidgets('★対: エネルギー 1 / 12 の行は★未達の見た目になる', (tester) async {
+      await _openWithSettings(
+        tester,
+        deck: _deck(entries: const [
+          DeckEntry(printingId: 'M-1-N', count: 4),
+          DeckEntry(printingId: 'L-1-N', count: 4),
+          DeckEntry(printingId: 'E-1-N', count: 1),
+        ]),
+      );
+
+      TextStyle? styleOf(String text) =>
+          tester.widget<Text>(find.text(text)).style;
+
+      expect(styleOf('エネルギー 1 / 12')?.fontWeight, isNot(FontWeight.w600));
+      expect(
+        styleOf('エネルギー 1 / 12')?.color,
+        isNot(styleOf('メンバー 4 / 4')?.color),
+      );
+    });
+
+    testWidgets('★★ エネルギー 0 枚だけが足りないデッキは「満たしています」になる ★★',
+        (tester) async {
+      // ★★条文には反する（6.1.1.3）。★利用者判断で表示しないことにした★★
+      //   —— ★`docs/UI設計メモ.md` §12-3 の読みは 1 ミリも動いていない。
+      //   ★`DeckValidator` は今も `energyCountMismatch` を出している（★下で見る）。
+      await _openWithSettings(
+        tester,
+        deck: _deck(entries: const [
+          DeckEntry(printingId: 'M-1-N', count: 4),
+          DeckEntry(printingId: 'L-1-N', count: 4),
+        ]),
+      );
+
+      expect(find.text('構築条件を満たしています'), findsOneWidget);
+      expect(find.text('未達 2 件'), findsNothing);
+      expect(find.text('エネルギー 0 / 12'), findsOneWidget);
+    });
+  });
+
+  test('★★ `DeckValidator` は 1 行も変わっていない（★出さないのは表示だけ）★★', () {
+    // ★★この対が要石である★★ ——
+    //   ★画面が出さないことと、★検証が出さないことは★★別である★★。
+    //   ★同期もサーバーも `DeckValidator` を見る（**D28** / `loveca_core`）。
+    const validation = DeckValidationResult(
+      issues: [
+        DeckIssue(
+          code: DeckIssueCode.energyCountMismatch,
+          message: 'エネルギーカード 0枚 (12枚ちょうど必要)',
+        ),
+      ],
+      memberCount: 48,
+      liveCount: 12,
+      energyCount: 0,
+      unknownPrintingIds: [],
+    );
+
+    expect(validation.isValid, isFalse, reason: '★検証は今も落としている');
+    expect(visibleDeckIssues(validation), isEmpty, reason: '★画面には出さない');
+  });
+
+  test('★対: エネルギー 1 枚なら★画面にも出す', () {
+    const validation = DeckValidationResult(
+      issues: [
+        DeckIssue(
+          code: DeckIssueCode.energyCountMismatch,
+          message: 'エネルギーカード 1枚 (12枚ちょうど必要)',
+        ),
+      ],
+      memberCount: 48,
+      liveCount: 12,
+      energyCount: 1,
+      unknownPrintingIds: [],
+    );
+
+    expect(visibleDeckIssues(validation), hasLength(1));
+  });
+
+  test('★対: 13 枚（超過）は★今も出す', () {
+    const validation = DeckValidationResult(
+      issues: [
+        DeckIssue(
+          code: DeckIssueCode.energyCountMismatch,
+          message: 'エネルギーカード 13枚 (12枚ちょうど必要)',
+        ),
+      ],
+      memberCount: 48,
+      liveCount: 12,
+      energyCount: 13,
+      unknownPrintingIds: [],
+    );
+
+    expect(visibleDeckIssues(validation), hasLength(1));
+  });
+
+  test('★対: 0 枚でも★エネルギー以外の未達は落とさない', () {
+    const validation = DeckValidationResult(
+      issues: [
+        DeckIssue(
+          code: DeckIssueCode.energyCountMismatch,
+          message: 'エネルギー',
+        ),
+        DeckIssue(code: DeckIssueCode.memberCountMismatch, message: 'メンバー'),
+        DeckIssue(code: DeckIssueCode.tooManyCopies, message: '4 枚'),
+      ],
+      memberCount: 0,
+      liveCount: 0,
+      energyCount: 0,
+      unknownPrintingIds: [],
+    );
+
+    expect(
+      visibleDeckIssues(validation).map((i) => i.code),
+      [DeckIssueCode.memberCountMismatch, DeckIssueCode.tooManyCopies],
+    );
   });
 
   /// ★★ 軸 2 —— 6.1 の判定は曲げず、盤面の挙動を別行で出す（決定 D96-2）★★
@@ -525,12 +682,14 @@ void main() {
 
       expect(find.byKey(const ValueKey('energyFillNote')), findsOneWidget);
       expect(find.textContaining('開始時にエネルギーを 12 枚'), findsOneWidget);
-      // ★★ 上の行は変えない（6.1 の判定を曲げない）★★
-      expect(find.text('構築条件を満たしていません'), findsOneWidget);
+      // ★★ 2026-09-03: 上の行が「満たしています」に変わった（★申し送り §1-1）★★
+      //   ★以前はここが「構築条件を満たしていません」で、
+      //   ★★「上の 6.1 の判定はデッキそのものに対するもの」という 1 文を添えていた★★。
+      //   ★★あの 1 文は★偽になったので消した★★（**D-25** の型 —— ★字面を残さない）。
+      expect(find.text('構築条件を満たしていません'), findsNothing);
       expect(find.text('エネルギー 0 / 12'), findsOneWidget);
-      // ★2 行が別のことを言っていると読める形にする。
       expect(find.textContaining('上の 6.1 の判定はデッキそのものに対するもの'),
-          findsOneWidget);
+          findsNothing);
     });
 
     testWidgets('★★ メンバーも足りないデッキでは出さない ★★', (tester) async {

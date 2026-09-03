@@ -19,6 +19,32 @@ import 'package:loveca_core/loveca_core.dart';
 
 import '../../data/energy_fill.dart';
 
+/// ★★ 画面に出す issue（`docs/Android UI 決定.md` §1-1）★★
+///
+/// ★★ エネルギーが 0 枚のときだけ、6.1.1.3 の未達を出さない ★★
+///
+/// ★★ 条文には反する。★利用者判断で表示しないことにした ★★
+/// **6.1.1.3** はエネルギー 12 枚ちょうどを要求しており、**0 枚は満たさない**。
+/// `docs/UI設計メモ.md` §12-3 の「0 枚を**完成**と呼ぶのは 6.1.1.3 に反する」は
+/// ★**今も真である**。★覆したのは**表示の方針**であって条文の読みではない。
+/// ★**`DeckValidator` は 1 行も変えていない** —— ★`issues` には今も入っている
+/// （★★同期にもサーバーにも 1 ビットも影響しない★★）。
+///
+/// ★★ 0 だけを外す。1〜11 は外さない。★恣意ではない ★★
+/// 盤面の補完（決定 **D96** / **D97**）は**0 枚のときだけ**行う
+/// （`EnergyFillSkip.notNeeded` —— ★1 枚でもあれば補わない）。
+/// → ★**0 枚のデッキは開始時に 12 枚になるが、★1〜11 枚は★補われないまま始まる。**
+/// ★**警告が要るのは補われない側である。**
+///
+/// ★★ 12 枚以上（13 枚〜）は★今も出す ★★
+/// `energyCount == 0` だけを見るので、★超過は 1 ビットも変わらない。
+List<DeckIssue> visibleDeckIssues(DeckValidationResult validation) =>
+    validation.energyCount == 0
+        ? validation.issues
+            .where((i) => i.code != DeckIssueCode.energyCountMismatch)
+            .toList(growable: false)
+        : validation.issues;
+
 class DeckValidationPanel extends StatelessWidget {
   const DeckValidationPanel({
     super.key,
@@ -36,8 +62,13 @@ class DeckValidationPanel extends StatelessWidget {
   /// ★**軸 1 とは主語が違う。**上の「構築条件を満たしていません」は
   /// **デッキそのもの**についての 6.1.1.3 の判定であり、
   /// こちらは**盤面**の挙動（サンドボックス / **D-A** / **D81**）である。
-  /// ★**上の行は絶対に変えない** —— 0 枚を「満たしている」と呼ぶことは
-  /// 6.1.1.3 に反しており、解けない。
+  ///
+  /// ★★ 2026-09-03: 「上の行は絶対に変えない」を覆した（★申し送り §1-1）★★
+  /// ★以前はこう書いてあった ——「★**上の行は絶対に変えない** —— 0 枚を
+  /// 「満たしている」と呼ぶことは 6.1.1.3 に反しており、解けない」。
+  /// ★★**その判定そのものは今も真である**★★（★条文の読みは 1 ミリも動いていない）。
+  /// ★★**利用者が★条文に反することを承知で「出さない」を選んだ**★★。
+  /// ★**軸が 2 つあること自体は変わらない** —— ★1〜11 枚では今も上の行が「満たしていません」になる。
   final EnergyFillPlan? energyFill;
 
   /// 補うカードの表示名。★`energyFill` が補う場合だけ使う。
@@ -54,7 +85,8 @@ class DeckValidationPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     // ★未知の刷り（決定 D35）は縮退として別に出しているので、ここでは重ねない。
-    final others = validation.issues
+    final shown = visibleDeckIssues(validation);
+    final others = shown
         .where((i) =>
             !_countCodes.contains(i.code) &&
             i.code != DeckIssueCode.unknownPrinting)
@@ -69,16 +101,16 @@ class DeckValidationPanel extends StatelessWidget {
           Row(
             children: [
               Icon(
-                validation.isValid ? Icons.check_circle : Icons.info_outline,
+                shown.isEmpty ? Icons.check_circle : Icons.info_outline,
                 size: 18,
-                color: validation.isValid
+                color: shown.isEmpty
                     ? theme.colorScheme.primary
                     : theme.colorScheme.onSurfaceVariant,
               ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  validation.isValid ? '構築条件を満たしています' : '構築条件を満たしていません',
+                  shown.isEmpty ? '構築条件を満たしています' : '構築条件を満たしていません',
                   style: theme.textTheme.titleSmall,
                 ),
               ),
@@ -100,11 +132,15 @@ class DeckValidationPanel extends StatelessWidget {
             label: 'エネルギー',
             actual: validation.energyCount,
             expected: config.energyDeckSize,
+            // ★★ 0 枚は「未達」として色を付けない（★申し送り §1-1）★★
+            //   ★上の見出しが「満たしています」と言っているのに
+            //   ★この 1 行だけ未達の色になっていると★★2 つが食い違って読める★★。
+            warn: validation.energyCount != 0,
           ),
-          if (validation.issues.isNotEmpty) ...[
+          if (shown.isNotEmpty) ...[
             const SizedBox(height: 6),
             Text(
-              '未達 ${validation.issues.length} 件',
+              '未達 ${shown.length} 件',
               style: theme.textTheme.bodySmall,
             ),
           ],
@@ -173,9 +209,11 @@ class DeckValidationPanel extends StatelessWidget {
 
     if (plan.willFill) {
       final name = energyFillName;
+      // ★★ 2026-09-03: 「上の 6.1 の判定は…変わりません」を消した ★★
+      //   ★0 枚では上の見出しが「満たしています」になったので（★申し送り §1-1）、
+      //   ★★あの 1 文は偽になった★★。★消すのは訂正である（**D-25** の型）。
       return '盤面では、開始時にエネルギーを ${plan.count} 枚'
-          '${name == null ? '' : '（$name）'}補って始めます。'
-          '上の 6.1 の判定はデッキそのものに対するものなので変わりません。';
+          '${name == null ? '' : '（$name）'}補って始めます。';
     }
     return switch (plan.skip!) {
       // ★補完しないのは利用者の選択。★「エネルギーが出ない」ことだけを言う。
@@ -198,17 +236,22 @@ class _CountLine extends StatelessWidget {
     required this.label,
     required this.actual,
     required this.expected,
+    this.warn = true,
   });
 
   final String label;
   final int actual;
   final int expected;
 
+  /// ★★ 過不足を「未達」として見せるか（★申し送り §1-1）★★
+  /// ★false でも**数はそのまま出す** —— ★消すのではなく、★色を付けないだけである。
+  final bool warn;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     // 総合ルール 6.1.1 は「ちょうど」なので、多くても少なくても不足である。
-    final ok = actual == expected;
+    final ok = actual == expected || !warn;
     return Text(
       '$label $actual / $expected',
       style: theme.textTheme.bodyMedium?.copyWith(
