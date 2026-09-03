@@ -29,6 +29,7 @@ import '../../state/store.dart';
 import '../board/board_energy_fill_picker.dart';
 import '../common/loadable_view.dart';
 import 'import_issues_section.dart';
+import 'master_update_section.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -466,17 +467,28 @@ class _UpdateHint extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (icon, text) = switch ((distMissing, remote)) {
-      (true, _) => (
+    // ★★ 条件はここで判定しない（**D-15** の規約 3）★★
+    //   ★同じ判定を★★Android の「その他」タブも持つ★★（§3-16 の 1）。
+    //   ★★出す字面は違う★★ —— ★こちらは **D56**（起動し直す）、★あちらは §1-5（更新ボタン）。
+    //   ★**条件を 2 か所に書けば必ず食い違う**ので、★判定だけを共有する。
+    final (icon, text) = switch (masterUpdateStatusOf(
+      local: local,
+      remote: remote,
+      distMissing: distMissing,
+    )) {
+      MasterUpdateStatus.distMissing => (
           Icons.error_outline,
           'カードデータが見つかりません。前回取り込んだ内容で動いています。',
         ),
-      (false, final r?) when r > local => (
+      MasterUpdateStatus.updateAvailable => (
           Icons.download_outlined,
-          '配信物のほうが新しい版です（$local → $r）。'
+          '配信物のほうが新しい版です（$local → $remote）。'
               'アプリを起動し直すと取り込みます。',
         ),
-      _ => (Icons.check_circle_outline, '取り込み済みです。'),
+      MasterUpdateStatus.upToDate => (
+          Icons.check_circle_outline,
+          '取り込み済みです。',
+        ),
     };
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
