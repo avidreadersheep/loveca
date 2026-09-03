@@ -160,7 +160,8 @@ void main() {
   group('★★ 返す（決定 D134-8）★★', () {
     test('★ 預けたものが★字面のまま返る（★D105-2: 中身を見ない）', () async {
       // ★★ JSON でない字面でも★そのまま返る（★保管庫は判断しない）★★
-      const content = 'これは JSON ではない  でも預かる';
+      // ★★ 制御文字を★★字面で書かない★★（**D-38** —— ★★見えない 1 バイトは★経路で化ける★★ / ★2026-09-04 に直した）
+      final content = 'これは JSON ではない ${String.fromCharCode(1)} でも預かる';
       await _post(client, server.port, decksPath, put('d1', content));
 
       final res =
